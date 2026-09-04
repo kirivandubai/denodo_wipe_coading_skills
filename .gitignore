@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# Креденшелы и локальные профили сред — никогда в репозиторий
+.env
+*.profiles.toml
+profiles.toml
+
+# Локальные артефакты прогонов
+.verify-cache/
+*.log
+
+# macOS
+.DS_Store
