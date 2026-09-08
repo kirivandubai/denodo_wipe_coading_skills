@@ -75,3 +75,43 @@ class VqlPsycopg2TransportTest(unittest.TestCase):
         with self.assertRaises(Exception):
             self.transport.execute("SELEKT 1 FROM DUAL()")
         self.assertEqual(self.transport.execute("SELECT 2 AS n FROM DUAL()").rows, [[2]])
+
+
+@unittest.skipUnless(ENV, "DENODO_TEST_ENV not set")
+class RestTransportStandTest(unittest.TestCase):
+    """Needs ``marketplace_url`` in the profile; creates and removes a ``t5_`` tag."""
+
+    @classmethod
+    def setUpClass(cls):
+        from denodo_cli.transports.api_rest import RestTransport
+
+        cls.profile = _profile()
+        if not cls.profile.marketplace_url:
+            raise unittest.SkipTest("profile has no marketplace_url")
+        cls.rest = RestTransport(cls.profile)
+        for tag in cls.rest.call("GET", "/public/api/tags").body or []:
+            if tag.get("name") == "t5_it_tag":
+                cls.rest.call("DELETE", f"/public/api/tags/{tag['id']}")
+
+    def test_basic_auth_is_accepted(self):
+        result = self.rest.call("GET", "/public/api/tags/count")
+        self.assertEqual(result.status, 200)
+        self.assertIsInstance(result.body, int)
+
+    def test_wrong_server_id_is_401_with_code(self):
+        result = self.rest.call("GET", "/public/api/tags/count", params={"serverId": 999999})
+        self.assertEqual(result.status, 401)
+        self.assertEqual(result.body["code"], "AUTHENTICATION_SERVER_NOT_FOUND")
+
+    def test_create_duplicate_and_delete_tag(self):
+        body = {"name": "t5_it_tag", "description": "T5 integration test", "descriptionType": "TEXT"}
+        created = self.rest.call("POST", "/public/api/tags", json_body=body)
+        self.assertEqual(created.status, 200, created.body)
+        tag_id = created.body["id"]
+        try:
+            duplicate = self.rest.call("POST", "/public/api/tags", json_body=body)
+            self.assertEqual(duplicate.status, 409)
+            self.assertIsNone(duplicate.body)  # empty body: status must be reported on its own
+        finally:
+            deleted = self.rest.call("DELETE", f"/public/api/tags/{tag_id}")
+        self.assertEqual(deleted.status, 200)
