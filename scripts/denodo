@@ -1,0 +1,150 @@
+#!/usr/bin/env python3
+"""Launcher for the Denodo skills' execution layer. Standard library only.
+
+Sets up the Python environment the CLI needs, then hands over to ``denodo_cli``:
+
+  1. ``DENODO_CLI_PYTHON`` set        → run that interpreter (it must have the driver stack)
+  2. ``uv`` on PATH                    → ``uv run --script`` with the PEP 723 block in
+                                          ``denodo_cli/__main__.py`` (cached after first run)
+  3. otherwise                         → a venv under ``$CLAUDE_PLUGIN_DATA`` (or
+                                          ``~/.claude/plugins/data/denodo``), dependencies
+                                          installed once and re-used
+  4. none of that worked               → JSON error with the exact install command, exit 3
+
+Usage: scripts/denodo <command> ... — see ``scripts/denodo --help``.
+"""
+
+import hashlib
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+CLI_DIR = HERE / "denodo_cli"
+ENTRY = CLI_DIR / "__main__.py"
+MIN_PYTHON = (3, 11)
+EXIT_ENVIRONMENT = 3
+
+# PEP 723 reference regex for the inline metadata block.
+_METADATA_BLOCK = re.compile(
+    r"(?m)^# /// (?P<type>[a-zA-Z0-9-]+)$\s(?P<content>(^#(| .*)$\s)+)^# ///$"
+)
+
+
+def read_inline_dependencies(path):
+    """Dependency specifiers from the ``# /// script`` block of ``path``."""
+    text = Path(path).read_text(encoding="utf-8")
+    for match in _METADATA_BLOCK.finditer(text):
+        if match.group("type") != "script":
+            continue
+        content = "".join(line[2:] if line.startswith("# ") else line[1:]
+                          for line in match.group("content").splitlines(keepends=True))
+        deps_match = re.search(r"dependencies\s*=\s*\[(.*?)\]", content, re.DOTALL)
+        if not deps_match:
+            return []
+        return re.findall(r"""["']([^"']+)["']""", deps_match.group(1))
+    return []
+
+
+def install_hint(deps=None):
+    deps = deps or read_inline_dependencies(ENTRY)
+    quoted = " ".join("'" + d + "'" for d in deps)
+    return ("install uv (https://docs.astral.sh/uv/) or run: python3 -m pip install " + quoted +
+            " and set DENODO_CLI_PYTHON to that interpreter")
+
+
+def data_dir():
+    explicit = os.environ.get("DENODO_CLI_HOME")
+    if explicit:
+        return Path(explicit).expanduser()
+    plugin_data = os.environ.get("CLAUDE_PLUGIN_DATA")
+    if plugin_data and "denodo" in Path(plugin_data).name:
+        return Path(plugin_data).expanduser()
+    return Path("~/.claude/plugins/data/denodo").expanduser()
+
+
+def _pythonpath_env():
+    env = dict(os.environ)
+    existing = env.get("PYTHONPATH")
+    env["PYTHONPATH"] = str(HERE) + (os.pathsep + existing if existing else "")
+    return env
+
+
+def find_base_python():
+    """An interpreter new enough for the CLI (tomllib needs 3.11)."""
+    if sys.version_info >= MIN_PYTHON:
+        return sys.executable
+    for name in ("python3.13", "python3.12", "python3.11", "python3"):
+        found = shutil.which(name)
+        if not found:
+            continue
+        probe = subprocess.run([found, "-c", "import sys; print(sys.version_info >= (3, 11))"],
+                               capture_output=True, text=True)
+        if probe.stdout.strip() == "True":
+            return found
+    raise EnvironmentError("no Python >= %d.%d found on PATH" % MIN_PYTHON)
+
+
+def ensure_venv(deps):
+    """Create ``<data_dir>/venv`` with ``deps`` installed once; return its python."""
+    venv = data_dir() / "venv"
+    python = venv / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+    stamp = venv / (".deps-" + hashlib.sha256("\n".join(deps).encode()).hexdigest()[:16])
+    if python.exists() and stamp.exists():
+        return python
+    base = find_base_python()
+    venv.parent.mkdir(parents=True, exist_ok=True)
+    if not python.exists():
+        subprocess.run([base, "-m", "venv", str(venv)], check=True, capture_output=True, text=True)
+    subprocess.run([str(python), "-m", "pip", "install", "--quiet", "--disable-pip-version-check", *deps],
+                   check=True, capture_output=True, text=True)
+    stamp.touch()
+    return python
+
+
+def build_command(args):
+    explicit = os.environ.get("DENODO_CLI_PYTHON")
+    if explicit:
+        return [explicit, "-m", "denodo_cli", *args]
+    uv = shutil.which("uv")
+    if uv:
+        return [uv, "run", "-q", "--script", str(ENTRY), *args]
+    python = ensure_venv(read_inline_dependencies(ENTRY))
+    return [str(python), "-m", "denodo_cli", *args]
+
+
+def _environment_error(message):
+    doc = {"ok": False, "command": None, "env": None,
+           "error": {"kind": "environment", "message": message, "hint": install_hint()}}
+    print(json.dumps(doc, ensure_ascii=False, indent=2))
+    return EXIT_ENVIRONMENT
+
+
+def main(argv):
+    try:
+        command = build_command(argv)
+    except (EnvironmentError, subprocess.CalledProcessError) as exc:
+        detail = getattr(exc, "stderr", None) or str(exc)
+        return _environment_error("could not prepare the Python environment: " + " ".join(str(detail).split())[:500])
+    # With uv the environment is built on the fly, and a failure there prints nothing on
+    # stdout. Capture stdout (except for the interactive `env init`) so an empty result
+    # can be turned into a proper JSON error instead of silence.
+    capture = command[0] == shutil.which("uv") and "init" not in argv
+    try:
+        completed = subprocess.run(command, env=_pythonpath_env(), capture_output=capture, text=capture)
+    except OSError as exc:
+        return _environment_error("could not start %s: %s" % (command[0], exc))
+    if capture:
+        if completed.returncode != 0 and not completed.stdout.strip():
+            return _environment_error("uv could not run the CLI: " + " ".join(completed.stderr.split())[:500])
+        sys.stdout.write(completed.stdout)
+        sys.stderr.write(completed.stderr)
+    return completed.returncode
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
