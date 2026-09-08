@@ -74,15 +74,16 @@ wrapper → base view` — фиксируется в самом навыке.
 
 | Объект | Канал | Верификация |
 |---|---|---|
-| Тег маркетплейса | `/denodo-data-catalog/public/api/…` | требует запущенного Data Marketplace |
-| Категория | `/denodo-data-catalog/public/api/…` | требует запущенного Data Marketplace |
-| External element (asset extension) | `/denodo-data-catalog/public/api/…` | требует Data Marketplace и зарегистрированного external tool server |
+| Тег маркетплейса | `POST /public/api/tags`, назначение `POST /public/api/tags/{tagId}/views` | требует запущенного Data Marketplace |
+| Категория | `POST /public/api/category-management/categories`, назначение `POST …/categories/{categoryId}/views` | требует запущенного Data Marketplace |
+| External element (asset extension) | цепочка: `POST /public/api/external-elements-types` → `POST /public/api/external-providers-types` (multipart) → `POST /public/api/external-tool-servers` (`type: CUSTOM`) → VQL из `GET …/{id}/vql-metadata` и реализация interface view → `POST /public/api/external-tool-servers/synchronize` | требует Data Marketplace; external tool server создаётся самой цепочкой |
 
-**Сигнатуры вызовов в перечне не зафиксированы намеренно.** Публичная документация 9.5
-даёт только базовый URL, способы аутентификации (HTTP Basic и OAuth, stateless и
-stateful), параметр `serverId` при нескольких зарегистрированных VDP и отсылку к
-`swagger-ui` на самом сервере. Конкретные пути и тела запросов снимаются со swagger
-живого стенда — задача T11.
+**Сигнатуры сняты с OpenAPI живого сервера и подтверждены на стенде** — спайк T11,
+[отчёт](2026-09-08-spike-t11-marketplace-api.md). Базовый путь `/denodo-data-catalog`
+сохранил историческое имя. Аутентификация — HTTP Basic учёткой VDP; `serverId`
+необязателен при одном зарегистрированном сервере. External element в 9.5 не создаётся
+напрямую: маркетплейс импортирует его из interface view VDP, поэтому «команда» у него —
+цепочка, а не вызов.
 
 **Теги маркетплейса — не теги VDP.** Data Marketplace ведёт собственный список тегов; те,
 что импортированы из Virtual DataPort, помечены отдельной иконкой, и редактирование с
@@ -148,11 +149,12 @@ Scheduler это окажется не так, дело в формате нав
 
 ## 6. Открытые места
 
-- Точные эндпоинты, тела запросов и выбранный способ аутентификации для трёх объектов
-  маркетплейса — задача T11.
+- ~~Точные эндпоинты, тела запросов и выбранный способ аутентификации для трёх объектов
+  маркетплейса — задача T11.~~ Закрыто T11, см. таблицу 2.4 и отчёт.
 - Поддержка `CREATE OR REPLACE` по документации есть у всех двенадцати VQL-объектов;
   поведение на живом сервере проверяется в T2. Конструкции вида `IF EXISTS` встречены
   только у `DROP TAG` — применимость к остальным типам уточняется там же.
 - Разметка объектов VDP тегами доступна и через VQL, и через маркетплейс. Развилка в
   навыке опирается на то, что импортированные теги в маркетплейсе доступны только на
-  чтение; это утверждение из документации, его нужно подтвердить на стенде в T11.
+  чтение. Подтверждено на стенде в T11: правка и назначение импортированного тега —
+  `403`, удаление не проходит.
