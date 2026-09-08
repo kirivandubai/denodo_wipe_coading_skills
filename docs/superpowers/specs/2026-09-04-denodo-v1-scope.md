@@ -34,9 +34,11 @@
 | Папка | `CREATE [OR REPLACE] FOLDER` | полностью, без внешних систем |
 | Тег VDP | `CREATE [OR REPLACE] TAG` / `CREATE TAGS`, `ALTER TAG`, `DROP TAG [IF EXISTS]` | полностью, без внешних систем |
 
-Теги назначаются на представления и колонки через `ADD_TO (VIEWS (...) COLUMNS (...))` /
-`REMOVE_FROM (...)`. Тег VDP и тег Data Marketplace — **разные объекты в разных
-серверах**, см. 2.4.
+Теги назначаются на представления и колонки через `ADD_TO (VIEWS (...) COLUMNS (...))
+REMOVE_FROM (VIEWS (...) COLUMNS (...))` — на 9.5.1 **оба блока обязательны, каждый с
+обеими секциями**, даже пустыми; представления и колонки только с именем базы
+(спайк T2). Альтернатива — `TAGS (<tag>)` прямо в `CREATE VIEW`. Тег VDP и тег Data
+Marketplace — **разные объекты в разных серверах**, см. 2.4.
 
 ### 2.2 `datasources` — Virtual DataPort, VQL
 
