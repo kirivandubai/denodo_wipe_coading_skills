@@ -67,6 +67,12 @@ with the list of ids it could *not* assign — success is an empty list.
 **`vql desc`** returns the DESC rows as `columns`/`rows` (`DESC VQL` puts the
 whole script in one cell).
 
+**A `decimal` value arrives as a JSON string** (`"12.34"`), while `int`, `long` and
+`double` arrive as JSON numbers. That is the transport, not the column: it says
+nothing about the type in Denodo. To check a type, read it — `vql desc --env dev
+<view>` — or do arithmetic on the server (`SELECT SUM(price * 2) …`); a text column
+would fail there.
+
 ## When it fails — by `error.kind`
 
 | `error.kind` | Cause | Action |
