@@ -80,7 +80,7 @@ that "does not exist".
 # 1. does it exist? — the lookup that replaces CREATE OR REPLACE
 api get --env lab /public/api/tag-management/tags --param serverId=306 \
     --param offset=0 --param limit=50 --param nameFilter=pii
-# → {"count":1,"elements":[{"id":627,"name":"pii", …}]}   or count 0
+# → {"count":1,"elements":[{"id":627,"name":"pii_data", …}]}   ← NOT your tag
 
 # 2a. missing → create it
 api post --env lab /public/api/tags --param serverId=306 \
@@ -96,6 +96,13 @@ api post --env lab /public/api/tags/627/views --param serverId=306 --json '[7484
 # → []   ← empty list IS the success
 ```
 
+- **`nameFilter` is a case-insensitive *substring* match, so the lookup needs a second step:
+  compare `name` yourself, exactly.** `nameFilter=pii` returns `pii_data`, and
+  `nameFilter=sensitive` returns a tag called `Sensitive` — *verified: 9.5.1 (стенд,
+  2026-09-10)*. Taking the first element and calling it yours is how a script ends up
+  `PUT`-ing over somebody else's tag. A namesake differing only in case is a collision, not a
+  match: creating the second one is `409`, so that case is a question for the human, not
+  something to resolve automatically.
 - `name`, `description` and `descriptionType` are all mandatory on create; missing ones are
   `400 VALIDATE_FIELD`. `descriptionType` is `TEXT` or `RICH_TEXT` (the latter renders HTML).
 - A duplicate name is `409` with an **empty body** — no message to read. That is why step 1
@@ -220,8 +227,10 @@ up before creating it — a new type is a marketplace-wide object that everyone 
 | **Element type** — what the asset *is* | 24 | `GET /public/api/external-elements-types` | `DASHBOARD`, `REPORT`, `PIPELINE`, `DATA_CONTRACT`, `AI_AGENT`, `NOTEBOOK`, `ETL_JOB`, `QUALITY_RULE` |
 | **Provider type** — the tool it *comes from* | 28 | `GET /public/api/external-providers-types` | `AIRFLOW_PROVIDER`, `GITHUB_PROVIDER`, `TABLEAU`, `POWERBI`, `COLLIBRA_PROVIDER`, `DATABRICKS_PROVIDER`, `SNOWFLAKE_PROVIDER`, `JUPYTER_PROVIDER` |
 
-*verified: 9.5.1 (стенд, 2026-09-10).* Step 1 of the chain above only applies when no
-built-in provider type fits; the same goes for the element type
+*verified: 9.5.1 (стенд, 2026-09-10).* **The provider listing carries every icon as base64
+and weighs about 290 KB** — read it into a file and project
+`{externalProviderTypeId, name, visualName}` rather than letting it into the conversation.
+Step 1 of the chain above only applies when no built-in provider type fits; the same goes for the element type
 (`POST /public/api/external-elements-types`, all six fields mandatory, `iconKey` is a
 FontAwesome key). Both listings return the name under a different key than the one you send:
 the element type is `externalElementTypeName` when read and `name` when written, and the read
@@ -361,6 +370,7 @@ other side where there is one.
 | `GET …/categories/{id}/views` without paging | `400 MISSING_REQUEST_PARAMETER` | `--param offset=0 --param limit=50` |
 | the same on `/external-tool-servers` | `403`, empty | the same cause, a different code |
 | `POST /tags` with a name that exists | `409`, empty body | look up by name first, then `PUT` |
+| take the first element `nameFilter` returned | `200`, the wrong tag | the filter matches substrings and ignores case — compare `name` exactly |
 | `POST /tags/{id}/views` for a view that is not synchronised | `200` and `[7484]` | it is not an error and not an assignment — synchronise, then re-assign |
 | read a `200` from an assignment as success | — | success is `[]`; a non-empty list is what failed |
 | `POST /views/{id}/tags` to add one tag | `200` | that endpoint **replaces** the view's tags; use `/tags/{id}/views` |

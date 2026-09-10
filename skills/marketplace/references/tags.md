@@ -8,7 +8,7 @@ Everything here is REST against `marketplace_url`, and every call takes `serverI
 | Action | Call | Body | Answer |
 |---|---|---|---|
 | List all | `GET /public/api/tags` | | array of `{id, name, description, descriptionType, vdpTag}` |
-| Search by name, paged | `GET /public/api/tag-management/tags` + `offset`, `limit`, `nameFilter` | | `{count, elements[]}` |
+| Search by name, paged | `GET /public/api/tag-management/tags` + `offset`, `limit`, `nameFilter` | | `{count, elements[]}` — `nameFilter` matches **substrings, case-insensitively**, so filter the result by exact `name` before using it |
 | How many | `GET /public/api/tags/count` | | number |
 | One | `GET /public/api/tags/{id}` | | the tag, `404` when gone |
 | Create | `POST /public/api/tags` | `{name, description, descriptionType}` — all three | `200` + tag with `id` |
