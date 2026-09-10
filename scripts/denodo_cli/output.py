@@ -10,15 +10,21 @@ from typing import Any
 from .profiles import Profile
 
 
-def envelope(ok: bool, profile: Profile | None, command: str, **fields: Any) -> dict:
-    """Common shape: ``ok``, ``command``, ``env`` (never the password), then fields."""
+def envelope(ok: bool, profile: Profile | None, command: str, *, database: str | None = None,
+             **fields: Any) -> dict:
+    """Common shape: ``ok``, ``command``, ``env`` (never the password), then fields.
+
+    ``database`` is the one actually connected to, which is the profile's unless a command
+    overrode it with ``--database``: agents are told to read ``env`` to know where they are,
+    so it has to name the real session, not the default.
+    """
     env = None
     if profile is not None:
         env = {
             "name": profile.name,
             "production": profile.production,
             "transport": profile.transport,
-            "database": profile.database,
+            "database": database or profile.database,
         }
     doc: dict[str, Any] = {"ok": ok, "command": command, "env": env}
     doc.update(fields)

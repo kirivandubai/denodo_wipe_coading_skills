@@ -23,7 +23,7 @@ Remote: `github.com/kirivandubai/denodo_wipe_coading_skills` (имя на GitHub
 
 **Текущая очередь работ — `docs/TASKS.md`.** Задача берётся оттуда, а не придумывается.
 
-Слой исполнения (`scripts/denodo` + `scripts/denodo_cli/`) реализован в T5; готовы навыки `vql`, `execute`, `catalog`, `datasources`, `views`; `marketplace` и `query` впереди.
+Слой исполнения (`scripts/denodo` + `scripts/denodo_cli/`) реализован в T5; готовы навыки `vql`, `execute`, `catalog`, `datasources`, `views`, `marketplace`; `query` впереди.
 Юнит-тесты гоняются без зависимостей: `PYTHONPATH=scripts python3 -m unittest discover -s tests -t .`;
 интеграционные — против стенда: `DENODO_TEST_ENV=dev uv run --with denodo-sqlalchemy
 --with psycopg2-binary python -m unittest tests.integration.test_stand` (с `PYTHONPATH=scripts`).

@@ -51,17 +51,17 @@ def run_statements(
     continue_on_error: bool = False,
 ) -> tuple[dict, int]:
     if not statements:
-        return envelope(False, profile, "vql run",
+        return envelope(False, profile, "vql run", database=database,
                         error={"kind": "usage", "message": "no VQL statements to run"}), EXIT_USAGE
     refusal = _refuse_if_destructive(profile, statements, allow_destructive)
     if refusal:
-        return envelope(False, profile, "vql run", error=refusal), EXIT_USAGE
+        return envelope(False, profile, "vql run", database=database, error=refusal), EXIT_USAGE
 
     try:
         transport = transport_factory(profile, database=database)
     except Exception as exc:  # noqa: BLE001 — any driver/network failure is a connection error here
         info = normalize_error(exc)
-        return envelope(False, profile, "vql run",
+        return envelope(False, profile, "vql run", database=database,
                         error={"kind": "connection", **info}), EXIT_EXECUTION
 
     results: list[dict] = []
@@ -85,7 +85,7 @@ def run_statements(
         transport.close()
 
     ok = failed_at is None
-    doc = envelope(ok, profile, "vql run", statements=results, failed_at=failed_at,
+    doc = envelope(ok, profile, "vql run", database=database, statements=results, failed_at=failed_at,
                    executed=len(results), total=len(statements))
     return doc, EXIT_OK if ok else EXIT_EXECUTION
 

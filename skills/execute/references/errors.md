@@ -111,21 +111,26 @@ object back** — that is what the Verify section of every domain skill is for.
 | `status` | `body.code` / body | When | Action |
 |---|---|---|---|
 | `401` | `{"status":401,"error":"Unauthorized"}` (Spring) — *T11 report* | no `Authorization` header (not reachable through the tool) | — |
-| `401` | `AUTHENTICATION_SERVER_NOT_FOUND` "Server not found" | wrong `marketplace_server_id` in the profile, **or** wrong VDP password with a serverId set | fix the profile; leave `marketplace_server_id` unset with a single VDP |
+| `401` | `AUTHENTICATION_SERVER_NOT_FOUND` "Server not found" | wrong `marketplace_server_id` in the profile, **or** wrong VDP password with a serverId set | fix the profile; a single registered VDP server may leave `marketplace_server_id` unset |
+| `500` | `GENERIC` "Session Expired." | **more than one VDP server is registered and no server was named** — the marketplace cannot tell which catalog you mean | `GET /public/api/configuration/servers` for the ids, then `--param serverId=<id>`, or set `marketplace_server_id` in the profile |
+| `403` | empty, on `/external-tool-servers` and other server-scoped paths | the same missing `serverId` — this family answers `403` where tags answer `500` | as above: name the server |
 | `403` | empty — *T11 report* | `PUT`/`POST …/views`/`DELETE` on a tag imported from VDP (`vdpTag:true`) | imported tags are read-only here; change them in VDP (`/denodo:catalog`) |
-| `404` | empty | `DELETE` of a non-existent server, element type, provider type; `GET view-details` of a missing view | look the object up by name first; nothing to delete |
+| `404` | empty | `DELETE` of a non-existent server, element type, provider type; `GET` of an object that is gone | look the object up by name first. **When you are checking that something was deleted, `404` is the answer you wanted** — the envelope still says `ok:false` and exits `1`, so a verification script has to expect it |
 | `404` | `{"status":404,"error":"Not Found","path":…}` (Spring) | wrong path | check the path under `/public/api/…` |
+| `400` | `MISSING_REQUEST_PARAMETER` | a paged endpoint called without `offset`/`limit` (`…/categories/{id}/views`, `/tag-management/tags`) | add `--param offset=0 --param limit=50` |
 | `409` | empty | duplicate name: tag, category, element type, provider type | find by name (`GET` list) and `PUT` instead of `POST` |
 | `409` | `SERVER_DUPLICATED` — *T11 report* | duplicate external tool server name | same |
 | `400` | `VALIDATE_FIELD` `{"description":"must not be null",…}` | body missing required fields (`description`, `descriptionType` on tags) | send all fields; `descriptionType` is `"TEXT"` |
-| `400` | `INVALID_VDP_EXTERNAL_ELEMENT_METADATA` — *T11 report* | association points at a view that does not exist, during `synchronize` | create the VDP view first |
+| `400` | `INVALID_VDP_EXTERNAL_ELEMENT_METADATA` "The view '…' does not exist" | an association names a view the **marketplace catalog** does not have — it may well exist in VDP | synchronise the catalog (`/denodo:marketplace`), then re-run the import |
+| `400` | `INVALID_VDP_EXTERNAL_ELEMENT_METADATA` "Required field 'associated_element_id' is null … association index 0" | the interface view built its association array with a `LEFT OUTER JOIN`, so an element with no associations carries one all-null record | `INNER JOIN` plus a `UNION ALL` branch with a NULL array — `/denodo:marketplace` |
+| `400` | `INVALID_EXTERNAL_ELEMENT_INTERFACE_VIEW` "expected type external_element_association_array_type" | the association array type was renamed; the marketplace matches the contract's type name literally | keep the names from `…/vql-metadata` |
 | `400` | `INVALID_EXTERNAL_TOOL_SERVER` — *T11 report* | `…/changes` on a CUSTOM server (endpoint is for Tableau/Power BI only) | use `synchronize`, not `changes` |
 | `400` | Spring `problemDetail` with `MethodArgumentTypeMismatchException` | non-numeric id in the path (`/tags/None`) | you never resolved the id; `GET` the list and take `id` |
 | `500` | `GENERIC` "Incorrect number of deleted tuples" | `DELETE` of an already-deleted tag, or of an imported VDP tag | tag is gone (or read-only); do not retry |
 | `500` | `GENERIC` "Cannot invoke \"java.lang.Long.longValue()\" because \"elementId\" is null" | `null` inside the id list of a body | resolve every id before the call |
 | `500` | `GENERIC` "Error executing query…" (`view-details`) | `databaseName` does not exist in VDP | fix the database name |
 | `200` | `[<viewId>, …]` from `POST /tags/{id}/views` or `/categories/…` | ids that were **not** assigned: unknown view, or already assigned | success is `[]`; unknown ids are not errors for the server |
-| `200` | `{"id":null,"inLocal":false,"inVDP":true}` from `GET view-details` | the view exists in VDP but is not synchronised into the marketplace | `POST /public/api/element-management/all/synchronize` (destructive with `proceedWithConflicts:"SERVER"`), then retry |
+| `200` | `{"id":null,"inLocal":false,"inVDP":true}` from `GET view-details` | the view exists in VDP but is not synchronised into the marketplace, so it has no id to assign anything to | synchronise the catalog first — `/denodo:marketplace` covers which call and which conflict mode, and both are choices a human confirms |
 
 Repeated `DELETE` is not idempotent across object types: `500` for tags, `200` for
 categories, `404` for element types and servers. Look up by name before deleting
