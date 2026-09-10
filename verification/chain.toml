@@ -29,6 +29,7 @@ kind = "template"
 channel = "vql"
 address = "skills/catalog/SKILL.md#Folders"
 substitute = { sales_analytics = "{database}" }
+database = "{database}"
 check = "SELECT name FROM GET_ELEMENTS() WHERE input_database_name = '{database}' AND type = 'folder'"
 
 [[step]]
@@ -37,6 +38,7 @@ kind = "template"
 channel = "vql"
 address = "skills/datasources/SKILL.md#Delimited file (CSV) — DF"
 substitute = { sales_analytics = "{database}" }
+database = "{database}"
 # no check on rows: the file this template names does not exist on the stand, and that is
 # the point — the parser accepts the DDL, only SELECT would fail (spec 11.1)
 check = "SELECT name FROM GET_ELEMENTS() WHERE input_database_name = '{database}' AND name = 'bv_crm_customers'"
@@ -45,6 +47,7 @@ check = "SELECT name FROM GET_ELEMENTS() WHERE input_database_name = '{database}
 id = "fixture-base-views"
 kind = "fixture"
 channel = "vql"
+database = "{database}"
 check = "SELECT COUNT(*) AS n FROM bv_income_band"
 vql = """
 CONNECT DATABASE {database};
@@ -115,6 +118,7 @@ kind = "template"
 channel = "vql"
 address = "skills/views/SKILL.md#Derived view"
 substitute = { sales_analytics = "{database}" }
+database = "{database}"
 check = "SELECT COUNT(*) AS n FROM household_income_by_band"
 
 [[step]]
@@ -122,12 +126,11 @@ id = "interface-view"
 kind = "template"
 channel = "vql"
 address = "skills/views/SKILL.md#Interface view — a contract you can re-implement"
-# Unlike the other template steps, this block has no CONNECT DATABASE of its own — an
-# unqualified SET IMPLEMENTATION relies on the session already being connected (real usage:
-# --database on the command, per skills/execute/SKILL.md). Each chain step is its own fresh
-# session (see run_chain's docstring), so the fix belongs here, in substitution, not in the
-# skill: prepend a CONNECT DATABASE ahead of the statement that is already there verbatim.
-substitute = { "CREATE OR REPLACE INTERFACE VIEW household_income (" = "CONNECT DATABASE {database};\n\nCREATE OR REPLACE INTERFACE VIEW household_income (" }
+# This block has no CONNECT DATABASE of its own — an unqualified SET IMPLEMENTATION
+# relies on the session already being connected (real usage: --database on the command,
+# per skills/execute/SKILL.md). `database` connects the step's own session directly, so
+# the block runs verbatim, exactly as an agent would read it off the skill.
+database = "{database}"
 check = "SELECT household_sk FROM household_income LIMIT 10"
 
 [[step]]
@@ -136,7 +139,7 @@ kind = "template"
 channel = "vql"
 address = "skills/views/SKILL.md#Association — the relationship, recorded"
 # Same reason as interface-view above: this block has no CONNECT DATABASE either.
-substitute = { "CREATE OR REPLACE ASSOCIATION a_income_band_household REFERENTIAL CONSTRAINT" = "CONNECT DATABASE {database};\n\nCREATE OR REPLACE ASSOCIATION a_income_band_household REFERENTIAL CONSTRAINT" }
+database = "{database}"
 check = "SELECT association_name FROM GET_ASSOCIATIONS() WHERE input_database_name = '{database}' AND input_type = 'views' AND valid = true"
 
 [[step]]
@@ -145,12 +148,14 @@ kind = "template"
 channel = "vql"
 address = "skills/catalog/SKILL.md#Tags, with their assignments"
 substitute = { sales_analytics = "{database}", "CREATE OR REPLACE TAG pii" = "CREATE OR REPLACE TAG {tag_prefix}pii", "CREATE OR REPLACE TAG finance_sensitive" = "CREATE OR REPLACE TAG {tag_prefix}finance_sensitive", "{database}.customer.email" = "{database}.household_income.buy_potential", "{database}.customer.phone" = "{database}.household_income.household_sk", "{database}.order_summary" = "{database}.household_income_by_band" }
+database = "{database}"
 check = "SELECT tag_name FROM GET_VIEW_TAGS() WHERE input_database_name = '{database}'"
 
 [[step]]
 id = "nothing-invalid"
 kind = "fixture"
 channel = "vql"
+database = "{database}"
 vql = "CONNECT DATABASE {database};"
 check = "SELECT name FROM GET_VIEWS() WHERE input_database_name = '{database}' AND input_retrieve_invalid_views_only = true"
 expect = "no rows"

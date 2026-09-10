@@ -141,6 +141,26 @@ class LoadChainTest(unittest.TestCase):
             load_chain(self.path)
         self.assertIn("vql", str(ctx.exception))
 
+    def test_step_database_is_parsed(self):
+        self.path.write_text(
+            '[[step]]\nid = "x"\nkind = "fixture"\nchannel = "vql"\nvql = "SELECT 1"\n'
+            'database = "{database}"\n', encoding="utf-8")
+        chain = load_chain(self.path)
+        self.assertEqual(chain.steps[0].database, "{database}")
+
+    def test_step_without_database_defaults_to_none(self):
+        chain = load_chain(self.path)
+        self.assertIsNone(chain.steps[0].database)
+
+    def test_non_string_database_is_rejected(self):
+        self.path.write_text(
+            '[[step]]\nid = "x"\nkind = "fixture"\nchannel = "vql"\nvql = "SELECT 1"\ndatabase = 5\n',
+            encoding="utf-8")
+        with self.assertRaises(ChainError) as ctx:
+            load_chain(self.path)
+        self.assertIn("x", str(ctx.exception))
+        self.assertIn("database", str(ctx.exception))
+
 
 class RenderTest(unittest.TestCase):
     def test_exact_string_is_replaced_everywhere(self):
@@ -244,6 +264,40 @@ substitute = { sales_analytics = "{database}" }
         executed = " ".join(FakeVql.instances[0].executed)
         self.assertIn("denodo_skills_test", executed)
         self.assertNotIn("sales_analytics", executed)
+
+    def test_step_with_database_field_connects_to_it_directly(self):
+        # A block that does not carry its own CONNECT DATABASE (an unqualified SET
+        # IMPLEMENTATION or ENDPOINT, say) still has to land in the test database — via
+        # the transport's own database kwarg, not by rewriting the block's text.
+        chain = self.chain("""
+[values]
+database = "denodo_skills_test"
+[[step]]
+id = "database"
+kind = "template"
+channel = "vql"
+address = "skills/catalog/SKILL.md#Database"
+substitute = { sales_analytics = "{database}" }
+database = "{database}"
+""")
+        doc, code = run_chain(profile(), chain, root=self.root, vql_factory=FakeVql)
+        self.assertEqual(code, 0, doc)
+        self.assertEqual(FakeVql.instances[0].database, "denodo_skills_test")
+
+    def test_step_without_database_field_does_not_set_it(self):
+        chain = self.chain("""
+[values]
+database = "denodo_skills_test"
+[[step]]
+id = "database"
+kind = "template"
+channel = "vql"
+address = "skills/catalog/SKILL.md#Database"
+substitute = { sales_analytics = "{database}" }
+""")
+        doc, code = run_chain(profile(), chain, root=self.root, vql_factory=FakeVql)
+        self.assertEqual(code, 0, doc)
+        self.assertIsNone(FakeVql.instances[0].database)
 
     def test_check_is_run_against_the_test_database_and_must_return_rows(self):
         chain = self.chain("""

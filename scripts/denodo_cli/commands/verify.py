@@ -46,6 +46,7 @@ class Step:
     check: str | None = None
     expect: str = "rows"
     marketplace: bool = False
+    database: str | None = None
 
 
 @dataclass(frozen=True)
@@ -102,11 +103,14 @@ def _step(raw: dict) -> Step:
         # guarded behind --with-marketplace. Without this, an http step lacking the flag
         # would fall through into the vql branch of a default run.
         raise ChainError(f"step {step_id!r}: an http-channel step must set marketplace = true")
+    database = raw.get("database")
+    if database is not None and not isinstance(database, str):
+        raise ChainError(f"step {step_id!r}: database must be a string, got {database!r}")
     return Step(id=step_id, kind=kind, channel=channel, address=address, vql=vql,
                 calls=_int_calls(raw.get("calls", []), step_id),
                 substitute={str(k): str(v) for k, v in (raw.get("substitute") or {}).items()},
                 capture={str(k): str(v) for k, v in (raw.get("capture") or {}).items()},
-                check=raw.get("check"), expect=expect, marketplace=marketplace)
+                check=raw.get("check"), expect=expect, marketplace=marketplace, database=database)
 
 
 def _int_calls(raw_calls: object, step_id: str) -> list[int]:
@@ -159,10 +163,11 @@ def run_chain(
     """Run every vql-channel step of ``chain`` in order and report what happened.
 
     Each step runs in its own VQL session — ``_run_step`` calls ``run_statements``
-    fresh every time — which works because every template but the first opens with its
-    own ``CONNECT DATABASE``, rewritten by substitution to the test database; nothing
-    is lost by not sharing a session across steps. The chain stops at the first failed
-    step; every later step is reported ``skipped`` with a reason instead of attempted,
+    fresh every time — which works because every step but the first either opens with
+    its own ``CONNECT DATABASE`` (rewritten by substitution to the test database) or
+    declares ``database`` in the manifest, connecting the session directly instead;
+    nothing is lost by not sharing a session across steps. The chain stops at the first
+    failed step; every later step is reported ``skipped`` with a reason instead of attempted,
     and a skipped step does not by itself make the run fail.
 
     Cleanup (``_cleanup``) runs after the chain regardless of how it ended — success, the
@@ -294,12 +299,19 @@ def _run_step(profile: Profile, step: Step, *, values: dict[str, str], root: Pat
               "ok": False, "skipped": False, "error": None, "check": None, "statements": None}
     try:
         body = _body(step, root=root, values=values)
+        # Optional per-step database, e.g. "{database}" — the mechanism a check already
+        # uses (see _run_check below), now available to the step's own body too: a
+        # template that does not carry its own CONNECT DATABASE (an unqualified SET
+        # IMPLEMENTATION or ENDPOINT, say) still has to land in the test database, and
+        # rewriting the block's text to add one would run text the skill does not have.
+        database = render(step.database, {}, values) if step.database else None
     except (TemplateError, ChainError) as exc:
         report["error"] = {"kind": "template", "message": str(exc)}
         return report
 
     statements = split_statements(body)
-    doc, code = run_statements(profile, statements, transport_factory=vql_factory, max_rows=MAX_ROWS)
+    doc, code = run_statements(profile, statements, transport_factory=vql_factory, max_rows=MAX_ROWS,
+                               database=database)
     report["statements"] = doc.get("statements")
     if code != EXIT_OK:
         failed = (doc.get("statements") or [{}])[doc.get("failed_at") or 0]
