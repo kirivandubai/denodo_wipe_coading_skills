@@ -23,6 +23,15 @@ class EnvelopeTest(unittest.TestCase):
         self.assertNotIn("secret", to_json(doc))
         self.assertEqual(doc["statements"], [])
 
+    def test_env_database_follows_the_override(self):
+        # agents are told to read env to know where they are connected; --database changes that
+        doc = envelope(True, profile(), "vql run", database="sales_analytics", statements=[])
+        self.assertEqual(doc["env"]["database"], "sales_analytics")
+
+    def test_env_database_falls_back_to_the_profile(self):
+        doc = envelope(True, profile(), "vql run", database=None, statements=[])
+        self.assertEqual(doc["env"]["database"], "admin")
+
     def test_envelope_without_profile(self):
         doc = envelope(False, None, "env list", error={"kind": "config", "message": "x"})
         self.assertIsNone(doc["env"])

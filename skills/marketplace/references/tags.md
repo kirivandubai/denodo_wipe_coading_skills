@@ -60,7 +60,14 @@ Two traps around it, both *verified: 9.5.1 (стенд, 2026-09-10)*:
 - **`inLocal` in `/changes` does not mean "imported".** It means a marketplace tag of that
   name exists — including an unrelated local one. On this stand `sensitive` reports
   `inLocal: true, nameConflict: true` while `/tags/vdp/local` does not list it, because a
-  separate marketplace tag `Sensitive` exists. Names collide case-insensitively.
+  separate marketplace tag `Sensitive` exists. Names collide case-insensitively. **What the
+  import then does with the local namesake — refuse it, replace it, merge into it — is
+  *unverified*:** finding out costs someone else's tag, so ask the human whether to rename
+  one of the two first.
+- **An imported tag brings its VDP assignments, and no more.** A VDP tag assigned to nothing
+  arrives in the marketplace empty, which usually is not what the request meant. Check
+  `GET_VIEW_TAGS()` in VDP (`/denodo:catalog`) before importing, and if the tag is bare, the
+  work belongs in VDP first.
 - **The list you read has a short shelf life.** Between reading `/tags/vdp/local` and posting
   it, anyone importing another tag loses it, and the call answers `200` with no body — there
   is nothing in the response to notice it by.

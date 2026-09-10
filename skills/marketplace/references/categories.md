@@ -22,13 +22,14 @@ so every call in a file looks the same.
 | Delete | `DELETE /public/api/category-management/categories/{id}` | | `200`; again → `200` |
 | Delete several | `DELETE /public/api/category-management/categories` + `categoryIds` | | |
 | Assign views (**adds**) | `POST /public/api/category-management/categories/{id}/views` | `[viewId, …]` | `200` + ids **not** assigned |
+| What is in a category | `GET /public/api/category-management/categories/{id}/views` | `offset` and `limit` **mandatory** | `400 MISSING_REQUEST_PARAMETER` without them |
 | Unassign | `DELETE /public/api/category-management/categories/{id}/views/{viewId}` or `…/views?elementIds=` | | |
 | A view's categories | `GET /public/api/category-management/views/{viewId}/categories` | | |
 | Replace a view's categories (**replaces**) | `POST /public/api/category-management/views/{id}/categories` | | wipes the others |
 | Add to a view's categories (**adds**) | `POST /public/api/category-management/add/views/{id}/categories` | | |
 | External elements | `GET`/`POST`/`DELETE /public/api/category-management/categories/{id}/external-elements` | `[elementId]` | assign answers with an empty body |
 | Web services | `…/categories/{id}/webservices` | | |
-| Browse one | `GET /public/api/browse/categories/{id}` and `…/elements/type/{elementType}` | | what a consumer sees |
+| Browse one | `GET /public/api/browse/categories/{id}` | | the category itself, **without** its elements — those come from `…/browse/categories/{id}/elements/type/{elementType}` |
 
 Creation, the child, duplicate `409`, assignment, cascade and repeated delete are
 *verified: 9.5.1 (стенд, 2026-09-10)*; the rest is *unverified: OpenAPI of the 9.5.1 server*.
@@ -44,5 +45,8 @@ Creation, the child, duplicate `409`, assignment, cascade and repeated delete ar
   `category-management/views/{id}/categories` replaces the view's set,
   `category-management/add/views/{id}/categories` adds to it. The path that reads as the
   obvious one is the destructive one.
+- **`PUT` is shaped differently from the tag's.** A category takes its id in the *path*
+  (`PUT …/categories/{id}`) and a tag takes its id in the *body* (`PUT /public/api/tags`).
+  A repeatable script writes both, and the two are easy to swap.
 - `path` comes back empty on creation even for a child; the tree is where the hierarchy is
   visible.

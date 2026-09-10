@@ -30,6 +30,15 @@ that copy has no id, and `view-details` says so:
 `{"id": null, "inLocal": false, "inVDP": true}` — *verified: 9.5.1 (стенд, 2026-09-10)*.
 Synchronise first (see the template), then assign.
 
+**But that answer has two causes, and they look identical.** A view queried against the
+*wrong* `serverId` returns exactly the same body — `id: null`, `inLocal: false`, and
+`inVDP: true` even from a server that never saw the database — and nothing in the response
+names the server it means — *verified: 9.5.1 (стенд, 2026-09-10)*. So before concluding
+"needs synchronising", repeat the `view-details` call against the other registered servers:
+if one of them answers `inLocal: true`, you had the wrong id and nothing needs
+synchronising. Getting this backwards means changing a shared catalog to fix a query
+parameter.
+
 ## Name the server: `serverId`
 
 The marketplace can have several VDP servers registered, and tags, views and external tool
@@ -53,6 +62,13 @@ api get --env lab /public/api/configuration/servers
 
 Either put it in the profile as `marketplace_server_id` (a human edits the profile, not you)
 or pass `--param serverId=306` on every call. One registered server needs neither.
+
+**Which id is the right one is not visible in the list** — the names and urls describe the
+VDP connection, not which databases a server carries. Ask the object you care about:
+`GET /public/api/view-details?databaseName=…&viewName=…` against each id, and take the one
+answering `inLocal: true`. Guessing is expensive rather than merely wrong: everything is
+created happily under the wrong server and only the import fails, with a message about a view
+that "does not exist".
 
 ## Templates
 
@@ -89,6 +105,12 @@ api post --env lab /public/api/tags/627/views --param serverId=306 --json '[7484
 - The response is the list of ids that were **not** assigned. `[]` is success; `[7484]`
   means "already assigned" **or** "no such view" — the two are indistinguishable, both come
   back `200` — *verified: 9.5.1 (стенд, 2026-09-10)*. Read the assignment back.
+- **Anything that runs twice must read before it writes.** A second run of the same script
+  hits an assignment that is already there and gets `[7484]` — which is neither the success
+  the first run saw nor a failure worth stopping on. So check
+  `GET /public/api/tags/{id}/elements` first and skip the `POST` when the view is listed;
+  then `[7484]` in a response means what it should mean — something is wrong. The same holds
+  for the tag itself: look it up by name, and `PUT` only when a field actually differs.
 - Assigning to an external element instead of a view is
   `POST /public/api/tags/{id}/external-elements` with the same body shape, and it answers
   with an **empty body**, not a list.
@@ -143,6 +165,11 @@ api post --env lab /public/api/element-management/VIEWS/synchronize --param serv
   is the one that quietly destroys other people's work.
 - `localElements` in `changes` is the list of things that will be **removed** from the
   marketplace because VDP no longer has them. Non-empty means show the human before running.
+- **The radius is a reading, not a promise, and there is no scope.** `changes` describes the
+  moment you asked; anything created between then and the call comes along too, and the call
+  cannot be narrowed to one database — it synchronises the whole server. On a shared stand
+  that means other people's new views land in the catalog with yours. Re-read the response:
+  `inserted` says what actually happened.
 - Cost on a catalog of ~600 views: `changes` about 1 s, `VIEWS/synchronize` about 1.4 s when
   it inserts 10 and modifies none — *verified: 9.5.1 (стенд, 2026-09-10)*. It is not a
   long-running job at that size, but it is a change to a catalog everybody shares.
@@ -185,11 +212,20 @@ api post --env lab /public/api/external-tool-servers/synchronize --param serverI
 # → externalElementsAdded / Updated / Deleted, per server
 ```
 
-**Step 1 is often unnecessary.** The element *type* (`DASHBOARD`, `REPORT`, `PIPELINE`,
-`DATA_CONTRACT`, `AI_AGENT`, `NOTEBOOK`, `ETL_JOB`, …) usually exists already — 24 are
-built in. `GET /public/api/external-elements-types` first; create your own only when none
-fits (`POST /public/api/external-elements-types`, all six fields mandatory, `iconKey` is a
-FontAwesome key).
+**Both type steps are usually unnecessary, and they are different objects.** Look each one
+up before creating it — a new type is a marketplace-wide object that everyone then sees:
+
+| | Built in on 9.5.1 | List it with | Examples |
+|---|---|---|---|
+| **Element type** — what the asset *is* | 24 | `GET /public/api/external-elements-types` | `DASHBOARD`, `REPORT`, `PIPELINE`, `DATA_CONTRACT`, `AI_AGENT`, `NOTEBOOK`, `ETL_JOB`, `QUALITY_RULE` |
+| **Provider type** — the tool it *comes from* | 28 | `GET /public/api/external-providers-types` | `AIRFLOW_PROVIDER`, `GITHUB_PROVIDER`, `TABLEAU`, `POWERBI`, `COLLIBRA_PROVIDER`, `DATABRICKS_PROVIDER`, `SNOWFLAKE_PROVIDER`, `JUPYTER_PROVIDER` |
+
+*verified: 9.5.1 (стенд, 2026-09-10).* Step 1 of the chain above only applies when no
+built-in provider type fits; the same goes for the element type
+(`POST /public/api/external-elements-types`, all six fields mandatory, `iconKey` is a
+FontAwesome key). Both listings return the name under a different key than the one you send:
+the element type is `externalElementTypeName` when read and `name` when written, and the read
+form has no `description` at all.
 
 The VQL half — the implementation behind the contract from step 3:
 
@@ -248,13 +284,15 @@ Four things here are load-bearing, each verified on 9.5.1 (стенд, 2026-09-1
   Rename it and synchronisation refuses the whole server:
   `400 INVALID_EXTERNAL_ELEMENT_INTERFACE_VIEW … expected type external_element_association_array_type`.
   Types live inside a database, so the contract names never clash across databases.
-- **`external_element_type` must equal an element type's `name`**, character for character.
+- **`external_element_type` must equal an element type's `name`**, character for character —
+  the field is `name` when you create a type and `externalElementTypeName` when you list them.
 - **`INNER JOIN`, not `LEFT OUTER JOIN`.** A left join over an element with no associations
   makes `NEST` produce one all-null record, and the import rejects the element:
-  `400 … Required field 'associated_element_id' is null … association index 0`. Elements
-  without associations go in a second branch: `UNION ALL SELECT …,
+  `400 … Required field 'associated_element_id' is null … association index 0`. As written
+  above — every element has an association — the inner join is the whole story; only if some
+  element has none do you add a second branch, `UNION ALL SELECT …,
   CAST('external_element_association_array_type', NULL) AS associations FROM … WHERE id NOT IN
-  (SELECT owner_id FROM …)` — that is accepted.
+  (SELECT owner_id FROM …)`.
 - `CREATE OR REPLACE INTERFACE VIEW … SET IMPLEMENTATION` in one statement, so the file
   re-applies. `ALTER INTERFACE VIEW` does the same thing but is a change to an existing
   object and needs a human's yes (`/denodo:vql`).
@@ -275,7 +313,7 @@ that does not match it, and only the `SELECT` shows it (`/denodo:views`).
 | For an external element: the type | `GET /public/api/external-elements-types` — 24 built in; invent one only if none fits |
 | For an external element: id, name, url, timestamps | the source tool. `updated_at` is what drives updates — an element whose `updated_at` does not move is never refreshed |
 | Which views the element links to | the human, plus their exact `database.view` — an association naming a view the marketplace does not know fails the whole import |
-| Direction and role | `IN`/`OUT` plus free text (`consumes`, `feeds`, `validates`). The role is the label on the edge of the 360 graph |
+| Direction and role | `IN`/`OUT` plus free text (`consumes`, `feeds`, `validates`). The direction is read from the element outwards, so a dashboard that *reads* a view is still `OUT`. The role is the label on the edge of the 360 graph |
 
 Do not ask about property groups, endorsements, requests or personalisation — they are
 marketplace features with their own screens, not part of creating these objects.
@@ -304,12 +342,14 @@ other side where there is one.
 |---|---|
 | Did the tag/category land | `GET /public/api/tags/{id}` · `GET /public/api/category-management/categories/{id}` |
 | Is the assignment real, from the tag's side | `GET /public/api/tags/{id}/elements` → `{"views":[…],"webservices":[…]}` |
+| … from the category's side | `GET /public/api/category-management/categories/{id}/views` — **`offset` and `limit` are mandatory**, without them it is `400 MISSING_REQUEST_PARAMETER` |
 | … from the view's side | `GET /public/api/views/{viewId}/tags` · `GET /public/api/category-management/views/{viewId}/categories` |
 | Is the view in the catalog at all | `GET /public/api/view-details?databaseName=…&viewName=…` → `id`, `inLocal`, `inVDP` |
 | What a synchronisation would change | `GET /public/api/element-management/{DATABASES\|VIEWS}/changes` — **before**, not after |
 | Did the import create what you meant | the `synchronize` response names each element: `externalElementsAdded/Updated/Deleted` with `originalExternalElementId` |
 | Is the element visible to a consumer | `GET /public/api/external-elements/{id}/details` — type, server, url, and its lineage |
 | **Does the view show the element** | `GET /public/api/views/tree/external-elements/lineage?databaseName=…&viewName=…` — the question a human actually asked ("what consumes this?"), answered from the other end. The view node must resolve to `databaseName`/`viewName`, not stay a bare string |
+| Is it really gone | `GET` it: `404` is the answer you want. The tool reports that as `ok:false` and exit `1`, so a verification script must treat `404` as success here rather than stopping — *verified: 9.5.1 (стенд, 2026-09-10)* |
 | Which VDP tags are imported | `GET /public/api/tags/vdp/local` — a plain list of names. **Not** `inLocal` in `/tags/vdp/changes`: that flag means "a marketplace tag of this name exists", which is also true for an unrelated local tag — *verified: 9.5.1 (стенд, 2026-09-10)* |
 
 ## Common mistakes
@@ -317,6 +357,8 @@ other side where there is one.
 | You did | Server says | Fix |
 |---|---|---|
 | any tag or view call with several VDP servers registered | `500 GENERIC "Session Expired."` | `--param serverId=…`; the ids are in `/public/api/configuration/servers` |
+| read `id: null` from `view-details` as "not synchronised" | `200`, and the same body a wrong `serverId` produces | ask the other servers first; only then synchronise |
+| `GET …/categories/{id}/views` without paging | `400 MISSING_REQUEST_PARAMETER` | `--param offset=0 --param limit=50` |
 | the same on `/external-tool-servers` | `403`, empty | the same cause, a different code |
 | `POST /tags` with a name that exists | `409`, empty body | look up by name first, then `PUT` |
 | `POST /tags/{id}/views` for a view that is not synchronised | `200` and `[7484]` | it is not an error and not an assignment — synchronise, then re-assign |

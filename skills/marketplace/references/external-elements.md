@@ -25,13 +25,26 @@ REPORT, RULE, SCHEDULER_JOB, SQL_SCRIPT, STORED_PROCEDURE, STREAM, WORKFLOW` —
 ### Element type
 
 `{name, description, visualName, iconKey, iconColorCode, reversedIconColorCode}`. `name` is
-the code the interface view will repeat verbatim, `visualName` is what the UI shows,
+the code the interface view will repeat verbatim — note that the **listing** calls the same
+thing `externalElementTypeName`, so the field you send and the field you read back have
+different names. `visualName` is what the UI shows,
 `iconKey` is a FontAwesome key (`fas fa-cube`). The OpenAPI document marks all six required
 while the documentation calls `description` optional; send all six. Duplicate `name` → `409`.
 
 ### Provider type
 
-Multipart: a part named `request` of type `application/json` carrying `{name, visualName}`,
+**Check the 28 built-in ones first** (`GET /public/api/external-providers-types`):
+`AIRFLOW_PROVIDER`, `GITHUB_PROVIDER`, `TABLEAU`, `POWERBI`, `QLIK_PROVIDER`,
+`LOOKER_PROVIDER`, `COLLIBRA_PROVIDER`, `DATABRICKS_PROVIDER`, `SNOWFLAKE_PROVIDER`,
+`INFORMATICA_PROVIDER`, `FIVETRAN_PROVIDER`, `MATILLION_PROVIDER`, `TALEND_PROVIDER`,
+`JENKINS_PROVIDER`, `JUPYTER_PROVIDER`, `N8N_PROVIDER`, `MCP_PROVIDER`, `SERVICENOW_PROVIDER`,
+`ATLAN_PROVIDER`, `AWS_GLUE_PROVIDER`, `FABRIC_PROVIDER`, `CONFLUENT_PROVIDER`,
+`ABINITIO_PROVIDER`, `T24_TEMENOS_PROVIDER`, `SCHEDULER_PROVIDER`, `DENODO_DQ_PROVIDER`,
+`DATA_PRODUCT_PROVIDER`, `GLOSSARY_PROVIDER` — *verified: 9.5.1 (стенд, 2026-09-10)*. They
+arrive with the vendor's icon; a new one is a marketplace-wide object that everybody sees.
+
+Creating one is multipart: a part named `request` of type `application/json` carrying
+`{name, visualName}`,
 and optionally a part `icon` with an `.svg` or `.png`. **The icon is optional** — the call
 returns `201` with `iconImage: null` without it, though both the documentation and spike T11
 call it mandatory — *verified: 9.5.1 (стенд, 2026-09-10)*. Through the tool:
@@ -80,11 +93,20 @@ Association record: `associated_element_id`, `external_tool_server_name`,
   fails with `400 INVALID_VDP_EXTERNAL_ELEMENT_METADATA "The view '…' does not exist"`, a
   message that means "not in the marketplace copy", not "not in VDP" —
   *verified: 9.5.1 (стенд, 2026-09-10)*.
-- For `EXTERNAL_ELEMENT`, `associated_element_id` is the other element's `id` and
-  `external_tool_server_name` names the server it lives on — that is how a contract links to
-  the pipeline that implements it. *unverified here: read off the demo content of the 9.5.1
-  stand, not created by hand.*
-- `direction` is `IN` or `OUT`; `role` is free text and is the label drawn on the edge.
+- For `EXTERNAL_ELEMENT`, `associated_element_id` is the other element's **`id` from its
+  interface view** — the string you wrote there, never the numeric marketplace id, which does
+  not exist until that element has been imported — and `external_tool_server_name` names the
+  tool server it lives on. That is how a pipeline links to the contract it implements —
+  *verified: 9.5.1 (стенд, 2026-09-10)*. Two consequences: elements from two different tools
+  need two provider types and therefore **two tool servers**, and the server holding the
+  target must be imported **first**, or the association has nothing to resolve to.
+- `direction` is `IN` or `OUT` — *documentation 9.5*. It reads from the external element
+  outwards and is not the direction of the data: in the demo content of the 9.5.1 stand a
+  dashboard that *reads* a view carries `OUT` with role `consumes`, and a pipeline that
+  *writes* one carries `OUT` with role `feeds`. Every association there, and every one
+  created while verifying this skill, is `OUT`; no `IN` example exists on the stand, so what
+  the marketplace does differently with it is *unverified*. `role` is free text and is the
+  label drawn on the edge.
 
 **The type names are part of the contract.** Renaming
 `external_element_association_array_type` fails validation with
@@ -93,8 +115,10 @@ external_element_association_array_type, but found …`. Types belong to a datab
 fixed names cost nothing.
 
 **Building the array.** `NEST(...)` over the association rows, cast to the array type, with a
-`GROUP BY` over every non-association column. An element with no associations needs a second
-branch, because a `LEFT OUTER JOIN` gives `NEST` a row of NULLs and the import rejects it
+`GROUP BY` over every non-association column. When every element has at least one
+association, the `INNER JOIN` alone is the whole implementation. The second branch below is
+needed **only** when some element has none: a `LEFT OUTER JOIN` would give `NEST` a row of
+NULLs and the import rejects the element
 (`400 … Required field 'associated_element_id' is null … association index 0`):
 
 ```sql
@@ -132,12 +156,15 @@ The response is per server: `externalElementsAdded`, `externalElementsUpdated`,
 
 ## Reading an element back
 
+All five below are *verified: 9.5.1 (стенд, 2026-09-10)* except the `PUT` row, which is
+*unverified: OpenAPI of the 9.5.1 server*.
+
 | Call | Gives |
 |---|---|
 | `GET /public/api/external-elements/{id}/details` | the card: type, provider, tool server, attribute groups (`<type>_default` is created automatically from `url`), and `edges`/`nodes` of its lineage |
 | `GET /public/api/views/tree/external-elements/lineage?databaseName=…&viewName=…` | the same graph **from the view's side** — the answer to "what consumes this view" |
-| `POST /public/api/search/external-elements/metadata` | search by name: `{text, whereToSearchList:["ELEMENT_NAME"], searchType:"EXACT_MATCH", offset, limit}` plus empty filter lists |
-| `GET /public/api/browse/elements/type/EXTERNAL_ELEMENTS` | what a consumer browsing sees |
+| `POST /public/api/search/external-elements/metadata` | search by name. **Ten fields are mandatory** and a missing one answers `400` with `{"count":null,"elements":[]}` — no code, no message: `text`, `externalElementTypeIds`, `categoryIds`, `tagIds`, `externalToolServerIds`, `withEndorsements`, `withWarnings`, `withDeprecations`, `offset`, `limit`. Empty arrays and `false` are what "no filter" means. `whereToSearchList` (`ELEMENT_NAME`, `ELEMENT_DESC`, …) and `searchType` (`EXACT_MATCH`, `ALL_WORDS`, `ANY_WORDS`) are the optional ones |
+| `GET /public/api/browse/elements/type/EXTERNAL_ELEMENTS` | what a consumer browsing sees — `offset` and `limit` are **mandatory** (`400 MISSING_REQUEST_PARAMETER` without them) |
 | `PUT /public/api/external-elements/{id}/name`, `…/description`, `…/properties/{propertyId}` | marketplace-side edits, which survive later imports |
 
 In the lineage answer the view node must carry `databaseName`, `viewName` and `viewSubtype`.

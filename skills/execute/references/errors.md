@@ -115,8 +115,9 @@ object back** — that is what the Verify section of every domain skill is for.
 | `500` | `GENERIC` "Session Expired." | **more than one VDP server is registered and no server was named** — the marketplace cannot tell which catalog you mean | `GET /public/api/configuration/servers` for the ids, then `--param serverId=<id>`, or set `marketplace_server_id` in the profile |
 | `403` | empty, on `/external-tool-servers` and other server-scoped paths | the same missing `serverId` — this family answers `403` where tags answer `500` | as above: name the server |
 | `403` | empty — *T11 report* | `PUT`/`POST …/views`/`DELETE` on a tag imported from VDP (`vdpTag:true`) | imported tags are read-only here; change them in VDP (`/denodo:catalog`) |
-| `404` | empty | `DELETE` of a non-existent server, element type, provider type; `GET view-details` of a missing view | look the object up by name first; nothing to delete |
+| `404` | empty | `DELETE` of a non-existent server, element type, provider type; `GET` of an object that is gone | look the object up by name first. **When you are checking that something was deleted, `404` is the answer you wanted** — the envelope still says `ok:false` and exits `1`, so a verification script has to expect it |
 | `404` | `{"status":404,"error":"Not Found","path":…}` (Spring) | wrong path | check the path under `/public/api/…` |
+| `400` | `MISSING_REQUEST_PARAMETER` | a paged endpoint called without `offset`/`limit` (`…/categories/{id}/views`, `/tag-management/tags`) | add `--param offset=0 --param limit=50` |
 | `409` | empty | duplicate name: tag, category, element type, provider type | find by name (`GET` list) and `PUT` instead of `POST` |
 | `409` | `SERVER_DUPLICATED` — *T11 report* | duplicate external tool server name | same |
 | `400` | `VALIDATE_FIELD` `{"description":"must not be null",…}` | body missing required fields (`description`, `descriptionType` on tags) | send all fields; `descriptionType` is `"TEXT"` |

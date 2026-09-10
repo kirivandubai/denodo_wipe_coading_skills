@@ -106,10 +106,13 @@ It is interactive and hides the password. Then re-run your command.
 
 ### Destructive operations
 
-`DROP`, `ALTER`, `DELETE`, `TRUNCATE`, HTTP `DELETE`, and set-replacing marketplace
-`POST`s (`tags/vdp/synchronize`, `element-management/all/synchronize`,
-`views/{id}/tags`, `views/{id}/categories`) are marked `destructive` in every
-result. On a profile with `production: true` the tool refuses them with
+`DROP`, `ALTER`, `DELETE`, `TRUNCATE`, HTTP `DELETE`, and the marketplace `POST`s that
+replace a whole set or delete what is missing from the payload — `tags/vdp/synchronize`,
+`element-management/{all,DATABASES,VIEWS,WEBSERVICES,EXTERNAL_ELEMENTS}/synchronize`, the
+`external-tool-servers/synchronize` family, `views/{id}/tags` and
+`category-management/views/{id}/categories`. Every result carries a `destructive` field: the
+kind (`drop`, `alter`, `delete`, `replace`) when it is one of these, and `null` — not
+`false` — when it is not. On a profile with `production: true` the tool refuses them with
 `error.kind = "refused"` and executes **nothing**.
 
 `--allow-destructive` is set only after the human has read the list of destructive
