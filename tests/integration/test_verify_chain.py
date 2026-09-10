@@ -52,3 +52,14 @@ class VerifyChainTest(unittest.TestCase):
         doc, code = run_chain(self.profile, self.chain, root=REPO,
                               vql_factory=get_vql_transport(self.profile.transport))
         self.assertEqual(code, 0, [s for s in doc["steps"] if not s["ok"]])
+
+    @unittest.skipUnless(os.environ.get("DENODO_TEST_MARKETPLACE"), "DENODO_TEST_MARKETPLACE not set")
+    def test_marketplace_tail_runs_and_cleans_up(self):
+        from denodo_cli.transports import get_rest_transport
+
+        doc, code = run_chain(self.profile, self.chain, root=REPO,
+                              vql_factory=get_vql_transport(self.profile.transport),
+                              rest_factory=get_rest_transport(), with_marketplace=True)
+        self.assertEqual(code, 0, [s for s in doc["steps"] if not s["ok"]])
+        self.assertTrue(all(not s["skipped"] for s in doc["steps"]))
+        self.assertTrue(doc["cleanup"]["ran"])

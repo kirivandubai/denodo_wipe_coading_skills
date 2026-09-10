@@ -1,24 +1,37 @@
 # verification/chain.toml
-# Verifies 7 of the v1 templates end to end: catalog database, folders, the DF (CSV) data
-# source, derived views, the interface view, the association, and tags. Bodies of the
+# Verifies 10 of the v1 templates end to end: catalog database, folders, the DF (CSV) data
+# source, derived views, the interface view, the association, and tags (vql channel), plus
+# the Data Marketplace catalog sync, a tag and a category (http channel). Bodies of the
 # "template" steps come from the skills themselves (address = file#section); "fixture"
 # steps carry their own body and verify nothing — they only make the next template
 # reachable. Design spec, section 11.1.
 #
+# The three http steps carry marketplace = true and only run with --with-marketplace: they
+# write to the shared marketplace catalog (a tag and a category, both named with the
+# verify_ prefix so [cleanup] can find and remove them), not to denodo_skills_test alone.
+#
 # Deliberately out of scope here: the JSON and JDBC datasource templates (no fixtures for
-# them on the stand), and every Data Marketplace template — that tail is a later task,
-# gated behind --with-marketplace.
+# them on the stand), and the external-element template — its chain applies VQL generated
+# from a marketplace response (vql-metadata), a "one channel's body feeds another channel's
+# input" shape this executor does not support yet (task 9 brief).
 
 [values]
 database = "denodo_skills_test"
 csv_dir = "/opt/denodo/demos/csv"
 tag_prefix = "verify_"
+# The lab stand's only VDP server ("Demo Standard Default" — GET /public/api/configuration/
+# servers). 206 ("Verticals") is a different server and is out of scope for this chain.
+server_id = "306"
 
 [cleanup]
 vql = [
   "DROP DATABASE IF EXISTS {database} CASCADE",
   "DROP TAG IF EXISTS {tag_prefix}pii",
   "DROP TAG IF EXISTS {tag_prefix}finance_sensitive",
+]
+http = [
+  { method = "delete", path = "/public/api/tags/{tag_id}", params = { serverId = "{server_id}" } },
+  { method = "delete", path = "/public/api/category-management/categories/{category_id}", params = { serverId = "{server_id}" } },
 ]
 
 [[step]]
@@ -165,3 +178,41 @@ database = "{database}"
 vql = "CONNECT DATABASE {database};"
 check = "SELECT name FROM GET_VIEWS() WHERE input_database_name = '{database}' AND input_retrieve_invalid_views_only = true"
 expect = "no rows"
+
+# --- Data Marketplace tail: http channel, gated behind --with-marketplace --------------
+
+[[step]]
+id = "marketplace-sync"
+kind = "template"
+channel = "http"
+address = "skills/marketplace/SKILL.md#Synchronising the marketplace catalog with VDP"
+marketplace = true
+substitute = { "serverId=306" = "serverId={server_id}" }
+# calls = [] (default): all four — the two read-only "changes" calls, then both
+# synchronize calls, which the block itself already pins to proceedWithConflicts =
+# "SERVER_WITH_LOCAL_CHANGES", the only mode approved for this chain to run unattended.
+
+[[step]]
+id = "marketplace-tag"
+kind = "template"
+channel = "http"
+address = "skills/marketplace/SKILL.md#Tag, with an assignment"
+marketplace = true
+# 0 = lookup by nameFilter, 1 = create. 2 (update) and 3 (assign to a view) are left out:
+# this chain never conditions on the lookup's answer, and it has no marketplace view id to
+# assign to — assigning is the skill's concern, not this template's verification.
+calls = [0, 1]
+capture = { tag_id = "id" }
+substitute = { "serverId=306" = "serverId={server_id}", "nameFilter=pii" = "nameFilter={tag_prefix}pii", "\"name\":\"pii\"" = "\"name\":\"{tag_prefix}pii\"" }
+
+[[step]]
+id = "marketplace-category"
+kind = "template"
+channel = "http"
+address = "skills/marketplace/SKILL.md#Category tree"
+marketplace = true
+# 0 = create the top-level category. 1 (create a child under it) and 2 (assign it to
+# views) are left out for the same reason as the tag step above.
+calls = [0]
+capture = { category_id = "id" }
+substitute = { "serverId=306" = "serverId={server_id}", "\"name\":\"Consumer marts\"" = "\"name\":\"{tag_prefix}Consumer marts\"" }

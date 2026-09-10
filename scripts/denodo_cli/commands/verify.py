@@ -10,13 +10,16 @@ send the run into somebody else's database.
 from __future__ import annotations
 
 import datetime as dt
+import json
 import re
+import shlex
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
 from . import EXIT_EXECUTION, EXIT_OK
+from .api import api_call
 from .vql import run_statements
 from ..output import envelope
 from ..profiles import Profile
@@ -54,6 +57,7 @@ class Chain:
     values: dict[str, str]
     steps: list[Step]
     cleanup: list[str] = field(default_factory=list)
+    cleanup_http: list[dict] = field(default_factory=list)
 
 
 def load_chain(path: Path) -> Chain:
@@ -72,8 +76,34 @@ def load_chain(path: Path) -> Chain:
         steps.append(step)
     if not steps:
         raise ChainError(f"chain manifest {path} has no steps")
-    cleanup = [str(s) for s in (document.get("cleanup") or {}).get("vql", [])]
-    return Chain(values=values, steps=steps, cleanup=cleanup)
+    cleanup_section = document.get("cleanup") or {}
+    cleanup = [str(s) for s in cleanup_section.get("vql", [])]
+    cleanup_http = _cleanup_http_entries(cleanup_section.get("http", []), path)
+    return Chain(values=values, steps=steps, cleanup=cleanup, cleanup_http=cleanup_http)
+
+
+def _cleanup_http_entries(raw: object, path: Path) -> list[dict]:
+    """Validate ``[cleanup] http`` — a list of ``{method, path, params}`` tables.
+
+    Shape errors are caught here, at load time, for the same reason ``_int_calls``
+    validates ``calls``: a malformed manifest must fail as ``ChainError`` naming the
+    manifest, not surface later as a bare ``KeyError``/``AttributeError`` from deep inside
+    cleanup, after the chain has already touched the stand.
+    """
+    if not isinstance(raw, list):
+        raise ChainError(f"[cleanup] http in {path} must be a list of tables, got {raw!r}")
+    entries: list[dict] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            raise ChainError(f"[cleanup] http entry in {path} must be a table, got {item!r}")
+        method, call_path = item.get("method"), item.get("path")
+        if not isinstance(method, str) or not method:
+            raise ChainError(f"[cleanup] http entry in {path} needs a string method, got {method!r}")
+        if not isinstance(call_path, str) or not call_path:
+            raise ChainError(f"[cleanup] http entry in {path} needs a string path, got {call_path!r}")
+        params = {str(k): str(v) for k, v in (item.get("params") or {}).items()}
+        entries.append({"method": method, "path": call_path, "params": params})
+    return entries
 
 
 def _step(raw: dict) -> Step:
@@ -143,6 +173,48 @@ def render(text: str, substitute: dict[str, str], values: dict[str, str]) -> str
     return PLACEHOLDER.sub(lambda m: values.get(m.group(1), m.group(0)), out)
 
 
+def parse_api_calls(body: str) -> list[dict]:
+    """``api <method> <path> [--param k=v] [--json '<text>']`` lines of a bash template.
+
+    A marketplace template block is not a script to run verbatim — it interleaves real
+    calls with ``# ...`` commentary and ``# → ...`` response illustrations, and sometimes
+    carries mutually exclusive alternatives (create *or* update). This only recognizes the
+    lines that actually invoke ``api``; a step then picks which ones it means by index
+    (``Step.calls``). ``--env`` is dropped: the profile the chain runs under supplies it,
+    never the template text.
+    """
+    joined = re.sub(r"\\\s*\n\s*", " ", body)
+    calls: list[dict] = []
+    for line in joined.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("api "):
+            continue
+        tokens = shlex.split(stripped)[1:]
+        method, path = tokens[0].upper(), None
+        params: dict[str, str] = {}
+        body_text: str | None = None
+        index = 1
+        while index < len(tokens):
+            token = tokens[index]
+            if token == "--param":
+                key, _, value = tokens[index + 1].partition("=")
+                params[key] = value
+                index += 2
+            elif token == "--json":
+                body_text = tokens[index + 1]
+                index += 2
+            elif token == "--env":
+                index += 2
+            elif token.startswith("-"):
+                index += 2
+            else:
+                path = token
+                index += 1
+        calls.append({"method": method, "path": path, "params": params,
+                      "json": json.loads(body_text) if body_text else None})
+    return calls
+
+
 MAX_ROWS = 10  # a check only proves rows exist or don't; it never needs to see them
 
 
@@ -194,9 +266,18 @@ def run_chain(
     ``_cleanup`` itself is skipped: cleanup will not run, so an unresolved placeholder in
     it must not abort a run that has nothing to do with cleanup.
 
-    ``rest_factory`` is accepted so the call signature already matches what the http
-    channel (a later task) will need; it does nothing yet — a marketplace step is simply
-    skipped unless ``with_marketplace`` is set.
+    The final ``values`` — the manifest's own, plus ``database``/``values_override``, plus
+    whatever an ``http`` step's ``capture`` added along the way (e.g. ``tag_id`` from the
+    Tag template's create call) — is returned verbatim as the report's ``values`` field, so
+    both the next step and ``[cleanup] http`` can be seen to have used the same identifiers
+    a reader of the report sees.
+
+    ``rest_factory`` builds the transport an ``http``-channel step and ``[cleanup] http``
+    use to reach Data Marketplace — the same role ``vql_factory`` plays for Virtual
+    DataPort. It is only ever called for a step that actually runs (a marketplace step
+    still needs ``with_marketplace``) or a cleanup entry whose placeholders resolved, so a
+    run with no http traffic at all — the common case without ``--with-marketplace`` — can
+    leave it ``None``.
 
     ``update_marks`` rewrites the ``-- verified: ...`` mark of every ``template`` step
     that passed, with the version the server actually reported and ``today`` (or
@@ -230,7 +311,7 @@ def run_chain(
                 reports.append(_skipped(step, "marketplace steps need --with-marketplace"))
                 continue
             report = _run_step(profile, step, values=values, root=root, vql_factory=vql_factory,
-                               update_marks=update_marks, version=version, day=day)
+                               rest_factory=rest_factory, update_marks=update_marks, version=version, day=day)
             reports.append(report)
             if not report["ok"]:
                 stop = True
@@ -238,11 +319,14 @@ def run_chain(
         # Runs on the way out no matter how the loop ended — normal completion, an
         # earlier `stop`, or an exception propagating through — so an exception raised
         # here (see the docstring) still leaves cleanup done before it surfaces.
-        cleanup_report = _cleanup(profile, chain, values=values, vql_factory=vql_factory, keep=keep)
+        cleanup_report = _cleanup(profile, chain, values=values, vql_factory=vql_factory,
+                                  rest_factory=rest_factory, keep=keep)
     ok = all(r["ok"] for r in reports if not r["skipped"])
-    ok = ok and (cleanup_report["ran"] is False or all(s["ok"] for s in cleanup_report["statements"]))
+    ok = ok and (cleanup_report["ran"] is False or (
+        all(s["ok"] for s in cleanup_report["statements"]) and
+        all(h["ok"] for h in cleanup_report["http"])))
     doc = envelope(ok, profile, "verify", database=values.get("database"), steps=reports,
-                   summary=_summary(reports), cleanup=cleanup_report)
+                   summary=_summary(reports), cleanup=cleanup_report, values=values)
     return doc, EXIT_OK if ok else EXIT_EXECUTION
 
 
@@ -266,7 +350,7 @@ def _check_cleanup_placeholders(chain: Chain, values: dict[str, str]) -> None:
 
 
 def _cleanup(profile: Profile, chain: Chain, *, values: dict[str, str], vql_factory: Callable,
-             keep: bool) -> dict:
+             rest_factory: Callable | None, keep: bool) -> dict:
     """Always runs, including after a failure: a run that did not clean up must say so.
 
     Cleanup statements are destructive by definition (``DROP ...``), so they run with
@@ -278,18 +362,56 @@ def _cleanup(profile: Profile, chain: Chain, *, values: dict[str, str], vql_fact
     reordered. It is load-bearing: e.g. ``DROP TAG`` is refused while the tag is still
     assigned to a view, and only succeeds after an earlier ``DROP DATABASE ... CASCADE``
     has removed the views carrying that assignment.
+
+    The ``http`` tail (``chain.cleanup_http``) runs after the vql statements above, for the
+    same reason: a marketplace object created by an earlier step may need the VDP side gone
+    first (it never does today, but the ordering costs nothing and keeps the rule uniform).
     """
     if keep:
         return {"ran": False, "reason": "--keep was given; objects were left on the stand",
-                "statements": []}
-    if not chain.cleanup:
-        return {"ran": False, "reason": "the manifest has no cleanup section", "statements": []}
-    statements = [render(s, {}, values) for s in chain.cleanup]
-    doc, _ = run_statements(profile, statements, transport_factory=vql_factory, max_rows=MAX_ROWS,
-                            allow_destructive=True, continue_on_error=True)
-    return {"ran": True, "reason": None,
-            "statements": [{"statement": s["statement"], "ok": s["ok"], "error": s["error"]}
-                           for s in doc.get("statements") or []]}
+                "statements": [], "http": []}
+    if not chain.cleanup and not chain.cleanup_http:
+        return {"ran": False, "reason": "the manifest has no cleanup section",
+                "statements": [], "http": []}
+    vql_report: list[dict] = []
+    if chain.cleanup:
+        statements = [render(s, {}, values) for s in chain.cleanup]
+        doc, _ = run_statements(profile, statements, transport_factory=vql_factory, max_rows=MAX_ROWS,
+                                allow_destructive=True, continue_on_error=True)
+        vql_report = [{"statement": s["statement"], "ok": s["ok"], "error": s["error"]}
+                     for s in doc.get("statements") or []]
+    http_report = _cleanup_http(profile, chain.cleanup_http, values=values, rest_factory=rest_factory)
+    return {"ran": True, "reason": None, "statements": vql_report, "http": http_report}
+
+
+def _cleanup_http(profile: Profile, entries: list[dict], *, values: dict[str, str],
+                  rest_factory: Callable | None) -> list[dict]:
+    """Run each ``[cleanup] http`` entry, skipping the ones nothing was ever captured for.
+
+    Unlike ``chain.cleanup`` (vql), whose placeholders are all known before the run even
+    starts and checked eagerly by ``_check_cleanup_placeholders``, an http cleanup entry
+    typically names a value — ``{tag_id}``, ``{category_id}`` — that only exists once the
+    matching step's response captured it. ``render(text, {}, values)`` mirrors exactly what
+    ``_cleanup`` already does for vql statements: with an empty ``substitute`` mapping its
+    own "unknown value" check never triggers (that check only inspects
+    ``substitute.values()``), so a ``{name}`` missing from ``values`` is left in the
+    rendered text verbatim rather than raising — which is exactly the signal used here to
+    tell "never captured" (skip, report ``skipped: true``) apart from "captured, go ahead".
+    """
+    reports: list[dict] = []
+    for entry in entries:
+        path = render(entry["path"], {}, values)
+        params = {key: render(val, {}, values) for key, val in entry["params"].items()}
+        if PLACEHOLDER.search(path) or any(PLACEHOLDER.search(v) for v in params.values()):
+            reports.append({"method": entry["method"], "path": path, "params": params,
+                            "ok": True, "skipped": True, "status": None, "error": None})
+            continue
+        doc, code = api_call(profile, entry["method"], path, transport_factory=rest_factory,
+                             params=params, allow_destructive=True)
+        reports.append({"method": entry["method"], "path": path, "params": params,
+                        "ok": bool(doc.get("ok")) and code == EXIT_OK, "skipped": False,
+                        "status": doc.get("status"), "error": doc.get("error")})
+    return reports
 
 
 def _skipped(step: Step, reason: str) -> dict:
@@ -342,7 +464,8 @@ def _summary(reports: list[dict]) -> dict:
 
 
 def _run_step(profile: Profile, step: Step, *, values: dict[str, str], root: Path, vql_factory: Callable,
-             update_marks: bool = False, version: str | None = None, day: dt.date | None = None) -> dict:
+             rest_factory: Callable | None = None, update_marks: bool = False, version: str | None = None,
+             day: dt.date | None = None) -> dict:
     report = {"id": step.id, "kind": step.kind, "channel": step.channel, "source": step.address,
               "ok": False, "skipped": False, "error": None, "check": None, "statements": None, "mark": None}
     try:
@@ -357,14 +480,21 @@ def _run_step(profile: Profile, step: Step, *, values: dict[str, str], root: Pat
         report["error"] = {"kind": "template", "message": str(exc)}
         return report
 
-    statements = split_statements(body)
-    doc, code = run_statements(profile, statements, transport_factory=vql_factory, max_rows=MAX_ROWS,
-                               database=database)
-    report["statements"] = doc.get("statements")
-    if code != EXIT_OK:
-        failed = (doc.get("statements") or [{}])[doc.get("failed_at") or 0]
-        report["error"] = failed.get("error") or doc.get("error")
-        return report
+    if step.channel == "http":
+        outcome = _run_http(profile, step, body=body, values=values, rest_factory=rest_factory)
+        report["statements"] = outcome["calls"]
+        if not outcome["ok"]:
+            report["error"] = outcome["error"]
+            return report
+    else:
+        statements = split_statements(body)
+        doc, code = run_statements(profile, statements, transport_factory=vql_factory, max_rows=MAX_ROWS,
+                                   database=database)
+        report["statements"] = doc.get("statements")
+        if code != EXIT_OK:
+            failed = (doc.get("statements") or [{}])[doc.get("failed_at") or 0]
+            report["error"] = failed.get("error") or doc.get("error")
+            return report
     if step.check:
         # Its own call, against the test database by name: the check must not depend on
         # a CONNECT the step body happened to issue, because nothing requires a step's
@@ -392,6 +522,44 @@ def _run_step(profile: Profile, step: Step, *, values: dict[str, str], root: Pat
         else:
             report["mark"] = {"updated": False, "reason": "server version unknown"}
     return report
+
+
+def _run_http(profile: Profile, step: Step, *, body: str, values: dict[str, str],
+              rest_factory: Callable | None) -> dict:
+    """Run the http-channel calls ``step.calls`` names out of ``body``'s ``api ...`` lines.
+
+    ``step.calls`` is a list of indexes into ``parse_api_calls(body)`` — an empty list
+    means every call the block has, in order (a template with no alternatives, e.g. the
+    marketplace-sync block's four read-then-write calls). Every selected call runs even on
+    a profile marked production (``allow_destructive=True``): these calls only ever touch
+    the objects a manifest scopes with its own ``verify_`` prefix, the same reasoning
+    ``_cleanup`` already relies on for its own ``DROP``s. The first non-2xx answer stops
+    the step and is reported the same shape a failed statement uses elsewhere in this file:
+    ``{"kind": "http", "status": ..., "body": ...}``.
+
+    ``step.capture`` is read only from the *last* executed call's response body, by
+    top-level field name — a lookup call earlier in the sequence never carries the id a
+    create/update call answers with, and reading every call's body would risk a later,
+    unrelated field silently overwriting an earlier capture.
+    """
+    calls = parse_api_calls(body)
+    selected = [calls[i] for i in step.calls] if step.calls else calls
+    executed: list[dict] = []
+    last_body: object = None
+    for call in selected:
+        doc, code = api_call(profile, call["method"], call["path"], transport_factory=rest_factory,
+                             json_body=call["json"], params=call["params"], allow_destructive=True)
+        executed.append({"method": call["method"], "path": call["path"],
+                         "status": doc.get("status"), "ok": bool(doc.get("ok"))})
+        if code != EXIT_OK:
+            return {"ok": False, "calls": executed,
+                    "error": {"kind": "http", "status": doc.get("status"), "body": doc.get("body")}}
+        last_body = doc.get("body")
+    if isinstance(last_body, dict):
+        for key, field_name in step.capture.items():
+            if field_name in last_body:
+                values[key] = str(last_body[field_name])
+    return {"ok": True, "calls": executed, "error": None}
 
 
 def _body(step: Step, *, root: Path, values: dict[str, str]) -> str:

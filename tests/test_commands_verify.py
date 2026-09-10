@@ -5,7 +5,7 @@ from pathlib import Path
 from unittest import mock
 
 from denodo_cli.commands import verify as verify_module
-from denodo_cli.commands.verify import ChainError, load_chain, render, run_chain
+from denodo_cli.commands.verify import ChainError, load_chain, parse_api_calls, render, run_chain
 from denodo_cli.profiles import Profile
 from denodo_cli.transports.base import VqlResult
 
@@ -733,3 +733,93 @@ check = "SELECT 1 FROM DUAL()"
         self.assertIn("session dropped", doc["steps"][0]["check"]["error"]["message"])
         self.assertIn("session dropped", doc["steps"][0]["error"]["message"])
         self.assertNotIn("check expected", doc["steps"][0]["error"]["message"])
+
+
+BASH_BLOCK = """# verified: 9.5.1 (стенд, 2026-09-10)
+
+# 1. does it exist?
+api get --env lab /public/api/tag-management/tags --param serverId=306 \\
+    --param offset=0 --param limit=50 --param nameFilter=pii
+# → {"count":1}
+
+# 2a. missing → create it
+api post --env lab /public/api/tags --param serverId=306 \\
+    --json '{"name":"pii","description":"Personal data","descriptionType":"TEXT"}'
+"""
+
+
+class ParseApiCallsTest(unittest.TestCase):
+    def test_calls_are_found_with_method_path_params_and_body(self):
+        calls = parse_api_calls(BASH_BLOCK)
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(calls[0]["method"], "GET")
+        self.assertEqual(calls[0]["path"], "/public/api/tag-management/tags")
+        self.assertEqual(calls[0]["params"]["nameFilter"], "pii")
+        self.assertIsNone(calls[0]["json"])
+        self.assertEqual(calls[1]["method"], "POST")
+        self.assertEqual(calls[1]["json"]["name"], "pii")
+
+    def test_env_flag_is_dropped(self):
+        self.assertNotIn("env", parse_api_calls(BASH_BLOCK)[0]["params"])
+
+    def test_comment_lines_are_not_calls(self):
+        self.assertTrue(all(c["path"].startswith("/") for c in parse_api_calls(BASH_BLOCK)))
+
+
+class HttpStepTest(unittest.TestCase):
+    class FakeRest:
+        calls = []
+
+        def __init__(self, profile):
+            self.profile = profile
+
+        def call(self, method, path, *, json_body=None, params=None, multipart=None, timeout=None):
+            from denodo_cli.transports.base import HttpResult
+            HttpStepTest.FakeRest.calls.append((method, path, params, json_body))
+            if method == "POST" and path == "/public/api/tags":
+                return HttpResult(status=200, body={"id": 4242, "name": "verify_pii"})
+            return HttpResult(status=200, body={"count": 0, "elements": []})
+
+    def setUp(self):
+        FakeVql.instances.clear()
+        HttpStepTest.FakeRest.calls.clear()
+        self.root = Path(tempfile.mkdtemp())
+        (self.root / "skills" / "marketplace").mkdir(parents=True)
+        (self.root / "skills" / "marketplace" / "SKILL.md").write_text(
+            "### Tag\n\n```bash\n" + BASH_BLOCK + "```\n", encoding="utf-8")
+        self.manifest = self.root / "chain.toml"
+        self.manifest.write_text("""
+[values]
+database = "denodo_skills_test"
+server_id = "306"
+[[step]]
+id = "mp-tag"
+kind = "template"
+channel = "http"
+address = "skills/marketplace/SKILL.md#Tag"
+marketplace = true
+calls = [0, 1]
+capture = { tag_id = "id" }
+substitute = { "\\"pii\\"" = "\\"verify_pii\\"" }
+""", encoding="utf-8")
+        self.chain = load_chain(self.manifest)
+
+    def test_marketplace_step_runs_only_the_listed_calls_and_captures(self):
+        doc, code = run_chain(profile(marketplace_url="http://x/y"), self.chain, root=self.root,
+                              vql_factory=FakeVql, rest_factory=HttpStepTest.FakeRest,
+                              with_marketplace=True)
+        self.assertEqual(code, 0, doc)
+        self.assertEqual(len(HttpStepTest.FakeRest.calls), 2)
+        self.assertEqual(doc["values"]["tag_id"], "4242")
+
+    def test_a_non_2xx_answer_fails_the_step(self):
+        class Failing(HttpStepTest.FakeRest):
+            def call(self, method, path, **kw):
+                from denodo_cli.transports.base import HttpResult
+                return HttpResult(status=409, body=None)
+
+        doc, code = run_chain(profile(marketplace_url="http://x/y"), self.chain, root=self.root,
+                              vql_factory=FakeVql, rest_factory=Failing, with_marketplace=True)
+        self.assertEqual(code, 1)
+        self.assertFalse(doc["steps"][0]["ok"])
+        self.assertEqual(doc["steps"][0]["error"]["status"], 409)
