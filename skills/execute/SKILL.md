@@ -26,8 +26,8 @@ tool reads host, user and password from `~/.denodo/profiles.toml` itself.
 | Read stdin | `vql run --env dev -` |
 | Another database | add `--database <db>` (or put `CONNECT DATABASE <db>;` first in the file) |
 | Schema of an object | `vql desc --env dev bv_orders` (`--type view` is the default and covers base views too — there is no `DESC TABLE`) |
-| Server-generated VQL | `vql desc --env dev bv_orders --vql` |
-| Other types | `--type database`, `--type "datasource df"`, `--type "wrapper df"`, `--type tag`; folders take a quoted path: `vql desc --env dev "'/sales'" --type folder --vql` |
+| Server-generated VQL | `vql desc --env dev bv_orders --vql` — read it, do not apply it: it rebuilds the whole dependency chain and opens with `DROP … CASCADE` for every object in it |
+| Other types | `--type database`, `--type "datasource df"`, `--type "wrapper df"`, `--type tag`, `--type association`, `--type "interface view"`; folders take a quoted path: `vql desc --env dev "'/sales'" --type folder --vql` |
 | Marketplace call | `api get --env dev /public/api/tags` |
 | … with a body | `api post --env dev /public/api/tags --json '{"name":"pii","description":"…","descriptionType":"TEXT"}'` |
 | … query params / multipart | `--param k=v` (repeatable), `--part field=@file` / `field=json:{…}` |
@@ -37,6 +37,9 @@ tool reads host, user and password from `~/.denodo/profiles.toml` itself.
 Prefix every command with `${CLAUDE_PLUGIN_ROOT}/scripts/denodo`. Keep results
 readable: `--max-rows N` (default 100) caps every result set; `row_count` is the
 true count and `truncated` says whether rows were cut.
+
+**`-e` does not repeat.** Two `-e` flags in one command run only the last one, silently —
+`total: 1`. Several statements go into a file, or into one `-e` separated by `;`.
 
 ## Reading the result
 
