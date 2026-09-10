@@ -514,6 +514,27 @@ vql = "CONNECT DATABASE {database};"
         kinds = [s["ok"] for s in doc["cleanup"]["statements"]]
         self.assertEqual(kinds, [True, False, True])
 
+    def test_cleanup_refuses_on_a_production_profile_without_allow_destructive(self):
+        # allow_destructive no longer hardcoded True inside _cleanup: a production profile
+        # must be able to refuse its own DROPs exactly like any other destructive call,
+        # until a human passes --allow-destructive.
+        doc, code = run_chain(profile(production=True), self.chain, root=self.root, vql_factory=FakeVql,
+                              values_override={"tag_prefix": "verify_"})
+        self.assertEqual(code, 1)
+        self.assertTrue(doc["cleanup"]["ran"])
+        self.assertFalse(doc["cleanup"]["statements"][0]["ok"])
+        self.assertEqual(doc["cleanup"]["statements"][0]["error"]["kind"], "refused")
+        # One session for the "fix" step's own (non-destructive) body; none for cleanup —
+        # refused before its transport was even created.
+        self.assertEqual(len(FakeVql.instances), 1)
+
+    def test_cleanup_proceeds_on_a_production_profile_with_allow_destructive(self):
+        doc, code = run_chain(profile(production=True), self.chain, root=self.root, vql_factory=FakeVql,
+                              values_override={"tag_prefix": "verify_"}, allow_destructive=True)
+        self.assertEqual(code, 0, doc)
+        self.assertTrue(doc["cleanup"]["ran"])
+        self.assertTrue(all(s["ok"] for s in doc["cleanup"]["statements"]))
+
 
 class CleanupOnUnexpectedExceptionTest(unittest.TestCase):
     """Nothing in today's step loop actually raises past ``_run_step`` — it catches
@@ -823,3 +844,189 @@ substitute = { "\\"pii\\"" = "\\"verify_pii\\"" }
         self.assertEqual(code, 1)
         self.assertFalse(doc["steps"][0]["ok"])
         self.assertEqual(doc["steps"][0]["error"]["status"], 409)
+
+    def test_a_capture_field_missing_from_the_response_fails_the_step(self):
+        # A response shaped differently than the template expects must not leave the step
+        # silently uncaptured: that is exactly how the id-less object it just created stops
+        # being trackable by [cleanup] http (T9 fix round 1, finding 2).
+        class NoId(HttpStepTest.FakeRest):
+            def call(self, method, path, *, json_body=None, params=None, multipart=None, timeout=None):
+                from denodo_cli.transports.base import HttpResult
+                HttpStepTest.FakeRest.calls.append((method, path, params, json_body))
+                if method == "POST" and path == "/public/api/tags":
+                    return HttpResult(status=200, body={"name": "verify_pii"})  # no "id"
+                return HttpResult(status=200, body={"count": 0, "elements": []})
+
+        doc, code = run_chain(profile(marketplace_url="http://x/y"), self.chain, root=self.root,
+                              vql_factory=FakeVql, rest_factory=NoId, with_marketplace=True)
+        self.assertEqual(code, 1)
+        self.assertFalse(doc["steps"][0]["ok"])
+        self.assertEqual(doc["steps"][0]["error"]["kind"], "capture")
+        self.assertIn("mp-tag", doc["steps"][0]["error"]["message"])
+        self.assertIn("id", doc["steps"][0]["error"]["message"])
+        self.assertNotIn("tag_id", doc["values"])
+
+    def test_a_captured_field_is_read_correctly_when_present(self):
+        # The positive direction, alongside the missing-field test above: an ordinary
+        # response with the declared field captures exactly as before.
+        doc, code = run_chain(profile(marketplace_url="http://x/y"), self.chain, root=self.root,
+                              vql_factory=FakeVql, rest_factory=HttpStepTest.FakeRest,
+                              with_marketplace=True)
+        self.assertEqual(code, 0, doc)
+        self.assertEqual(doc["values"]["tag_id"], "4242")
+
+
+DESTRUCTIVE_BASH_BLOCK = """# verified: 9.5.1 (стенд, 2026-09-10)
+api delete --env lab /public/api/tags/999 --param serverId=306
+"""
+
+
+class HttpDestructiveGateTest(unittest.TestCase):
+    """``_run_http`` used to hardcode ``allow_destructive=True`` — fine for the tag/category
+    steps (never destructive: neither ``POST /public/api/tags`` nor a bare category create
+    matches ``safety.classify_http``'s destructive rules), wrong for ``marketplace-sync``'s
+    ``POST .../synchronize`` calls, which do (T9 fix round 1, finding 1). A plain ``DELETE``
+    is the simplest destructive call to drive this through an http step end to end.
+    """
+
+    class FakeRest:
+        calls = []
+
+        def __init__(self, profile):
+            self.profile = profile
+
+        def call(self, method, path, *, json_body=None, params=None, multipart=None, timeout=None):
+            from denodo_cli.transports.base import HttpResult
+            HttpDestructiveGateTest.FakeRest.calls.append((method, path))
+            return HttpResult(status=200, body=None)
+
+    def setUp(self):
+        FakeVql.instances.clear()
+        HttpDestructiveGateTest.FakeRest.calls.clear()
+        self.root = Path(tempfile.mkdtemp())
+        (self.root / "skills" / "marketplace").mkdir(parents=True)
+        (self.root / "skills" / "marketplace" / "SKILL.md").write_text(
+            "### Untag\n\n```bash\n" + DESTRUCTIVE_BASH_BLOCK + "```\n", encoding="utf-8")
+        self.manifest = self.root / "chain.toml"
+        self.manifest.write_text("""
+[values]
+database = "denodo_skills_test"
+[[step]]
+id = "mp-untag"
+kind = "template"
+channel = "http"
+address = "skills/marketplace/SKILL.md#Untag"
+marketplace = true
+""", encoding="utf-8")
+        self.chain = load_chain(self.manifest)
+
+    def test_refuses_on_a_production_profile_without_allow_destructive(self):
+        doc, code = run_chain(profile(marketplace_url="http://x/y", production=True), self.chain,
+                              root=self.root, vql_factory=FakeVql,
+                              rest_factory=HttpDestructiveGateTest.FakeRest, with_marketplace=True)
+        self.assertEqual(code, 1)
+        self.assertFalse(doc["steps"][0]["ok"])
+        self.assertEqual(doc["steps"][0]["error"]["kind"], "refused")
+        self.assertEqual(HttpDestructiveGateTest.FakeRest.calls, [])  # nothing was sent
+
+    def test_proceeds_on_a_production_profile_with_allow_destructive(self):
+        doc, code = run_chain(profile(marketplace_url="http://x/y", production=True), self.chain,
+                              root=self.root, vql_factory=FakeVql,
+                              rest_factory=HttpDestructiveGateTest.FakeRest, with_marketplace=True,
+                              allow_destructive=True)
+        self.assertEqual(code, 0, doc)
+        self.assertTrue(doc["steps"][0]["ok"])
+        self.assertEqual(len(HttpDestructiveGateTest.FakeRest.calls), 1)
+
+    def test_a_non_production_profile_needs_no_flag(self):
+        doc, code = run_chain(profile(marketplace_url="http://x/y", production=False), self.chain,
+                              root=self.root, vql_factory=FakeVql,
+                              rest_factory=HttpDestructiveGateTest.FakeRest, with_marketplace=True)
+        self.assertEqual(code, 0, doc)
+        self.assertEqual(len(HttpDestructiveGateTest.FakeRest.calls), 1)
+
+
+class CaptureFailurePartialCleanupTest(unittest.TestCase):
+    """A step whose capture fails still leaves an earlier step's capture in ``values``, and
+    cleanup must still remove exactly what was captured — the scenario the live stand hit
+    for real in the original task-9 run (a tag left behind after a --keep run, removed by
+    hand). This drives it through two http steps instead."""
+
+    class FakeRest:
+        calls = []
+
+        def __init__(self, profile):
+            self.profile = profile
+
+        def call(self, method, path, *, json_body=None, params=None, multipart=None, timeout=None):
+            from denodo_cli.transports.base import HttpResult
+            CaptureFailurePartialCleanupTest.FakeRest.calls.append((method, path))
+            if method == "POST" and path == "/public/api/tags":
+                return HttpResult(status=200, body={"id": 4242, "name": "verify_pii"})
+            if method == "POST" and path == "/public/api/category-management/categories":
+                return HttpResult(status=200, body={"name": "verify_Consumer marts"})  # no "id"
+            if method == "DELETE":
+                return HttpResult(status=200, body=None)
+            return HttpResult(status=200, body={"count": 0, "elements": []})
+
+    def setUp(self):
+        FakeVql.instances.clear()
+        CaptureFailurePartialCleanupTest.FakeRest.calls.clear()
+        self.root = Path(tempfile.mkdtemp())
+        (self.root / "skills" / "marketplace").mkdir(parents=True)
+        (self.root / "skills" / "marketplace" / "SKILL.md").write_text(
+            "### Tag\n\n```bash\n" + BASH_BLOCK + "```\n\n"
+            "### Category\n\n```bash\n"
+            "api post --env lab /public/api/category-management/categories --param serverId=306 \\\n"
+            "    --json '{\"name\":\"Consumer marts\",\"description\":\"x\",\"descriptionType\":\"TEXT\"}'\n"
+            "```\n", encoding="utf-8")
+        self.manifest = self.root / "chain.toml"
+        self.manifest.write_text("""
+[values]
+database = "denodo_skills_test"
+server_id = "306"
+
+[cleanup]
+http = [
+  { method = "delete", path = "/public/api/tags/{tag_id}", params = { serverId = "{server_id}" } },
+  { method = "delete", path = "/public/api/category-management/categories/{category_id}", params = { serverId = "{server_id}" } },
+]
+
+[[step]]
+id = "mp-tag"
+kind = "template"
+channel = "http"
+address = "skills/marketplace/SKILL.md#Tag"
+marketplace = true
+calls = [0, 1]
+capture = { tag_id = "id" }
+substitute = { "\\"pii\\"" = "\\"verify_pii\\"" }
+
+[[step]]
+id = "mp-category"
+kind = "template"
+channel = "http"
+address = "skills/marketplace/SKILL.md#Category"
+marketplace = true
+calls = [0]
+capture = { category_id = "id" }
+""", encoding="utf-8")
+        self.chain = load_chain(self.manifest)
+
+    def test_the_earlier_captured_id_is_cleaned_up_even_though_the_later_step_fails(self):
+        doc, code = run_chain(profile(marketplace_url="http://x/y"), self.chain, root=self.root,
+                              vql_factory=FakeVql, rest_factory=CaptureFailurePartialCleanupTest.FakeRest,
+                              with_marketplace=True)
+        self.assertEqual(code, 1)
+        self.assertTrue(doc["steps"][0]["ok"])                     # mp-tag captured fine
+        self.assertFalse(doc["steps"][1]["ok"])                    # mp-category: capture failed
+        self.assertEqual(doc["steps"][1]["error"]["kind"], "capture")
+        self.assertEqual(doc["values"]["tag_id"], "4242")
+        self.assertNotIn("category_id", doc["values"])
+
+        http_cleanup = {h["path"]: h for h in doc["cleanup"]["http"]}
+        tag_cleanup = http_cleanup["/public/api/tags/4242"]
+        self.assertFalse(tag_cleanup["skipped"])
+        self.assertTrue(tag_cleanup["ok"])
+        category_cleanup = http_cleanup["/public/api/category-management/categories/{category_id}"]
+        self.assertTrue(category_cleanup["skipped"])

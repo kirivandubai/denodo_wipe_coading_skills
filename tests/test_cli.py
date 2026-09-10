@@ -207,11 +207,13 @@ class CliTest(unittest.TestCase):
 class VerifyCommandTest(CliTest):
     def test_parser_accepts_the_flags(self):
         args = cli.build_parser().parse_args(["verify", "--env", "lab", "--with-marketplace", "--keep",
-                                              "--update-marks", "--chain", "verification/chain.toml"])
+                                              "--update-marks", "--allow-destructive",
+                                              "--chain", "verification/chain.toml"])
         self.assertEqual(args.group, "verify")
         self.assertTrue(args.with_marketplace)
         self.assertTrue(args.keep)
         self.assertTrue(args.update_marks)
+        self.assertTrue(args.allow_destructive)
         self.assertEqual(args.chain, "verification/chain.toml")
 
     def test_defaults(self):
@@ -219,6 +221,7 @@ class VerifyCommandTest(CliTest):
         self.assertFalse(args.with_marketplace)
         self.assertFalse(args.keep)
         self.assertFalse(args.update_marks)
+        self.assertFalse(args.allow_destructive)
         self.assertIsNone(args.chain)
 
     def test_a_malformed_manifest_is_a_usage_error_in_json(self):

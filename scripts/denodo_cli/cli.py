@@ -96,6 +96,9 @@ def build_parser() -> argparse.ArgumentParser:
     verify.add_argument("--keep", action="store_true", help="leave the created objects on the stand")
     verify.add_argument("--update-marks", action="store_true",
                         help="rewrite the verified: mark of every template step that passed")
+    verify.add_argument("--allow-destructive", action="store_true",
+                        help="required on a production profile for the chain's own destructive calls "
+                             "(the marketplace catalog sync, and every cleanup DROP/DELETE)")
     return parser
 
 
@@ -184,7 +187,7 @@ def _dispatch(args) -> tuple[dict, int]:
         return run_chain(profile, chain, root=repo, vql_factory=resolve_vql_factory(profile),
                          rest_factory=resolve_rest_factory(), database=args.database,
                          with_marketplace=args.with_marketplace, keep=args.keep,
-                         update_marks=args.update_marks)
+                         update_marks=args.update_marks, allow_destructive=args.allow_destructive)
     raise UsageError("unknown command")  # pragma: no cover — argparse rejects it first
 
 

@@ -231,6 +231,7 @@ def run_chain(
     update_marks: bool = False,
     today: dt.date | None = None,
     values_override: dict[str, str] | None = None,
+    allow_destructive: bool = False,
 ) -> tuple[dict, int]:
     """Run every vql-channel step of ``chain`` in order and report what happened.
 
@@ -287,6 +288,17 @@ def run_chain(
     first template step might fail before any mark would be written, keeps the timing
     simple; the query is one row and cheap enough that the slight waste on a run that
     fails immediately is not worth a lazier, harder-to-follow path.
+
+    ``allow_destructive`` is forwarded verbatim to every destructive call this run makes —
+    an ``http`` step's own calls (``_run_http``) *and* cleanup, both the ``vql`` ``DROP``s
+    and the ``http`` ``DELETE``s (``_cleanup``). It defaults to ``False``, matching ``vql
+    run`` and ``api``: on a profile that is not marked ``production`` nothing changes
+    (the execution layer only ever refuses a destructive call when the profile says
+    ``production``), but on one that is, every destructive call this run would make —
+    including its own cleanup — is refused with the layer's own message until a human
+    passes the flag. Cleanup deliberately no longer hardcodes its way past this: a run's
+    own ``DROP DATABASE ... CASCADE`` is exactly the kind of operation the gate exists for,
+    not an exception to it.
     """
     values = dict(chain.values)
     if database:
@@ -311,7 +323,8 @@ def run_chain(
                 reports.append(_skipped(step, "marketplace steps need --with-marketplace"))
                 continue
             report = _run_step(profile, step, values=values, root=root, vql_factory=vql_factory,
-                               rest_factory=rest_factory, update_marks=update_marks, version=version, day=day)
+                               rest_factory=rest_factory, allow_destructive=allow_destructive,
+                               update_marks=update_marks, version=version, day=day)
             reports.append(report)
             if not report["ok"]:
                 stop = True
@@ -320,7 +333,7 @@ def run_chain(
         # earlier `stop`, or an exception propagating through — so an exception raised
         # here (see the docstring) still leaves cleanup done before it surfaces.
         cleanup_report = _cleanup(profile, chain, values=values, vql_factory=vql_factory,
-                                  rest_factory=rest_factory, keep=keep)
+                                  rest_factory=rest_factory, allow_destructive=allow_destructive, keep=keep)
     ok = all(r["ok"] for r in reports if not r["skipped"])
     ok = ok and (cleanup_report["ran"] is False or (
         all(s["ok"] for s in cleanup_report["statements"]) and
@@ -350,13 +363,15 @@ def _check_cleanup_placeholders(chain: Chain, values: dict[str, str]) -> None:
 
 
 def _cleanup(profile: Profile, chain: Chain, *, values: dict[str, str], vql_factory: Callable,
-             rest_factory: Callable | None, keep: bool) -> dict:
+             rest_factory: Callable | None, allow_destructive: bool, keep: bool) -> dict:
     """Always runs, including after a failure: a run that did not clean up must say so.
 
-    Cleanup statements are destructive by definition (``DROP ...``), so they run with
-    ``allow_destructive=True`` — a production profile must not be able to refuse a run's
-    own cleanup — and ``continue_on_error=True``, so one failed drop does not hide the
-    drops that were still meant to happen after it.
+    Cleanup statements are destructive by definition (``DROP ...``, ``DELETE``), so
+    whether they may actually run is decided the same way any other destructive call in
+    this run is: ``allow_destructive`` is forwarded, not hardcoded — a production profile
+    now refuses its own cleanup exactly like it refuses anything else destructive, until a
+    human passes ``--allow-destructive``. ``continue_on_error=True`` on the vql side means
+    one failed drop does not hide the drops that were still meant to happen after it.
 
     Statement order is exactly the manifest's order — never sorted, deduplicated, or
     reordered. It is load-bearing: e.g. ``DROP TAG`` is refused while the tag is still
@@ -377,15 +392,27 @@ def _cleanup(profile: Profile, chain: Chain, *, values: dict[str, str], vql_fact
     if chain.cleanup:
         statements = [render(s, {}, values) for s in chain.cleanup]
         doc, _ = run_statements(profile, statements, transport_factory=vql_factory, max_rows=MAX_ROWS,
-                                allow_destructive=True, continue_on_error=True)
-        vql_report = [{"statement": s["statement"], "ok": s["ok"], "error": s["error"]}
-                     for s in doc.get("statements") or []]
-    http_report = _cleanup_http(profile, chain.cleanup_http, values=values, rest_factory=rest_factory)
+                                allow_destructive=allow_destructive, continue_on_error=True)
+        if doc.get("statements") is None:
+            # A whole-batch failure before any statement ran — a production refusal (all
+            # of chain.cleanup is destructive by construction) or a connection error.
+            # run_statements reports that as a top-level "error" with no per-statement
+            # list at all; treating "no statements" as "nothing failed" (the empty list an
+            # unguarded comprehension over None would produce) would let a refused cleanup
+            # report itself as having succeeded — the `all(s["ok"] ...)` in run_chain is
+            # vacuously true over an empty list. One synthetic failed entry keeps the
+            # refusal visible and keeps the run's overall ok computation honest.
+            vql_report = [{"statement": "; ".join(statements), "ok": False, "error": doc.get("error")}]
+        else:
+            vql_report = [{"statement": s["statement"], "ok": s["ok"], "error": s["error"]}
+                         for s in doc["statements"]]
+    http_report = _cleanup_http(profile, chain.cleanup_http, values=values, rest_factory=rest_factory,
+                                allow_destructive=allow_destructive)
     return {"ran": True, "reason": None, "statements": vql_report, "http": http_report}
 
 
 def _cleanup_http(profile: Profile, entries: list[dict], *, values: dict[str, str],
-                  rest_factory: Callable | None) -> list[dict]:
+                  rest_factory: Callable | None, allow_destructive: bool) -> list[dict]:
     """Run each ``[cleanup] http`` entry, skipping the ones nothing was ever captured for.
 
     Unlike ``chain.cleanup`` (vql), whose placeholders are all known before the run even
@@ -407,7 +434,7 @@ def _cleanup_http(profile: Profile, entries: list[dict], *, values: dict[str, st
                             "ok": True, "skipped": True, "status": None, "error": None})
             continue
         doc, code = api_call(profile, entry["method"], path, transport_factory=rest_factory,
-                             params=params, allow_destructive=True)
+                             params=params, allow_destructive=allow_destructive)
         reports.append({"method": entry["method"], "path": path, "params": params,
                         "ok": bool(doc.get("ok")) and code == EXIT_OK, "skipped": False,
                         "status": doc.get("status"), "error": doc.get("error")})
@@ -464,8 +491,8 @@ def _summary(reports: list[dict]) -> dict:
 
 
 def _run_step(profile: Profile, step: Step, *, values: dict[str, str], root: Path, vql_factory: Callable,
-             rest_factory: Callable | None = None, update_marks: bool = False, version: str | None = None,
-             day: dt.date | None = None) -> dict:
+             rest_factory: Callable | None = None, allow_destructive: bool = False,
+             update_marks: bool = False, version: str | None = None, day: dt.date | None = None) -> dict:
     report = {"id": step.id, "kind": step.kind, "channel": step.channel, "source": step.address,
               "ok": False, "skipped": False, "error": None, "check": None, "statements": None, "mark": None}
     try:
@@ -481,7 +508,8 @@ def _run_step(profile: Profile, step: Step, *, values: dict[str, str], root: Pat
         return report
 
     if step.channel == "http":
-        outcome = _run_http(profile, step, body=body, values=values, rest_factory=rest_factory)
+        outcome = _run_http(profile, step, body=body, values=values, rest_factory=rest_factory,
+                            allow_destructive=allow_destructive)
         report["statements"] = outcome["calls"]
         if not outcome["ok"]:
             report["error"] = outcome["error"]
@@ -489,7 +517,7 @@ def _run_step(profile: Profile, step: Step, *, values: dict[str, str], root: Pat
     else:
         statements = split_statements(body)
         doc, code = run_statements(profile, statements, transport_factory=vql_factory, max_rows=MAX_ROWS,
-                                   database=database)
+                                   database=database, allow_destructive=allow_destructive)
         report["statements"] = doc.get("statements")
         if code != EXIT_OK:
             failed = (doc.get("statements") or [{}])[doc.get("failed_at") or 0]
@@ -525,22 +553,34 @@ def _run_step(profile: Profile, step: Step, *, values: dict[str, str], root: Pat
 
 
 def _run_http(profile: Profile, step: Step, *, body: str, values: dict[str, str],
-              rest_factory: Callable | None) -> dict:
+              rest_factory: Callable | None, allow_destructive: bool) -> dict:
     """Run the http-channel calls ``step.calls`` names out of ``body``'s ``api ...`` lines.
 
     ``step.calls`` is a list of indexes into ``parse_api_calls(body)`` — an empty list
     means every call the block has, in order (a template with no alternatives, e.g. the
-    marketplace-sync block's four read-then-write calls). Every selected call runs even on
-    a profile marked production (``allow_destructive=True``): these calls only ever touch
-    the objects a manifest scopes with its own ``verify_`` prefix, the same reasoning
-    ``_cleanup`` already relies on for its own ``DROP``s. The first non-2xx answer stops
-    the step and is reported the same shape a failed statement uses elsewhere in this file:
-    ``{"kind": "http", "status": ..., "body": ...}``.
+    marketplace-sync block's four read-then-write calls, two of which — the ``synchronize``
+    calls — are themselves classified destructive by ``safety.classify_http``: rewriting
+    the shared catalog is exactly the kind of operation a production profile should be able
+    to refuse). ``allow_destructive`` is forwarded to every call, not assumed — the tag and
+    category steps only ever touch objects a manifest scopes with its own ``verify_``
+    prefix, but ``marketplace-sync`` does not, and hardcoding it past the gate here would
+    have let a production run rewrite the whole catalog with no confirmation.
+
+    The first non-2xx answer stops the step. When ``api_call`` itself carries a structured
+    ``error`` (a refused destructive call, or a connection failure — cases where there is
+    no real HTTP status to report), that error is reported verbatim so the refusal's own
+    message survives into the step's report; otherwise the failure is reported the same
+    shape a failed statement uses elsewhere in this file: ``{"kind": "http", "status": ...,
+    "body": ...}``.
 
     ``step.capture`` is read only from the *last* executed call's response body, by
     top-level field name — a lookup call earlier in the sequence never carries the id a
     create/update call answers with, and reading every call's body would risk a later,
-    unrelated field silently overwriting an earlier capture.
+    unrelated field silently overwriting an earlier capture. A declared ``capture`` whose
+    field is missing from that body — a response shaped differently than the template
+    expects — fails the step instead of silently leaving the value uncaptured: letting the
+    step report ``ok`` in that case is exactly how the object it just created stops being
+    trackable by ``[cleanup] http``, which only knows to remove what it finds in ``values``.
     """
     calls = parse_api_calls(body)
     selected = [calls[i] for i in step.calls] if step.calls else calls
@@ -548,17 +588,26 @@ def _run_http(profile: Profile, step: Step, *, body: str, values: dict[str, str]
     last_body: object = None
     for call in selected:
         doc, code = api_call(profile, call["method"], call["path"], transport_factory=rest_factory,
-                             json_body=call["json"], params=call["params"], allow_destructive=True)
+                             json_body=call["json"], params=call["params"],
+                             allow_destructive=allow_destructive)
         executed.append({"method": call["method"], "path": call["path"],
                          "status": doc.get("status"), "ok": bool(doc.get("ok"))})
         if code != EXIT_OK:
-            return {"ok": False, "calls": executed,
-                    "error": {"kind": "http", "status": doc.get("status"), "body": doc.get("body")}}
+            error = doc.get("error") or {"kind": "http", "status": doc.get("status"), "body": doc.get("body")}
+            return {"ok": False, "calls": executed, "error": error}
         last_body = doc.get("body")
-    if isinstance(last_body, dict):
+    if step.capture:
+        missing = [field for field in step.capture.values()
+                  if not (isinstance(last_body, dict) and field in last_body)]
+        if missing:
+            shape = sorted(last_body) if isinstance(last_body, dict) else type(last_body).__name__
+            return {"ok": False, "calls": executed, "error": {
+                "kind": "capture",
+                "message": (f"step {step.id!r}: capture field(s) {missing} not found in the last "
+                           f"call's response body (shape: {shape!r})"),
+            }}
         for key, field_name in step.capture.items():
-            if field_name in last_body:
-                values[key] = str(last_body[field_name])
+            values[key] = str(last_body[field_name])
     return {"ok": True, "calls": executed, "error": None}
 
 
