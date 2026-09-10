@@ -33,7 +33,7 @@ tool reads host, user and password from `~/.denodo/profiles.toml` itself.
 | … query params / multipart | `--param k=v` (repeatable), `--part field=@file` / `field=json:{…}` |
 | Which profiles exist | `env list` (never shows passwords) |
 | Is the server reachable | `env check --env dev` (VDP, and the marketplace if configured) |
-| Verify the skills' own templates | `verify --env dev` runs the chain in `verification/chain.toml` in its own test database and drops it afterwards; `--with-marketplace` adds the REST tail, `--keep` leaves the objects for inspection, `--update-marks` rewrites the `verified:` lines that passed, `--allow-destructive` is needed on a production profile |
+| Verify the skills' own templates | `verify --env dev` runs the chain in `verification/chain.toml` and removes everything it made: its own test database, and two server-level `verify_` tags beside it; `--with-marketplace` adds the REST tail, which also writes to the shared marketplace catalog and takes those entries back out during cleanup; `--keep` leaves it all for inspection, `--update-marks` rewrites the `verified:` lines that passed, `--allow-destructive` is required on a production profile — without it the whole run is refused before it creates anything |
 
 Prefix every command with `${CLAUDE_PLUGIN_ROOT}/scripts/denodo`. Keep results
 readable: `--max-rows N` (default 100) caps every result set; `row_count` is the

@@ -97,8 +97,8 @@ def build_parser() -> argparse.ArgumentParser:
     verify.add_argument("--update-marks", action="store_true",
                         help="rewrite the verified: mark of every template step that passed")
     verify.add_argument("--allow-destructive", action="store_true",
-                        help="required on a production profile for the chain's own destructive calls "
-                             "(the marketplace catalog sync, and every cleanup DROP/DELETE)")
+                        help="required on a production profile: the whole run creates and then drops "
+                             "objects, so without this flag it is refused before it creates anything")
     return parser
 
 
@@ -180,14 +180,18 @@ def _dispatch(args) -> tuple[dict, int]:
     if args.group == "verify":
         repo = Path(__file__).resolve().parents[2]
         manifest = Path(args.chain).expanduser() if args.chain else repo / "verification" / "chain.toml"
+        # run_chain raises ChainError too, not just load_chain: _check_cleanup_placeholders
+        # runs inside it, and with a user-supplied --chain that is the likeliest first
+        # failure. Both are the same class of problem — a manifest that does not hold
+        # together — so both come out as the one JSON usage error, never as a traceback.
         try:
             chain = load_chain(manifest)
+            return run_chain(profile, chain, root=repo, vql_factory=resolve_vql_factory(profile),
+                             rest_factory=resolve_rest_factory(), database=args.database,
+                             with_marketplace=args.with_marketplace, keep=args.keep,
+                             update_marks=args.update_marks, allow_destructive=args.allow_destructive)
         except ChainError as exc:
             raise UsageError(str(exc)) from exc
-        return run_chain(profile, chain, root=repo, vql_factory=resolve_vql_factory(profile),
-                         rest_factory=resolve_rest_factory(), database=args.database,
-                         with_marketplace=args.with_marketplace, keep=args.keep,
-                         update_marks=args.update_marks, allow_destructive=args.allow_destructive)
     raise UsageError("unknown command")  # pragma: no cover — argparse rejects it first
 
 

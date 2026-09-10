@@ -19,7 +19,7 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 
-from denodo_cli.commands.verify import ChainError, load_chain, render
+from denodo_cli.commands.verify import ChainError, load_chain, parse_api_calls, render
 from denodo_cli.templates import TemplateError, load_block
 
 REPO = Path(__file__).resolve().parents[1]
@@ -67,3 +67,29 @@ class ChainManifestMatchesSkillsTest(unittest.TestCase):
         self.assertTrue(exercised_sales_analytics,
                         "no template step exercised the sales_analytics substitution — "
                         "the no-op check above never ran")
+
+    def test_every_http_step_indexes_calls_the_block_actually_has(self):
+        """``calls = [0, 1]`` has to name calls that exist in the block it points at.
+
+        This is the drift this module exists for, in its sharpest form: delete one ``api``
+        line from ``skills/marketplace/SKILL.md`` and the manifest's indexes silently shift
+        — the step then runs a *different* call, or an index the block no longer has. Only
+        a live run would notice, and by then it has already written to a shared catalog.
+        """
+        http_steps = [s for s in self.chain.steps if s.channel == "http"]
+        self.assertTrue(http_steps, "the manifest has no http steps to check")
+        for step in http_steps:
+            with self.subTest(step=step.id):
+                block = load_block(REPO, step.address)
+                body = render(block.body, step.substitute, self.chain.values)
+                try:
+                    calls = parse_api_calls(body)
+                except ChainError as exc:
+                    self.fail(f"step {step.id!r}: the block at {step.address!r} no longer "
+                             f"parses as api calls: {exc}")
+                self.assertTrue(calls, f"step {step.id!r}: the block has no api calls at all")
+                for index in step.calls:
+                    self.assertTrue(
+                        0 <= index < len(calls),
+                        f"step {step.id!r}: calls names index {index}, but the block at "
+                        f"{step.address!r} has {len(calls)} api call(s)")

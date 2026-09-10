@@ -15,8 +15,9 @@ from pathlib import Path
 
 MARK = re.compile(r"^\s*(?:--|#|//)\s*((?:un)?verified:.*)$")
 # Group 1 is the opening fence's indentation (a fence nested inside a numbered list, for
-# instance, is not at column 0); group 2 is the language tag.
-FENCE = re.compile(r"^(\s*)```(\w*)\s*$")
+# instance, is not at column 0). The language tag is matched but not captured: nothing
+# reads it — a step's channel comes from the manifest, not from the fence.
+FENCE = re.compile(r"^(\s*)```\w*\s*$")
 HEADING = re.compile(r"^(#{1,6})\s+(.*?)\s*$")
 ADDRESS = re.compile(r"^(?P<path>[^#]+)#(?P<section>[^\[\]]+?)(?:\[(?P<index>\d+)\])?$")
 MARK_BODY = re.compile(r"^(?:un)?verified:\s*[^(]*\((?P<place>[^,]+),\s*[^)]*\)(?P<note>.*)$")
@@ -31,7 +32,6 @@ class TemplateBlock:
     path: Path
     section: str
     index: int
-    language: str
     body: str               # block content, mark line included, dedented
     mark_line: int | None   # 1-based line of the mark in the file, None when the block carries none
     mark: str | None        # "verified: 9.5.1 (стенд, 2026-09-09)" or None
@@ -57,15 +57,15 @@ def load_block(root: Path, address: str) -> TemplateBlock:
     if index >= len(blocks):
         raise TemplateError(
             f"section {section!r} in {relative} has {len(blocks)} block(s), asked for [{index}]")
-    language, first_line, body_lines = blocks[index]
+    first_line, body_lines = blocks[index]
     mark_line = mark = None
     for offset, line in enumerate(body_lines):
         found = MARK.match(line)
         if found:
             mark_line, mark = first_line + offset, found.group(1).strip()
             break
-    return TemplateBlock(path=path, section=section, index=index, language=language,
-                          body="\n".join(body_lines), mark_line=mark_line, mark=mark)
+    return TemplateBlock(path=path, section=section, index=index,
+                         body="\n".join(body_lines), mark_line=mark_line, mark=mark)
 
 
 def _dedent_line(line: str, width: int) -> str:
@@ -82,7 +82,7 @@ def _dedent_line(line: str, width: int) -> str:
     return line[cut:]
 
 
-def _blocks_of_section(lines: list[str], section: str, relative: str) -> list[tuple[str, int, list[str]]]:
+def _blocks_of_section(lines: list[str], section: str, relative: str) -> list[tuple[int, list[str]]]:
     """Fenced blocks of the section whose heading text equals ``section``.
 
     ``relative`` is only used to name the file in the error raised when ``section``'s
@@ -90,11 +90,11 @@ def _blocks_of_section(lines: list[str], section: str, relative: str) -> list[tu
     silently returning "whichever occurrence came last" would be a worse failure than
     raising loudly.
     """
-    blocks: list[tuple[str, int, list[str]]] = []
+    blocks: list[tuple[int, list[str]]] = []
     depth: int | None = None
     seen_section = False
     inside = False
-    language, start, body, indent_width = "", 0, [], 0
+    start, body, indent_width = 0, [], 0
     for number, line in enumerate(lines, start=1):
         heading = HEADING.match(line)
         if heading and not inside:
@@ -114,10 +114,10 @@ def _blocks_of_section(lines: list[str], section: str, relative: str) -> list[tu
         fence = FENCE.match(line)
         if fence and not inside:
             indent_width = len(fence.group(1))
-            inside, language, start, body = True, fence.group(2), number + 1, []
+            inside, start, body = True, number + 1, []
         elif inside and line.lstrip().startswith("```"):   # closes at any indent
             inside = False
-            blocks.append((language, start, [_dedent_line(body_line, indent_width) for body_line in body]))
+            blocks.append((start, [_dedent_line(body_line, indent_width) for body_line in body]))
         elif inside:
             body.append(line)
     return blocks

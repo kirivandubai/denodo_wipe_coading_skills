@@ -464,6 +464,7 @@ class CleanupTest(unittest.TestCase):
         self.manifest.write_text("""
 [values]
 database = "denodo_skills_test"
+tag_prefix = "verify_"
 
 [cleanup]
 vql = [
@@ -480,8 +481,7 @@ vql = "CONNECT DATABASE {database};"
         self.chain = load_chain(self.manifest)
 
     def test_cleanup_runs_after_a_successful_chain(self):
-        doc, code = run_chain(profile(), self.chain, root=self.root, vql_factory=FakeVql,
-                              values_override={"tag_prefix": "verify_"})
+        doc, code = run_chain(profile(), self.chain, root=self.root, vql_factory=FakeVql)
         self.assertEqual(code, 0)
         self.assertTrue(doc["cleanup"]["ran"])
         dropped = " ".join(FakeVql.instances[-1].executed)
@@ -491,14 +491,12 @@ vql = "CONNECT DATABASE {database};"
     def test_cleanup_runs_after_a_failed_chain_too(self):
         self.manifest.write_text(self.manifest.read_text(encoding="utf-8").replace(
             'vql = "CONNECT DATABASE {database};"', 'vql = "BOOM"'), encoding="utf-8")
-        doc, code = run_chain(profile(), load_chain(self.manifest), root=self.root, vql_factory=FakeVql,
-                              values_override={"tag_prefix": "verify_"})
+        doc, code = run_chain(profile(), load_chain(self.manifest), root=self.root, vql_factory=FakeVql)
         self.assertEqual(code, 1)
         self.assertTrue(doc["cleanup"]["ran"])
 
     def test_keep_skips_cleanup_and_says_so(self):
-        doc, _ = run_chain(profile(), self.chain, root=self.root, vql_factory=FakeVql, keep=True,
-                           values_override={"tag_prefix": "verify_"})
+        doc, _ = run_chain(profile(), self.chain, root=self.root, vql_factory=FakeVql, keep=True)
         self.assertFalse(doc["cleanup"]["ran"])
         self.assertIn("--keep", doc["cleanup"]["reason"])
         self.assertNotIn("DROP DATABASE", " ".join(FakeVql.instances[-1].executed))
@@ -507,30 +505,29 @@ vql = "CONNECT DATABASE {database};"
         self.manifest.write_text(self.manifest.read_text(encoding="utf-8").replace(
             '"DROP TAG IF EXISTS {tag_prefix}pii",', '"DROP TAG BOOM", "DROP TAG IF EXISTS x",'),
             encoding="utf-8")
-        doc, code = run_chain(profile(), load_chain(self.manifest), root=self.root, vql_factory=FakeVql,
-                              values_override={"tag_prefix": "verify_"})
+        doc, code = run_chain(profile(), load_chain(self.manifest), root=self.root, vql_factory=FakeVql)
         self.assertEqual(code, 1)                       # уборка не убралась — это провал прогона
         self.assertTrue(doc["cleanup"]["ran"])
         kinds = [s["ok"] for s in doc["cleanup"]["statements"]]
         self.assertEqual(kinds, [True, False, True])
 
     def test_cleanup_refuses_on_a_production_profile_without_allow_destructive(self):
-        # allow_destructive no longer hardcoded True inside _cleanup: a production profile
-        # must be able to refuse its own DROPs exactly like any other destructive call,
-        # until a human passes --allow-destructive.
-        doc, code = run_chain(profile(production=True), self.chain, root=self.root, vql_factory=FakeVql,
-                              values_override={"tag_prefix": "verify_"})
-        self.assertEqual(code, 1)
-        self.assertTrue(doc["cleanup"]["ran"])
-        self.assertFalse(doc["cleanup"]["statements"][0]["ok"])
-        self.assertEqual(doc["cleanup"]["statements"][0]["error"]["kind"], "refused")
-        # One session for the "fix" step's own (non-destructive) body; none for cleanup —
-        # refused before its transport was even created.
-        self.assertEqual(len(FakeVql.instances), 1)
+        # allow_destructive is not hardcoded True inside _cleanup: a production profile
+        # must be able to refuse its own DROPs exactly like any other destructive call.
+        # Driven straight at _cleanup, because run_chain no longer lets such a run get as
+        # far as cleanup — it refuses the whole run before step 1 (ProductionGateTest).
+        report = verify_module._cleanup(
+            profile(production=True), self.chain,
+            values={"database": "denodo_skills_test", "tag_prefix": "verify_"},
+            vql_factory=FakeVql, rest_factory=None, allow_destructive=False, keep=False)
+        self.assertTrue(report["ran"])
+        self.assertFalse(report["statements"][0]["ok"])
+        self.assertEqual(report["statements"][0]["error"]["kind"], "refused")
+        self.assertEqual(FakeVql.instances, [])  # refused before a transport was created
 
     def test_cleanup_proceeds_on_a_production_profile_with_allow_destructive(self):
         doc, code = run_chain(profile(production=True), self.chain, root=self.root, vql_factory=FakeVql,
-                              values_override={"tag_prefix": "verify_"}, allow_destructive=True)
+                              allow_destructive=True)
         self.assertEqual(code, 0, doc)
         self.assertTrue(doc["cleanup"]["ran"])
         self.assertTrue(all(s["ok"] for s in doc["cleanup"]["statements"]))
@@ -599,8 +596,10 @@ vql = "CONNECT DATABASE {database};"
         self.chain = load_chain(self.manifest)
 
     def test_resolved_placeholders_run_the_chain_normally(self):
-        doc, code = run_chain(profile(), self.chain, root=self.root, vql_factory=FakeVql,
-                              values_override={"tag_prefix": "verify_"})
+        self.manifest.write_text(self.manifest.read_text(encoding="utf-8").replace(
+            'database = "denodo_skills_test"', 'database = "denodo_skills_test"\ntag_prefix = "verify_"',
+            1), encoding="utf-8")
+        doc, code = run_chain(profile(), load_chain(self.manifest), root=self.root, vql_factory=FakeVql)
         self.assertEqual(code, 0)
         self.assertTrue(doc["cleanup"]["ran"])
 
@@ -921,12 +920,15 @@ marketplace = true
         self.chain = load_chain(self.manifest)
 
     def test_refuses_on_a_production_profile_without_allow_destructive(self):
-        doc, code = run_chain(profile(marketplace_url="http://x/y", production=True), self.chain,
-                              root=self.root, vql_factory=FakeVql,
-                              rest_factory=HttpDestructiveGateTest.FakeRest, with_marketplace=True)
-        self.assertEqual(code, 1)
-        self.assertFalse(doc["steps"][0]["ok"])
-        self.assertEqual(doc["steps"][0]["error"]["kind"], "refused")
+        # Driven straight at the step: run_chain refuses a production run without the flag
+        # before step 1 (ProductionGateTest), so this is the only way left to prove
+        # _run_http still forwards allow_destructive instead of hardcoding it True.
+        report = verify_module._run_step(
+            profile(marketplace_url="http://x/y", production=True), self.chain.steps[0],
+            values=dict(self.chain.values), root=self.root, vql_factory=FakeVql,
+            rest_factory=HttpDestructiveGateTest.FakeRest, allow_destructive=False)
+        self.assertFalse(report["ok"])
+        self.assertEqual(report["error"]["kind"], "refused")
         self.assertEqual(HttpDestructiveGateTest.FakeRest.calls, [])  # nothing was sent
 
     def test_proceeds_on_a_production_profile_with_allow_destructive(self):
@@ -1030,3 +1032,340 @@ capture = { category_id = "id" }
         self.assertTrue(tag_cleanup["ok"])
         category_cleanup = http_cleanup["/public/api/category-management/categories/{category_id}"]
         self.assertTrue(category_cleanup["skipped"])
+
+
+class ProductionGateTest(unittest.TestCase):
+    """A production profile refuses the whole run, before step 1 — not only at cleanup.
+
+    ``CREATE OR REPLACE …`` is not destructive by ``safety.classify_vql``, so a gate that
+    only fires on the cleanup batch would let every step run first: the test database, its
+    views and two *server-level* tags would be created on a production server, and only the
+    ``DROP``s meant to remove them again would be refused. That is the one outcome this
+    command exists to prevent, so the refusal has to come before anything is created.
+    """
+
+    def setUp(self):
+        FakeVql.instances.clear()
+        self.root = Path(tempfile.mkdtemp())
+        (self.root / "skills" / "catalog").mkdir(parents=True)
+        (self.root / "skills" / "catalog" / "SKILL.md").write_text(SKILL_TEXT, encoding="utf-8")
+        self.manifest = self.root / "chain.toml"
+        self.manifest.write_text("""
+[values]
+database = "denodo_skills_test"
+
+[cleanup]
+vql = ["DROP DATABASE IF EXISTS {database} CASCADE"]
+
+[[step]]
+id = "database"
+kind = "template"
+channel = "vql"
+address = "skills/catalog/SKILL.md#Database"
+substitute = { sales_analytics = "{database}" }
+""", encoding="utf-8")
+        self.chain = load_chain(self.manifest)
+
+    def test_the_whole_run_is_refused_before_any_step(self):
+        doc, code = run_chain(profile(production=True), self.chain, root=self.root, vql_factory=FakeVql)
+        self.assertEqual(code, 2)                       # same exit code as any refused destructive call
+        self.assertFalse(doc["ok"])
+        self.assertEqual(doc["error"]["kind"], "refused")
+        self.assertIn("--allow-destructive", doc["error"]["message"])
+        self.assertEqual(doc["steps"], [])
+        self.assertFalse(doc["cleanup"]["ran"])
+        self.assertEqual(FakeVql.instances, [])         # nothing was created, so nothing leaked
+
+    def test_keep_does_not_bypass_the_gate(self):
+        # --keep only turns cleanup off; the steps would still create objects.
+        doc, code = run_chain(profile(production=True), self.chain, root=self.root, vql_factory=FakeVql,
+                              keep=True)
+        self.assertEqual(code, 2)
+        self.assertEqual(doc["error"]["kind"], "refused")
+        self.assertEqual(FakeVql.instances, [])
+
+    def test_update_marks_does_not_probe_the_server_either(self):
+        # The version probe is a round trip; a refused run must not make it.
+        run_chain(profile(production=True), self.chain, root=self.root, vql_factory=FakeVql,
+                  update_marks=True)
+        self.assertEqual(FakeVql.instances, [])
+
+    def test_the_flag_lets_the_run_through(self):
+        doc, code = run_chain(profile(production=True), self.chain, root=self.root, vql_factory=FakeVql,
+                              allow_destructive=True)
+        self.assertEqual(code, 0, doc)
+        self.assertTrue(doc["steps"][0]["ok"])
+        self.assertTrue(doc["cleanup"]["ran"])
+
+    def test_a_non_production_profile_needs_no_flag(self):
+        doc, code = run_chain(profile(production=False), self.chain, root=self.root, vql_factory=FakeVql)
+        self.assertEqual(code, 0, doc)
+        self.assertTrue(doc["cleanup"]["ran"])
+
+
+class CleanupHttpBodyTest(unittest.TestCase):
+    """``[cleanup] http`` entries carry a JSON body, so cleanup can undo a catalog sync.
+
+    The marketplace tail's ``synchronize`` calls import the throwaway database and its views
+    into the shared marketplace catalog; the only way to take them back out is to run the
+    same calls again once VDP no longer has them. Those calls need a body
+    (``proceedWithConflicts``), which a DELETE-shaped cleanup entry had no way to carry.
+    """
+
+    class FakeRest:
+        calls = []
+
+        def __init__(self, profile):
+            self.profile = profile
+
+        def call(self, method, path, *, json_body=None, params=None, multipart=None, timeout=None):
+            from denodo_cli.transports.base import HttpResult
+            CleanupHttpBodyTest.FakeRest.calls.append((method, path, params, json_body))
+            return HttpResult(status=200, body={"inserted": [], "modified": [], "removed": []})
+
+    def setUp(self):
+        FakeVql.instances.clear()
+        CleanupHttpBodyTest.FakeRest.calls.clear()
+        self.root = Path(tempfile.mkdtemp())
+        self.manifest = self.root / "chain.toml"
+        self.manifest.write_text("""
+[values]
+database = "denodo_skills_test"
+server_id = "306"
+
+[cleanup]
+http = [
+  { method = "post", path = "/public/api/element-management/DATABASES/synchronize", params = { serverId = "{server_id}" }, json = { proceedWithConflicts = "SERVER_WITH_LOCAL_CHANGES" } },
+]
+
+[[step]]
+id = "fix"
+kind = "fixture"
+channel = "vql"
+vql = "CONNECT DATABASE {database};"
+""", encoding="utf-8")
+        self.chain = load_chain(self.manifest)
+
+    def test_the_body_reaches_the_transport(self):
+        doc, code = run_chain(profile(marketplace_url="http://x/y"), self.chain, root=self.root,
+                              vql_factory=FakeVql, rest_factory=CleanupHttpBodyTest.FakeRest,
+                              with_marketplace=True)
+        self.assertEqual(code, 0, doc)
+        method, path, params, json_body = CleanupHttpBodyTest.FakeRest.calls[0]
+        self.assertEqual(method, "POST")   # api_call normalises the manifest's "post"
+        self.assertEqual(path, "/public/api/element-management/DATABASES/synchronize")
+        self.assertEqual(params, {"serverId": "306"})
+        self.assertEqual(json_body, {"proceedWithConflicts": "SERVER_WITH_LOCAL_CHANGES"})
+        entry = doc["cleanup"]["http"][0]
+        self.assertTrue(entry["ok"])
+        self.assertFalse(entry["skipped"])
+        self.assertEqual(entry["json"], {"proceedWithConflicts": "SERVER_WITH_LOCAL_CHANGES"})
+
+    def test_a_body_placeholder_is_filled_from_values(self):
+        self.manifest.write_text(self.manifest.read_text(encoding="utf-8").replace(
+            'json = { proceedWithConflicts = "SERVER_WITH_LOCAL_CHANGES" }',
+            'json = { databaseName = "{database}" }'), encoding="utf-8")
+        doc, code = run_chain(profile(marketplace_url="http://x/y"), load_chain(self.manifest),
+                              root=self.root, vql_factory=FakeVql,
+                              rest_factory=CleanupHttpBodyTest.FakeRest, with_marketplace=True)
+        self.assertEqual(code, 0, doc)
+        self.assertEqual(CleanupHttpBodyTest.FakeRest.calls[0][3], {"databaseName": "denodo_skills_test"})
+
+    def test_an_unresolved_body_placeholder_skips_the_entry(self):
+        # Same rule the path and params already follow: a value nothing ever captured means
+        # there is nothing to undo, so the call must not be sent half-rendered.
+        self.manifest.write_text(self.manifest.read_text(encoding="utf-8").replace(
+            'json = { proceedWithConflicts = "SERVER_WITH_LOCAL_CHANGES" }',
+            'json = { tagId = "{tag_id}" }'), encoding="utf-8")
+        doc, code = run_chain(profile(marketplace_url="http://x/y"), load_chain(self.manifest),
+                              root=self.root, vql_factory=FakeVql,
+                              rest_factory=CleanupHttpBodyTest.FakeRest, with_marketplace=True)
+        self.assertEqual(code, 0, doc)
+        self.assertEqual(CleanupHttpBodyTest.FakeRest.calls, [])
+        self.assertTrue(doc["cleanup"]["http"][0]["skipped"])
+        self.assertIn("captured", doc["cleanup"]["http"][0]["reason"])
+
+    def test_a_default_run_never_touches_the_shared_catalog(self):
+        # The gate that matters most: a re-sync entry names no captured value, so nothing
+        # would have stopped it from firing on a plain `verify --env lab` — a run the design
+        # requires to stay inside its own database — and removing from the catalog whatever
+        # anybody else had orphaned there.
+        doc, code = run_chain(profile(marketplace_url="http://x/y"), self.chain, root=self.root,
+                              vql_factory=FakeVql, rest_factory=CleanupHttpBodyTest.FakeRest)
+        self.assertEqual(code, 0, doc)
+        self.assertEqual(CleanupHttpBodyTest.FakeRest.calls, [])
+        self.assertTrue(doc["cleanup"]["ran"])
+        self.assertTrue(doc["cleanup"]["http"][0]["skipped"])
+        self.assertIn("--with-marketplace", doc["cleanup"]["http"][0]["reason"])
+
+    def test_a_non_table_json_is_rejected_at_load_time(self):
+        self.manifest.write_text("""
+[cleanup]
+http = [ { method = "post", path = "/x", json = "not a table" } ]
+
+[[step]]
+id = "fix"
+kind = "fixture"
+channel = "vql"
+vql = "SELECT 1"
+""", encoding="utf-8")
+        with self.assertRaises(ChainError) as ctx:
+            load_chain(self.manifest)
+        self.assertIn("json", str(ctx.exception))
+
+    def test_a_production_profile_refuses_the_sync_without_the_flag(self):
+        # POST .../synchronize classifies as "replace"; the gate now refuses the whole run
+        # up front, so nothing reaches the marketplace either.
+        doc, code = run_chain(profile(marketplace_url="http://x/y", production=True), self.chain,
+                              root=self.root, vql_factory=FakeVql,
+                              rest_factory=CleanupHttpBodyTest.FakeRest, with_marketplace=True)
+        self.assertEqual(code, 2)
+        self.assertEqual(doc["error"]["kind"], "refused")
+        self.assertEqual(CleanupHttpBodyTest.FakeRest.calls, [])
+
+
+THREE_CALL_BLOCK = """# verified: 9.5.1 (стенд, 2026-09-01)
+api get --env lab /public/api/tag-management/tags --param serverId=306 --param nameFilter=pii
+api post --env lab /public/api/tags --param serverId=306 --json '{"name":"pii"}'
+api put --env lab /public/api/tags/4242 --param serverId=306 --json '{"name":"pii"}'
+"""
+
+
+class PartialBlockMarkTest(unittest.TestCase):
+    """``--update-marks`` must not re-date a block the run only partly executed.
+
+    An http step runs the calls its ``calls`` list names, not the whole block: the
+    manifest's ``marketplace-tag`` step runs 2 of its block's 4 calls, ``marketplace-category``
+    1 of 3. Stamping the block's mark from such a run would claim the whole template was
+    verified when two thirds of it never left the machine.
+    """
+
+    class FakeRest:
+        def __init__(self, profile):
+            self.profile = profile
+
+        def call(self, method, path, *, json_body=None, params=None, multipart=None, timeout=None):
+            from denodo_cli.transports.base import HttpResult
+            return HttpResult(status=200, body={"id": 4242})
+
+    def setUp(self):
+        FakeVql.instances.clear()
+        self.root = Path(tempfile.mkdtemp())
+        (self.root / "skills" / "marketplace").mkdir(parents=True)
+        self.skill = self.root / "skills" / "marketplace" / "SKILL.md"
+        self.skill.write_text("### Tag\n\n```bash\n" + THREE_CALL_BLOCK + "```\n", encoding="utf-8")
+        self.manifest = self.root / "chain.toml"
+
+    def chain(self, calls: str):
+        self.manifest.write_text(f"""
+[values]
+database = "denodo_skills_test"
+[[step]]
+id = "mp-tag"
+kind = "template"
+channel = "http"
+address = "skills/marketplace/SKILL.md#Tag"
+marketplace = true
+calls = {calls}
+""", encoding="utf-8")
+        return load_chain(self.manifest)
+
+    def stamped(self, calls: str):
+        """Run the chain with --update-marks, for the given ``calls`` list."""
+        return run_chain(profile(marketplace_url="http://x/y"), self.chain(calls), root=self.root,
+                         vql_factory=FakeVql, rest_factory=PartialBlockMarkTest.FakeRest,
+                         with_marketplace=True, update_marks=True, today=dt.date(2026, 9, 10))
+
+    def test_a_partly_executed_block_keeps_its_mark_and_says_why(self):
+        doc, code = self.stamped("[0, 1]")
+        self.assertEqual(code, 0, doc)
+        self.assertFalse(doc["steps"][0]["mark"]["updated"])
+        self.assertIn("2", doc["steps"][0]["mark"]["reason"])
+        self.assertIn("3", doc["steps"][0]["mark"]["reason"])
+        self.assertIn("2026-09-01", self.skill.read_text(encoding="utf-8"))
+        self.assertNotIn("2026-09-10", self.skill.read_text(encoding="utf-8"))
+
+    def test_a_fully_executed_block_is_stamped(self):
+        doc, code = self.stamped("[0, 1, 2]")
+        self.assertEqual(code, 0, doc)
+        self.assertTrue(doc["steps"][0]["mark"]["updated"])
+        self.assertIn("2026-09-10", self.skill.read_text(encoding="utf-8"))
+
+    def test_an_empty_calls_list_means_the_whole_block_and_is_stamped(self):
+        doc, code = self.stamped("[]")
+        self.assertEqual(code, 0, doc)
+        self.assertTrue(doc["steps"][0]["mark"]["updated"])
+        self.assertIn("2026-09-10", self.skill.read_text(encoding="utf-8"))
+
+
+class MalformedApiBlockTest(unittest.TestCase):
+    """Malformed input is a reported failure, never a traceback.
+
+    Every invocation of this tool prints exactly one JSON document. An ``api`` line a skill
+    file no longer has, an unbalanced quote, a mistyped ``--json`` body — each used to reach
+    the user as an ``IndexError``/``ValueError``/``JSONDecodeError`` traceback with no
+    document at all.
+    """
+
+    def test_an_out_of_range_call_index_names_the_step(self):
+        root = Path(tempfile.mkdtemp())
+        (root / "skills" / "marketplace").mkdir(parents=True)
+        (root / "skills" / "marketplace" / "SKILL.md").write_text(
+            "### Tag\n\n```bash\n" + THREE_CALL_BLOCK + "```\n", encoding="utf-8")
+        manifest = root / "chain.toml"
+        manifest.write_text("""
+[values]
+database = "denodo_skills_test"
+[[step]]
+id = "mp-tag"
+kind = "template"
+channel = "http"
+address = "skills/marketplace/SKILL.md#Tag"
+marketplace = true
+calls = [0, 7]
+""", encoding="utf-8")
+        doc, code = run_chain(profile(marketplace_url="http://x/y"), load_chain(manifest), root=root,
+                              vql_factory=FakeVql, rest_factory=PartialBlockMarkTest.FakeRest,
+                              with_marketplace=True)
+        self.assertEqual(code, 1)
+        self.assertFalse(doc["steps"][0]["ok"])
+        self.assertEqual(doc["steps"][0]["error"]["kind"], "template")
+        self.assertIn("mp-tag", doc["steps"][0]["error"]["message"])
+        self.assertIn("7", doc["steps"][0]["error"]["message"])
+        self.assertIn("3", doc["steps"][0]["error"]["message"])
+
+    def test_a_negative_call_index_is_rejected_too(self):
+        # int(-1) is a perfectly valid list index in Python and would silently pick the
+        # block's last call — a different call than the manifest meant to name.
+        with self.assertRaises(ChainError) as ctx:
+            verify_module._select_calls(parse_api_calls(THREE_CALL_BLOCK), [-1])
+        self.assertIn("-1", str(ctx.exception))
+
+
+class ParseApiCallsFailureTest(unittest.TestCase):
+    def test_an_unbalanced_quote_is_a_chain_error(self):
+        with self.assertRaises(ChainError) as ctx:
+            parse_api_calls("api post /public/api/tags --json '{\"name\":\"pii\"}\n")
+        self.assertIn("api post", str(ctx.exception))
+
+    def test_a_malformed_json_body_is_a_chain_error(self):
+        with self.assertRaises(ChainError) as ctx:
+            parse_api_calls("api post /public/api/tags --json '{\"name\",}'\n")
+        self.assertIn("JSON", str(ctx.exception))
+
+    def test_an_api_line_with_no_method_is_a_chain_error(self):
+        # parse_api_calls' own filter never hands _api_call a line this short; the guard is
+        # what keeps that filter from being the only thing between shlex and an IndexError.
+        with self.assertRaises(ChainError) as ctx:
+            verify_module._api_call("api")
+        self.assertIn("method", str(ctx.exception))
+
+    def test_an_api_line_with_no_path_is_a_chain_error(self):
+        with self.assertRaises(ChainError) as ctx:
+            parse_api_calls("api get --param serverId=306\n")
+        self.assertIn("path", str(ctx.exception))
+
+    def test_a_flag_with_no_value_is_a_chain_error(self):
+        with self.assertRaises(ChainError) as ctx:
+            parse_api_calls("api get /public/api/tags --param\n")
+        self.assertIn("--param", str(ctx.exception))

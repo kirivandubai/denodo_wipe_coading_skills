@@ -92,7 +92,6 @@ class LoadBlockTest(unittest.TestCase):
 
     def test_body_and_mark_of_the_first_block_in_a_section(self):
         block = load_block(self.root, "skills/catalog/SKILL.md#Database")
-        self.assertEqual(block.language, "sql")
         self.assertIn("CREATE OR REPLACE DATABASE sales_analytics", block.body)
         self.assertEqual(block.mark, "verified: 9.5.1 (стенд, 2026-09-09)")
         self.assertEqual(block.section, "Database")
@@ -140,7 +139,6 @@ class IndentedFenceTest(unittest.TestCase):
 
     def test_fence_indented_inside_a_list_item_is_found_and_dedented(self):
         block = load_block(self.root, "skills/listy/SKILL.md#Wrapped")
-        self.assertEqual(block.language, "sql")
         self.assertEqual(block.mark, "verified: 9.5.1 (стенд, 2026-09-09)")
         # dedented: no leading spaces left, even though the closing fence was
         # unindented while the opening one (and its body) were indented by three spaces
@@ -172,11 +170,9 @@ class RealSkillFileTest(unittest.TestCase):
     def test_when_you_cannot_see_the_file_section_resolves_and_second_block_carries_a_mark(self):
         root = Path(__file__).resolve().parents[1]
         first = load_block(root, "skills/datasources/SKILL.md#When you cannot see the file")
-        self.assertEqual(first.language, "sql")
         self.assertIsNone(first.mark)
 
         second = load_block(root, "skills/datasources/SKILL.md#When you cannot see the file[1]")
-        self.assertEqual(second.language, "sql")
         self.assertEqual(second.mark, "verified: 9.5.1 (стенд, 2026-09-09)")
         self.assertIn("CREATE OR REPLACE DATASOURCE DF ds_crm", second.body)
         # dedented: the raw file indents this fence by three spaces (it lives inside a

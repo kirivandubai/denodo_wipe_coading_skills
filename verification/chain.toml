@@ -7,8 +7,15 @@
 # reachable. Design spec, section 11.1.
 #
 # The three http steps carry marketplace = true and only run with --with-marketplace: they
-# write to the shared marketplace catalog (a tag and a category, both named with the
-# verify_ prefix so [cleanup] can find and remove them), not to denodo_skills_test alone.
+# write to the shared marketplace catalog, not to denodo_skills_test alone. Two kinds of
+# write, and [cleanup] http undoes both. The tag and the category are named with the
+# verify_ prefix and removed by id, captured from their create call. The catalog sync is
+# not named at all: marketplace-sync imports whatever VDP has, which by then includes this
+# run's own database and its six views, and the only way back out is to run the same two
+# synchronize calls once VDP no longer has them — which is why they are repeated at the end
+# of [cleanup] http, after DROP DATABASE ... CASCADE. Without that, every run left its
+# database and views behind in a catalog everyone shares, as orphans (localElements in
+# .../changes), while reporting itself green.
 #
 # Deliberately out of scope here: the JSON and JDBC datasource templates (no fixtures for
 # them on the stand), and the external-element template — its chain applies VQL generated
@@ -32,6 +39,18 @@ vql = [
 http = [
   { method = "delete", path = "/public/api/tags/{tag_id}", params = { serverId = "{server_id}" } },
   { method = "delete", path = "/public/api/category-management/categories/{category_id}", params = { serverId = "{server_id}" } },
+  # The same two calls marketplace-sync makes, in the same order and the same conflict mode.
+  # Run now, after the vql cleanup above dropped the database, they mean the opposite thing:
+  # a synchronize removes from the marketplace whatever VDP no longer has (see
+  # scripts/denodo_cli/safety.py), so this pair takes this run's database and views back out
+  # of the shared catalog. DATABASES first is enough on its own — removing the database
+  # takes its views with it — but the pair is kept whole to match the template it undoes.
+  # Both classify as "replace", so on a production profile they demand --allow-destructive
+  # exactly like the DROPs above. Like the whole http tail they run only under
+  # --with-marketplace: a default run put nothing into the catalog, and these two entries
+  # name no captured id, so nothing else would have kept them from firing on every run.
+  { method = "post", path = "/public/api/element-management/DATABASES/synchronize", params = { serverId = "{server_id}" }, json = { proceedWithConflicts = "SERVER_WITH_LOCAL_CHANGES" } },
+  { method = "post", path = "/public/api/element-management/VIEWS/synchronize", params = { serverId = "{server_id}" }, json = { proceedWithConflicts = "SERVER_WITH_LOCAL_CHANGES" } },
 ]
 
 [[step]]
