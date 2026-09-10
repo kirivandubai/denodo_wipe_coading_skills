@@ -177,13 +177,17 @@ def run_chain(
 
     ``values_override`` is merged into the run's values after ``database``, so a caller
     (a test, or later the CLI) can supply values the manifest itself does not define —
-    e.g. a ``tag_prefix`` used only by ``[cleanup]``. Before anything touches the network,
-    every ``{placeholder}`` in ``chain.cleanup`` is checked against the merged values
-    (``_check_cleanup_placeholders``) and raises ``ChainError`` if one is missing: a
-    cleanup statement's placeholders are not covered by ``render``'s own unknown-value
-    check (that check only inspects the ``substitute`` mapping, and cleanup renders with
-    none), so an unresolved placeholder would otherwise reach the live server verbatim
-    and fail there with a confusing remote syntax error instead of a local, immediate one.
+    e.g. a ``tag_prefix`` used only by ``[cleanup]``. Unless ``keep`` is set — the same
+    condition that later makes ``_cleanup`` a no-op — every ``{placeholder}`` in
+    ``chain.cleanup`` is checked against the merged values before anything touches the
+    network (``_check_cleanup_placeholders``), and raises ``ChainError`` if one is
+    missing: a cleanup statement's placeholders are not covered by ``render``'s own
+    unknown-value check (that check only inspects the ``substitute`` mapping, and cleanup
+    renders with none), so an unresolved placeholder would otherwise reach the live
+    server verbatim and fail there with a confusing remote syntax error instead of a
+    local, immediate one. With ``keep`` set the check is skipped too, for the same reason
+    ``_cleanup`` itself is skipped: cleanup will not run, so an unresolved placeholder in
+    it must not abort a run that has nothing to do with cleanup.
 
     ``rest_factory`` and ``update_marks`` are accepted so the call signature already
     matches what the http channel and mark-rewriting (later tasks) will need; neither
@@ -195,7 +199,11 @@ def run_chain(
         values["database"] = database
     if values_override:
         values.update(values_override)
-    _check_cleanup_placeholders(chain, values)
+    if not keep:
+        # Gated on the same condition _cleanup itself checks first: when --keep is set,
+        # cleanup never renders or runs, so an unresolved cleanup placeholder must not
+        # abort a run that has nothing to do with cleanup.
+        _check_cleanup_placeholders(chain, values)
     reports: list[dict] = []
     stop = False
     try:

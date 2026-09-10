@@ -506,6 +506,15 @@ vql = "CONNECT DATABASE {database};"
         self.assertIn("DROP TAG IF EXISTS {tag_prefix}pii", str(ctx.exception))
         self.assertEqual(FakeVql.instances, [])  # failed before any session was opened
 
+    def test_keep_skips_the_placeholder_check_too(self):
+        # --keep means cleanup never runs, so an unresolved cleanup placeholder must not
+        # abort a run that has nothing to do with cleanup — same as before this check
+        # existed. No tag_prefix supplied, same as the unresolved case above.
+        doc, code = run_chain(profile(), self.chain, root=self.root, vql_factory=FakeVql, keep=True)
+        self.assertEqual(code, 0)
+        self.assertFalse(doc["cleanup"]["ran"])
+        self.assertIn("--keep", doc["cleanup"]["reason"])
+
 
 class RunCheckConnectionErrorTest(unittest.TestCase):
     def setUp(self):
