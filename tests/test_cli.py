@@ -204,5 +204,34 @@ class CliTest(unittest.TestCase):
         self.assertEqual(doc["error"]["kind"], "usage")
 
 
+class VerifyCommandTest(unittest.TestCase):
+    def test_parser_accepts_the_flags(self):
+        args = cli.build_parser().parse_args(["verify", "--env", "lab", "--with-marketplace", "--keep",
+                                              "--update-marks", "--chain", "verification/chain.toml"])
+        self.assertEqual(args.group, "verify")
+        self.assertTrue(args.with_marketplace)
+        self.assertTrue(args.keep)
+        self.assertTrue(args.update_marks)
+        self.assertEqual(args.chain, "verification/chain.toml")
+
+    def test_defaults(self):
+        args = cli.build_parser().parse_args(["verify", "--env", "lab"])
+        self.assertFalse(args.with_marketplace)
+        self.assertFalse(args.keep)
+        self.assertFalse(args.update_marks)
+        self.assertIsNone(args.chain)
+
+    def test_a_malformed_manifest_is_a_usage_error_in_json(self):
+        path = Path(tempfile.mkdtemp()) / "chain.toml"
+        path.write_text("[[step]]\nid = 'x'\nkind = 'magic'\nchannel = 'vql'\n", encoding="utf-8")
+        out = io.StringIO()
+        with redirect_stdout(out):
+            code = cli.main(["verify", "--env", "nonexistent-profile", "--chain", str(path)])
+        doc = json.loads(out.getvalue())
+        self.assertEqual(code, 2)
+        self.assertFalse(doc["ok"])
+        self.assertIn(doc["error"]["kind"], ("config", "usage"))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -16,6 +16,7 @@ from .commands import EXIT_ENVIRONMENT, EXIT_USAGE
 from .commands.api import api_call, parse_multipart_specs, parse_params
 from .commands.env import check_environment, init_environment, list_environments
 from .commands.vql import describe, run_statements
+from .commands.verify import ChainError, load_chain, run_chain
 from .output import envelope, to_json
 from .profiles import ProfileError, load_profile, profiles_path
 from .transports import get_rest_transport, get_vql_transport
@@ -85,6 +86,16 @@ def build_parser() -> argparse.ArgumentParser:
     env.add_parser("list", help="profiles known on this machine (never shows passwords)")
     env.add_parser("check", parents=[env_opt], help="connect to VDP (and Data Marketplace if configured)")
     env.add_parser("init", help="create a profile interactively — run it yourself, e.g. `! scripts/denodo env init`")
+
+    verify = top.add_parser("verify", parents=[env_opt],
+                            help="run the chain of skill templates against a stand and clean up")
+    verify.add_argument("--chain", help="manifest path (default: verification/chain.toml in the repo)")
+    verify.add_argument("--database", help="test database to create and drop (default: from the manifest)")
+    verify.add_argument("--with-marketplace", action="store_true",
+                        help="also run the Data Marketplace tail; it writes outside your own database")
+    verify.add_argument("--keep", action="store_true", help="leave the created objects on the stand")
+    verify.add_argument("--update-marks", action="store_true",
+                        help="rewrite the verified: mark of every template step that passed")
     return parser
 
 
@@ -163,6 +174,17 @@ def _dispatch(args) -> tuple[dict, int]:
         return api_call(profile, args.method, args.path, transport_factory=resolve_rest_factory(),
                         json_body=_json_body(args), params=params, multipart=multipart,
                         timeout=args.timeout, allow_destructive=args.allow_destructive)
+    if args.group == "verify":
+        repo = Path(__file__).resolve().parents[2]
+        manifest = Path(args.chain).expanduser() if args.chain else repo / "verification" / "chain.toml"
+        try:
+            chain = load_chain(manifest)
+        except ChainError as exc:
+            raise UsageError(str(exc)) from exc
+        return run_chain(profile, chain, root=repo, vql_factory=resolve_vql_factory(profile),
+                         rest_factory=resolve_rest_factory(), database=args.database,
+                         with_marketplace=args.with_marketplace, keep=args.keep,
+                         update_marks=args.update_marks)
     raise UsageError("unknown command")  # pragma: no cover — argparse rejects it first
 
 
