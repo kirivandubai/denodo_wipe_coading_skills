@@ -41,7 +41,10 @@ while the documentation calls `description` optional; send all six. Duplicate `n
 `ATLAN_PROVIDER`, `AWS_GLUE_PROVIDER`, `FABRIC_PROVIDER`, `CONFLUENT_PROVIDER`,
 `ABINITIO_PROVIDER`, `T24_TEMENOS_PROVIDER`, `SCHEDULER_PROVIDER`, `DENODO_DQ_PROVIDER`,
 `DATA_PRODUCT_PROVIDER`, `GLOSSARY_PROVIDER` — *verified: 9.5.1 (стенд, 2026-09-10)*. They
-arrive with the vendor's icon; a new one is a marketplace-wide object that everybody sees.
+arrive with the vendor's icon; a new one is a marketplace-wide object that everybody sees,
+and one created without an icon stands in that shared list logo-less next to the rest. The
+listing embeds those icons as base64 and is ~290 KB on 9.5.1: save it and project
+`{externalProviderTypeId, name, visualName}`.
 
 Creating one is multipart: a part named `request` of type `application/json` carrying
 `{name, visualName}`,
