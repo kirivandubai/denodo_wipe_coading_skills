@@ -181,12 +181,14 @@ expect = "no rows"
 
 # --- Data Marketplace tail: http channel, gated behind --with-marketplace --------------
 #
-# Not idempotent, by design: marketplace-tag and marketplace-category fire their lookup
-# and create calls unconditionally (see each step's own comment below) rather than
-# branching on the lookup's answer — this step model has no way to express "read, then
-# decide", and adding one would turn the manifest into the interpreter this design
-# deliberately avoids (skills/marketplace/SKILL.md's own rule, "anything that runs twice
-# must read before it writes", is deliberately not followed here). A second
+# Not idempotent, by design: marketplace-tag fires its lookup and create calls
+# unconditionally (see its own comment below) rather than branching on the lookup's
+# answer; marketplace-category has no lookup call at all — the skill's "Category tree"
+# block goes straight to create (calls = [0]) — so there is nothing to branch on in the
+# first place. Either way, this step model has no way to express "read, then decide", and
+# adding one would turn the manifest into the interpreter this design deliberately avoids
+# (skills/marketplace/SKILL.md's own rule, "anything that runs twice must read before it
+# writes", is deliberately not followed here). A second
 # --with-marketplace run against a marketplace that still holds the previous run's objects
 # — the state a --keep run leaves behind — fails loudly on 409 (duplicate name) at the
 # create call, exactly as the skill's own "common mistakes" table predicts; that failure is
