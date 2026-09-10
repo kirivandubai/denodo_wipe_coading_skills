@@ -233,3 +233,14 @@ class UpdateMarkTest(unittest.TestCase):
         update_mark(block, version="9.5.1", day=dt.date(2026, 9, 10))
         self.assertIn("-- verified: 9.5.1 (стенд, 2026-09-10) — against live Oracle",
                       (noted / "SKILL.md").read_text(encoding="utf-8"))
+
+    def test_already_up_to_date_mark_returns_false_and_does_not_change_file(self):
+        block = load_block(self.root, "skills/catalog/SKILL.md#Database")
+        # First update
+        self.assertTrue(update_mark(block, version="9.5.1", day=dt.date(2026, 9, 10)))
+        file_after_first = self.file.read_text(encoding="utf-8")
+        # Second update with same version and day
+        self.assertFalse(update_mark(block, version="9.5.1", day=dt.date(2026, 9, 10)))
+        file_after_second = self.file.read_text(encoding="utf-8")
+        # File must be byte-identical
+        self.assertEqual(file_after_first, file_after_second)
