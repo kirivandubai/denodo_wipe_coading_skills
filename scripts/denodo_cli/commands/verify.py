@@ -300,8 +300,8 @@ def _skipped(step: Step, reason: str) -> dict:
 VERSION_NUMBER = re.compile(r"\d+(?:\.\d+)+")
 
 
-def _server_version(profile: Profile, vql_factory: Callable) -> str:
-    """The server's reported version, once per run.
+def _server_version(profile: Profile, vql_factory: Callable) -> str | None:
+    """The server's reported version, once per run — or ``None`` when it cannot be read.
 
     ``GET_SERVER_INFO()`` — the stored procedure a first draft of this function assumed
     — does not exist on Denodo 9.5.1; the stand answers "View 'get_server_info' not
@@ -312,19 +312,25 @@ def _server_version(profile: Profile, vql_factory: Callable) -> str:
     product name prefix, not the first bare token a differently-shaped answer might have
     suggested. Picking the dotted-number substring out with a regex, rather than trusting
     a fixed token position, survives either shape (a prefix here, a trailing build suffix
-    elsewhere) without caring which. Any failure to read it (the query itself failing, an
-    empty result, or a row with no recognizable version number) falls back to ``"9.5"``
-    — the bare major.minor the rest of the project already treats as the floor — rather
-    than raising, since a server-version hiccup should not turn into a crash of the whole
-    verify run.
+    elsewhere) without caring which.
+
+    Any failure to determine it — the query itself failing, an empty result, or a row
+    with no recognizable version number — returns ``None`` rather than a guessed
+    placeholder: a fabricated version (an earlier draft returned a bare ``"9.5"`` here)
+    is truthy, so it would sail straight through the caller's ``and version:`` guard and
+    get stamped onto every passing template step as if the run had actually confirmed
+    that version — writing an unconfirmed claim into the project's public record of what
+    has been proven. ``None`` makes that guard do the right thing: stamp nothing this
+    run. The caller is responsible for saying so in the report instead of leaving the
+    step's mark silently indistinguishable from "already up to date".
     """
     doc, code = run_statements(profile, ["SELECT version()"],
                                transport_factory=vql_factory, max_rows=1)
     rows = ((doc.get("statements") or [{}])[0]).get("rows") if code == EXIT_OK else None
     if not rows:
-        return "9.5"
+        return None
     match = VERSION_NUMBER.search(str(rows[0][0]))
-    return match.group(0) if match else "9.5"
+    return match.group(0) if match else None
 
 
 def _summary(reports: list[dict]) -> dict:
@@ -371,13 +377,20 @@ def _run_step(profile: Profile, step: Step, *, values: dict[str, str], root: Pat
     else:
         report["ok"] = True
 
-    # Only a template step that actually passed gets its mark rewritten: a fixture
-    # verifies nothing, and a failed step must keep whatever mark it already had — the
-    # run just disproved it, it did not confirm it.
-    if report["ok"] and step.kind == "template" and update_marks and version:
-        block = load_block(root, step.address or "")
-        report["mark"] = {"updated": update_mark(block, version=version, day=day),
-                          "text": format_mark(version, day)}
+    # Only a template step that actually passed is even considered for a mark rewrite: a
+    # fixture verifies nothing, and a failed step must keep whatever mark it already had
+    # — the run just disproved it, it did not confirm it. When it is considered but
+    # ``version`` is unknown (``_server_version`` returning None — see its docstring),
+    # that must not look like "the mark was already current" (``updated: False`` with a
+    # ``text`` that matches): it gets its own shape, with a ``reason`` instead of a
+    # ``text``, so the report says plainly that nothing was written and why.
+    if report["ok"] and step.kind == "template" and update_marks:
+        if version:
+            block = load_block(root, step.address or "")
+            report["mark"] = {"updated": update_mark(block, version=version, day=day),
+                              "text": format_mark(version, day)}
+        else:
+            report["mark"] = {"updated": False, "reason": "server version unknown"}
     return report
 
 

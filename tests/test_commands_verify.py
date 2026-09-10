@@ -240,6 +240,29 @@ class FakeVql:
         self.closed = True
 
 
+class FakeVqlUnknownVersion(FakeVql):
+    """Behaves exactly like ``FakeVql`` except for the version probe (``SELECT
+    version()``), which fails in a configurable way — set ``mode`` before use.
+
+    Proves ``--update-marks`` refuses to stamp a fabricated version: when the real
+    version cannot be determined, ``_server_version`` must return ``None``, not a
+    guessed placeholder, or a passing template step would get an unconfirmed version
+    written into its mark.
+    """
+    mode = "raise"  # "raise" | "empty" | "unparsable"
+
+    def execute(self, statement):
+        if "VERSION()" in statement.upper():
+            if self.mode == "raise":
+                raise RuntimeError(
+                    "ERROR:  connection reset\nDETAIL:  java.sql.SQLException: reset\n")
+            if self.mode == "empty":
+                return VqlResult(statement=statement, columns=["c"], rows=[])
+            if self.mode == "unparsable":
+                return VqlResult(statement=statement, columns=["c"], rows=[["unknown"]])
+        return super().execute(statement)
+
+
 class RunChainTest(unittest.TestCase):
     def setUp(self):
         FakeVql.instances.clear()
@@ -623,6 +646,64 @@ vql = "CONNECT DATABASE {database};"
             "#Database", "#Boom"), encoding="utf-8")
         run_chain(profile(), load_chain(self.manifest), root=self.root, vql_factory=FakeVql,
                   update_marks=True, today=dt.date(2026, 9, 10))
+        self.assertIn("2026-09-01", self.skill.read_text(encoding="utf-8"))
+        self.assertNotIn("2026-09-10", self.skill.read_text(encoding="utf-8"))
+
+    def test_a_step_whose_check_fails_keeps_its_old_mark(self):
+        # The realistic failure mode, unlike test_a_failed_step_keeps_its_old_mark above:
+        # every statement in the step's own body succeeds (CREATE DATABASE runs fine),
+        # but the check meant to confirm it does not hold. expect="no rows" here
+        # deliberately mismatches FakeVql's (non-empty) response, so the check fails
+        # without any statement ever raising — report["ok"] only goes False inside the
+        # `if step.check:` branch, which is exactly the branch the mark-writing tail has
+        # to still reach after the _run_step restructuring.
+        self.manifest.write_text("""
+[values]
+database = "denodo_skills_test"
+[[step]]
+id = "database"
+kind = "template"
+channel = "vql"
+address = "skills/catalog/SKILL.md#Database"
+substitute = { sales_analytics = "{database}" }
+check = "SELECT db_name FROM GET_DATABASES() WHERE db_name = '{database}'"
+expect = "no rows"
+""", encoding="utf-8")
+        doc, code = run_chain(profile(), load_chain(self.manifest), root=self.root, vql_factory=FakeVql,
+                              update_marks=True, today=dt.date(2026, 9, 10))
+        self.assertEqual(code, 1)
+        self.assertFalse(doc["steps"][0]["ok"])
+        self.assertIsNone(doc["steps"][0]["mark"])
+        self.assertIn("2026-09-01", self.skill.read_text(encoding="utf-8"))
+        self.assertNotIn("2026-09-10", self.skill.read_text(encoding="utf-8"))
+
+    def test_a_raising_version_query_writes_no_marks(self):
+        FakeVqlUnknownVersion.mode = "raise"
+        doc, code = run_chain(profile(), self.chain, root=self.root, vql_factory=FakeVqlUnknownVersion,
+                              update_marks=True, today=dt.date(2026, 9, 10))
+        self.assertEqual(code, 0)
+        self.assertTrue(doc["ok"])  # an unknown version must not fail the run
+        self.assertEqual(doc["steps"][0]["mark"], {"updated": False, "reason": "server version unknown"})
+        self.assertIn("2026-09-01", self.skill.read_text(encoding="utf-8"))
+        self.assertNotIn("2026-09-10", self.skill.read_text(encoding="utf-8"))
+
+    def test_an_empty_version_result_writes_no_marks(self):
+        FakeVqlUnknownVersion.mode = "empty"
+        doc, code = run_chain(profile(), self.chain, root=self.root, vql_factory=FakeVqlUnknownVersion,
+                              update_marks=True, today=dt.date(2026, 9, 10))
+        self.assertEqual(code, 0)
+        self.assertTrue(doc["ok"])
+        self.assertEqual(doc["steps"][0]["mark"], {"updated": False, "reason": "server version unknown"})
+        self.assertIn("2026-09-01", self.skill.read_text(encoding="utf-8"))
+        self.assertNotIn("2026-09-10", self.skill.read_text(encoding="utf-8"))
+
+    def test_an_unparsable_version_writes_no_marks(self):
+        FakeVqlUnknownVersion.mode = "unparsable"
+        doc, code = run_chain(profile(), self.chain, root=self.root, vql_factory=FakeVqlUnknownVersion,
+                              update_marks=True, today=dt.date(2026, 9, 10))
+        self.assertEqual(code, 0)
+        self.assertTrue(doc["ok"])
+        self.assertEqual(doc["steps"][0]["mark"], {"updated": False, "reason": "server version unknown"})
         self.assertIn("2026-09-01", self.skill.read_text(encoding="utf-8"))
         self.assertNotIn("2026-09-10", self.skill.read_text(encoding="utf-8"))
 
