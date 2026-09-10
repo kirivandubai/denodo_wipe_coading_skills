@@ -1,0 +1,156 @@
+# verification/chain.toml
+# The v1 chain, end to end. Bodies of the "template" steps come from the skills themselves
+# (address = file#section); "fixture" steps carry their own body and verify nothing — they
+# only make the next template reachable. Design spec, section 11.1.
+
+[values]
+database = "denodo_skills_test"
+csv_dir = "/opt/denodo/demos/csv"
+tag_prefix = "verify_"
+
+[cleanup]
+vql = [
+  "DROP DATABASE IF EXISTS {database} CASCADE",
+  "DROP TAG IF EXISTS {tag_prefix}pii",
+  "DROP TAG IF EXISTS {tag_prefix}finance_sensitive",
+]
+
+[[step]]
+id = "database"
+kind = "template"
+channel = "vql"
+address = "skills/catalog/SKILL.md#Database"
+substitute = { sales_analytics = "{database}" }
+check = "SELECT db_name FROM GET_DATABASES() WHERE db_name = '{database}'"
+
+[[step]]
+id = "folders"
+kind = "template"
+channel = "vql"
+address = "skills/catalog/SKILL.md#Folders"
+substitute = { sales_analytics = "{database}" }
+check = "SELECT name FROM GET_ELEMENTS() WHERE input_database_name = '{database}' AND type = 'folder'"
+
+[[step]]
+id = "df-source"
+kind = "template"
+channel = "vql"
+address = "skills/datasources/SKILL.md#Delimited file (CSV) — DF"
+substitute = { sales_analytics = "{database}" }
+# no check on rows: the file this template names does not exist on the stand, and that is
+# the point — the parser accepts the DDL, only SELECT would fail (spec 11.1)
+check = "SELECT name FROM GET_ELEMENTS() WHERE input_database_name = '{database}' AND name = 'bv_crm_customers'"
+
+[[step]]
+id = "fixture-base-views"
+kind = "fixture"
+channel = "vql"
+check = "SELECT COUNT(*) AS n FROM bv_income_band"
+vql = """
+CONNECT DATABASE {database};
+
+CREATE OR REPLACE DATASOURCE DF ds_demo_csv
+    FOLDER = '/01 - connectivity'
+    IGNOREMATCHINGERRORS = FALSE
+    ROUTE LOCAL 'LocalConnection' '{csv_dir}/income_band.csv'
+    CHARSET = 'UTF-8'
+    COLUMNDELIMITER = ','
+    HEADER = TRUE;
+
+CREATE OR REPLACE WRAPPER DF wr_income_band
+    FOLDER = '/01 - connectivity'
+    DATASOURCENAME = ds_demo_csv
+    OUTPUTSCHEMA (
+        ib_income_band_sk = '"IB_INCOME_BAND_SK"',
+        ib_lower_bound = '"IB_LOWER_BOUND"',
+        ib_upper_bound = '"IB_UPPER_BOUND"'
+    );
+
+CREATE OR REPLACE TABLE bv_income_band I18N us_pst (
+        ib_income_band_sk:int, ib_lower_bound:int, ib_upper_bound:int
+    )
+    FOLDER = '/01 - connectivity'
+    CACHE OFF
+    TIMETOLIVEINCACHE DEFAULT
+    ADD SEARCHMETHOD wr_income_band (
+        OUTPUTLIST ( ib_income_band_sk, ib_lower_bound, ib_upper_bound )
+        WRAPPER (df wr_income_band)
+    );
+
+CREATE OR REPLACE DATASOURCE DF ds_demo_households
+    FOLDER = '/01 - connectivity'
+    IGNOREMATCHINGERRORS = FALSE
+    ROUTE LOCAL 'LocalConnection' '{csv_dir}/household_demographics.csv'
+    CHARSET = 'UTF-8'
+    COLUMNDELIMITER = ','
+    HEADER = TRUE;
+
+CREATE OR REPLACE WRAPPER DF wr_household_demographics
+    FOLDER = '/01 - connectivity'
+    DATASOURCENAME = ds_demo_households
+    OUTPUTSCHEMA (
+        hd_demo_sk = '"HD_DEMO_SK"',
+        hd_income_band_sk = '"HD_INCOME_BAND_SK"',
+        hd_buy_potential = '"HD_BUY_POTENTIAL"',
+        hd_dep_count = '"HD_DEP_COUNT"',
+        hd_vehicle_count = '"HD_VEHICLE_COUNT"'
+    );
+
+CREATE OR REPLACE TABLE bv_household_demographics I18N us_pst (
+        hd_demo_sk:int, hd_income_band_sk:int, hd_buy_potential:text,
+        hd_dep_count:int, hd_vehicle_count:int
+    )
+    FOLDER = '/01 - connectivity'
+    CACHE OFF
+    TIMETOLIVEINCACHE DEFAULT
+    ADD SEARCHMETHOD wr_household_demographics (
+        OUTPUTLIST ( hd_demo_sk, hd_income_band_sk, hd_buy_potential, hd_dep_count, hd_vehicle_count )
+        WRAPPER (df wr_household_demographics)
+    );
+"""
+
+[[step]]
+id = "derived-views"
+kind = "template"
+channel = "vql"
+address = "skills/views/SKILL.md#Derived view"
+substitute = { sales_analytics = "{database}" }
+check = "SELECT COUNT(*) AS n FROM household_income_by_band"
+
+[[step]]
+id = "interface-view"
+kind = "template"
+channel = "vql"
+address = "skills/views/SKILL.md#Interface view — a contract you can re-implement"
+# Unlike the other template steps, this block has no CONNECT DATABASE of its own — an
+# unqualified SET IMPLEMENTATION relies on the session already being connected (real usage:
+# --database on the command, per skills/execute/SKILL.md). Each chain step is its own fresh
+# session (see run_chain's docstring), so the fix belongs here, in substitution, not in the
+# skill: prepend a CONNECT DATABASE ahead of the statement that is already there verbatim.
+substitute = { "CREATE OR REPLACE INTERFACE VIEW household_income (" = "CONNECT DATABASE {database};\n\nCREATE OR REPLACE INTERFACE VIEW household_income (" }
+check = "SELECT household_sk FROM household_income LIMIT 10"
+
+[[step]]
+id = "association"
+kind = "template"
+channel = "vql"
+address = "skills/views/SKILL.md#Association — the relationship, recorded"
+# Same reason as interface-view above: this block has no CONNECT DATABASE either.
+substitute = { "CREATE OR REPLACE ASSOCIATION a_income_band_household REFERENTIAL CONSTRAINT" = "CONNECT DATABASE {database};\n\nCREATE OR REPLACE ASSOCIATION a_income_band_household REFERENTIAL CONSTRAINT" }
+check = "SELECT association_name FROM GET_ASSOCIATIONS() WHERE input_database_name = '{database}' AND input_type = 'views' AND valid = true"
+
+[[step]]
+id = "tags"
+kind = "template"
+channel = "vql"
+address = "skills/catalog/SKILL.md#Tags, with their assignments"
+substitute = { sales_analytics = "{database}", "CREATE OR REPLACE TAG pii" = "CREATE OR REPLACE TAG {tag_prefix}pii", "CREATE OR REPLACE TAG finance_sensitive" = "CREATE OR REPLACE TAG {tag_prefix}finance_sensitive", "{database}.customer.email" = "{database}.household_income.buy_potential", "{database}.customer.phone" = "{database}.household_income.household_sk", "{database}.order_summary" = "{database}.household_income_by_band" }
+check = "SELECT tag_name FROM GET_VIEW_TAGS() WHERE input_database_name = '{database}'"
+
+[[step]]
+id = "nothing-invalid"
+kind = "fixture"
+channel = "vql"
+vql = "CONNECT DATABASE {database};"
+check = "SELECT name FROM GET_VIEWS() WHERE input_database_name = '{database}' AND input_retrieve_invalid_views_only = true"
+expect = "no rows"
