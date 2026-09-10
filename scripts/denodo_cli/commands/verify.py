@@ -9,10 +9,19 @@ send the run into somebody else's database.
 
 from __future__ import annotations
 
+import datetime as dt
 import re
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Callable
+
+from . import EXIT_EXECUTION, EXIT_OK
+from .vql import run_statements
+from ..output import envelope
+from ..profiles import Profile
+from ..templates import TemplateError, load_block
+from ..vql_split import split_statements
 
 KINDS = ("template", "fixture")
 CHANNELS = ("vql", "http")
@@ -126,3 +135,117 @@ def render(text: str, substitute: dict[str, str], values: dict[str, str]) -> str
         if name not in values:
             raise ChainError(f"substitution refers to unknown value {{{name}}}")
     return PLACEHOLDER.sub(lambda m: values.get(m.group(1), m.group(0)), out)
+
+
+MAX_ROWS = 10  # a check only proves rows exist or don't; it never needs to see them
+
+
+def run_chain(
+    profile: Profile,
+    chain: Chain,
+    *,
+    root: Path,
+    vql_factory: Callable,
+    rest_factory: Callable | None = None,
+    database: str | None = None,
+    with_marketplace: bool = False,
+    keep: bool = False,
+    update_marks: bool = False,
+    today: dt.date | None = None,
+) -> tuple[dict, int]:
+    """Run every vql-channel step of ``chain`` in order and report what happened.
+
+    Each step runs in its own VQL session — ``_run_step`` calls ``run_statements``
+    fresh every time — which works because every template but the first opens with its
+    own ``CONNECT DATABASE``, rewritten by substitution to the test database; nothing
+    is lost by not sharing a session across steps. The chain stops at the first failed
+    step; every later step is reported ``skipped`` with a reason instead of attempted,
+    and a skipped step does not by itself make the run fail.
+
+    ``rest_factory``, ``keep`` and ``update_marks`` are accepted so the call signature
+    already matches what the http channel, cleanup and mark-rewriting (later tasks)
+    will need; none of them does anything yet — a marketplace step is simply skipped
+    unless ``with_marketplace`` is set.
+    """
+    values = dict(chain.values)
+    if database:
+        values["database"] = database
+    reports: list[dict] = []
+    stop = False
+    for step in chain.steps:
+        if stop:
+            reports.append(_skipped(step, "an earlier step failed"))
+            continue
+        if step.marketplace and not with_marketplace:
+            reports.append(_skipped(step, "marketplace steps need --with-marketplace"))
+            continue
+        report = _run_step(profile, step, values=values, root=root, vql_factory=vql_factory)
+        reports.append(report)
+        if not report["ok"]:
+            stop = True
+    ok = all(r["ok"] for r in reports if not r["skipped"])
+    doc = envelope(ok, profile, "verify", database=values.get("database"), steps=reports,
+                   summary=_summary(reports))
+    return doc, EXIT_OK if ok else EXIT_EXECUTION
+
+
+def _skipped(step: Step, reason: str) -> dict:
+    return {"id": step.id, "kind": step.kind, "channel": step.channel, "source": step.address,
+            "ok": True, "skipped": True, "reason": reason, "error": None, "check": None}
+
+
+def _summary(reports: list[dict]) -> dict:
+    return {
+        "verified": sum(1 for r in reports if r["kind"] == "template" and r["ok"] and not r["skipped"]),
+        "failed": sum(1 for r in reports if not r["ok"]),
+        "skipped": sum(1 for r in reports if r["skipped"]),
+    }
+
+
+def _run_step(profile: Profile, step: Step, *, values: dict[str, str], root: Path, vql_factory: Callable) -> dict:
+    report = {"id": step.id, "kind": step.kind, "channel": step.channel, "source": step.address,
+              "ok": False, "skipped": False, "error": None, "check": None}
+    try:
+        body = _body(step, root=root, values=values)
+    except (TemplateError, ChainError) as exc:
+        report["error"] = {"kind": "template", "message": str(exc)}
+        return report
+
+    statements = split_statements(body)
+    doc, code = run_statements(profile, statements, transport_factory=vql_factory, max_rows=MAX_ROWS)
+    report["statements"] = doc.get("statements")
+    if code != EXIT_OK:
+        failed = (doc.get("statements") or [{}])[doc.get("failed_at") or 0]
+        report["error"] = failed.get("error") or doc.get("error")
+        return report
+    if step.check:
+        # Its own call, against the test database by name: the check must not depend on
+        # a CONNECT the step body happened to issue, because nothing requires a step's
+        # last statement to leave the session pointed at that database.
+        report["check"] = _run_check(profile, step, values=values, vql_factory=vql_factory)
+        report["ok"] = report["check"]["ok"]
+        if not report["ok"]:
+            report["error"] = report["check"].get("error") or {
+                "kind": "check", "message": f"check expected {step.expect}"}
+        return report
+    report["ok"] = True
+    return report
+
+
+def _body(step: Step, *, root: Path, values: dict[str, str]) -> str:
+    if step.kind == "fixture":
+        return render(step.vql or "", step.substitute, values)
+    block = load_block(root, step.address or "")
+    return render(block.body, step.substitute, values)
+
+
+def _run_check(profile: Profile, step: Step, *, values: dict[str, str], vql_factory: Callable) -> dict:
+    statement = render(step.check or "", {}, values)
+    doc, code = run_statements(profile, [statement], transport_factory=vql_factory,
+                               max_rows=MAX_ROWS, database=values.get("database"))
+    entry = (doc.get("statements") or [{}])[0]
+    if code != EXIT_OK:
+        return {"ok": False, "statement": statement, "row_count": None, "error": entry.get("error")}
+    count = entry.get("row_count") or 0
+    ok = count > 0 if step.expect == "rows" else count == 0
+    return {"ok": ok, "statement": statement, "row_count": count, "expect": step.expect, "error": None}

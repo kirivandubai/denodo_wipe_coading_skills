@@ -2,7 +2,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from denodo_cli.commands.verify import ChainError, load_chain, render
+from denodo_cli.commands.verify import ChainError, load_chain, render, run_chain
+from denodo_cli.profiles import Profile
+from denodo_cli.transports.base import VqlResult
 
 MANIFEST = """
 [values]
@@ -162,3 +164,181 @@ class RenderTest(unittest.TestCase):
     def test_a_placeholder_with_no_value_is_left_alone(self):
         out = render("SELECT '{unknown}'", {}, {"database": "d"})
         self.assertEqual(out, "SELECT '{unknown}'")
+
+
+SKILL_TEXT = """### Database
+
+```sql
+-- verified: 9.5.1 (стенд, 2026-09-01)
+CREATE OR REPLACE DATABASE sales_analytics 'x';
+```
+
+### Boom
+
+```sql
+-- verified: 9.5.1 (стенд, 2026-09-01)
+CONNECT DATABASE sales_analytics;
+BOOM;
+```
+"""
+
+
+def profile(**over):
+    base = dict(name="lab", host="h", port=29996, database="admin", user="u", password="p",
+                production=False, transport="vql_psycopg2", marketplace_url=None, marketplace_server_id=None)
+    base.update(over)
+    return Profile(**base)
+
+
+class FakeVql:
+    instances = []
+
+    def __init__(self, profile, database=None):
+        self.database, self.executed, self.closed = database, [], False
+        FakeVql.instances.append(self)
+
+    def execute(self, statement):
+        self.executed.append(statement)
+        if "BOOM" in statement:
+            raise RuntimeError("ERROR:  boom\nDETAIL:  java.sql.SQLException: Syntax error near 'BOOM'\n")
+        if statement.upper().startswith(("SELECT", "DESC")):
+            rows = [] if "GET_VIEWS" in statement else [["denodo_skills_test"]]
+            return VqlResult(statement=statement, columns=["c"], rows=rows)
+        return VqlResult(statement=statement, columns=None, rows=None)
+
+    def close(self):
+        self.closed = True
+
+
+class RunChainTest(unittest.TestCase):
+    def setUp(self):
+        FakeVql.instances.clear()
+        self.root = Path(tempfile.mkdtemp())
+        (self.root / "skills" / "catalog").mkdir(parents=True)
+        (self.root / "skills" / "catalog" / "SKILL.md").write_text(SKILL_TEXT, encoding="utf-8")
+        self.manifest = self.root / "chain.toml"
+
+    def chain(self, text):
+        self.manifest.write_text(text, encoding="utf-8")
+        return load_chain(self.manifest)
+
+    def test_template_step_runs_the_block_with_substitutions_applied(self):
+        chain = self.chain("""
+[values]
+database = "denodo_skills_test"
+[[step]]
+id = "database"
+kind = "template"
+channel = "vql"
+address = "skills/catalog/SKILL.md#Database"
+substitute = { sales_analytics = "{database}" }
+""")
+        doc, code = run_chain(profile(), chain, root=self.root, vql_factory=FakeVql)
+        self.assertEqual(code, 0)
+        self.assertTrue(doc["ok"])
+        self.assertEqual(doc["command"], "verify")
+        self.assertEqual(doc["steps"][0]["id"], "database")
+        self.assertEqual(doc["steps"][0]["source"], "skills/catalog/SKILL.md#Database")
+        executed = " ".join(FakeVql.instances[0].executed)
+        self.assertIn("denodo_skills_test", executed)
+        self.assertNotIn("sales_analytics", executed)
+
+    def test_check_is_run_against_the_test_database_and_must_return_rows(self):
+        chain = self.chain("""
+[values]
+database = "denodo_skills_test"
+[[step]]
+id = "database"
+kind = "template"
+channel = "vql"
+address = "skills/catalog/SKILL.md#Database"
+substitute = { sales_analytics = "{database}" }
+check = "SELECT db_name FROM GET_DATABASES() WHERE db_name = '{database}'"
+""")
+        doc, _ = run_chain(profile(), chain, root=self.root, vql_factory=FakeVql)
+        self.assertTrue(doc["steps"][0]["check"]["ok"])
+        self.assertEqual(doc["steps"][0]["check"]["row_count"], 1)
+
+    def test_expect_no_rows_passes_on_an_empty_result(self):
+        chain = self.chain("""
+[values]
+database = "denodo_skills_test"
+[[step]]
+id = "nothing-invalid"
+kind = "fixture"
+channel = "vql"
+vql = "CONNECT DATABASE {database};"
+check = "SELECT name FROM GET_VIEWS() WHERE input_database_name = '{database}'"
+expect = "no rows"
+""")
+        doc, code = run_chain(profile(), chain, root=self.root, vql_factory=FakeVql)
+        self.assertEqual(code, 0, doc)
+        self.assertTrue(doc["steps"][0]["check"]["ok"])
+
+    def test_a_failing_statement_stops_the_chain_and_marks_the_rest_skipped(self):
+        chain = self.chain("""
+[values]
+database = "denodo_skills_test"
+[[step]]
+id = "boom"
+kind = "template"
+channel = "vql"
+address = "skills/catalog/SKILL.md#Boom"
+substitute = { sales_analytics = "{database}" }
+[[step]]
+id = "after"
+kind = "fixture"
+channel = "vql"
+vql = "SELECT 1 FROM DUAL()"
+""")
+        doc, code = run_chain(profile(), chain, root=self.root, vql_factory=FakeVql)
+        self.assertEqual(code, 1)
+        self.assertFalse(doc["ok"])
+        self.assertFalse(doc["steps"][0]["ok"])
+        self.assertIn("Syntax error", doc["steps"][0]["error"]["message"])
+        self.assertTrue(doc["steps"][1]["skipped"])
+        self.assertEqual(doc["summary"], {"verified": 0, "failed": 1, "skipped": 1})
+
+    def test_fixture_steps_do_not_count_as_verified(self):
+        chain = self.chain("""
+[values]
+database = "denodo_skills_test"
+[[step]]
+id = "fix"
+kind = "fixture"
+channel = "vql"
+vql = "CONNECT DATABASE {database};"
+""")
+        doc, _ = run_chain(profile(), chain, root=self.root, vql_factory=FakeVql)
+        self.assertEqual(doc["summary"]["verified"], 0)
+        self.assertEqual(doc["steps"][0]["kind"], "fixture")
+
+    def test_marketplace_steps_are_skipped_unless_asked_for(self):
+        chain = self.chain("""
+[values]
+database = "denodo_skills_test"
+[[step]]
+id = "mp"
+kind = "fixture"
+channel = "vql"
+vql = "SELECT 1 FROM DUAL()"
+marketplace = true
+""")
+        doc, code = run_chain(profile(), chain, root=self.root, vql_factory=FakeVql)
+        self.assertEqual(code, 0)
+        self.assertTrue(doc["steps"][0]["skipped"])
+        self.assertEqual(doc["steps"][0]["reason"], "marketplace steps need --with-marketplace")
+
+    def test_a_broken_address_is_a_failed_step_not_a_crash(self):
+        chain = self.chain("""
+[values]
+database = "denodo_skills_test"
+[[step]]
+id = "gone"
+kind = "template"
+channel = "vql"
+address = "skills/catalog/SKILL.md#No Such Section"
+""")
+        doc, code = run_chain(profile(), chain, root=self.root, vql_factory=FakeVql)
+        self.assertEqual(code, 1)
+        self.assertIn("No Such Section", doc["steps"][0]["error"]["message"])
