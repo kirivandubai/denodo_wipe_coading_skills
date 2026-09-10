@@ -1,7 +1,9 @@
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
+from denodo_cli.commands import verify as verify_module
 from denodo_cli.commands.verify import ChainError, load_chain, render, run_chain
 from denodo_cli.profiles import Profile
 from denodo_cli.transports.base import VqlResult
@@ -426,6 +428,83 @@ vql = "CONNECT DATABASE {database};"
         self.assertTrue(doc["cleanup"]["ran"])
         kinds = [s["ok"] for s in doc["cleanup"]["statements"]]
         self.assertEqual(kinds, [True, False, True])
+
+
+class CleanupOnUnexpectedExceptionTest(unittest.TestCase):
+    """Nothing in today's step loop actually raises past ``_run_step`` — it catches
+    ``TemplateError``/``ChainError``, and ``run_statements`` catches broadly around both
+    the transport factory and ``execute()``. But that is an accident of what the vql
+    channel happens to do today, not a structural guarantee: a later channel (http) could
+    add a code path that raises something neither of those catches, and without a
+    ``try``/``finally`` around the loop, that exception would skip cleanup entirely and
+    leave objects on a shared stand. Simulate that by making ``_run_step`` itself raise.
+    """
+
+    def setUp(self):
+        FakeVql.instances.clear()
+        self.root = Path(tempfile.mkdtemp())
+        self.manifest = self.root / "chain.toml"
+        self.manifest.write_text("""
+[values]
+database = "denodo_skills_test"
+
+[cleanup]
+vql = [
+  "DROP DATABASE IF EXISTS {database} CASCADE",
+]
+
+[[step]]
+id = "fix"
+kind = "fixture"
+channel = "vql"
+vql = "CONNECT DATABASE {database};"
+""", encoding="utf-8")
+        self.chain = load_chain(self.manifest)
+
+    def test_cleanup_still_runs_and_the_exception_still_surfaces(self):
+        with mock.patch.object(verify_module, "_run_step", side_effect=RuntimeError("kaboom")):
+            with self.assertRaises(RuntimeError):
+                run_chain(profile(), self.chain, root=self.root, vql_factory=FakeVql)
+        dropped = " ".join(FakeVql.instances[-1].executed)
+        self.assertIn("DROP DATABASE IF EXISTS denodo_skills_test CASCADE", dropped)
+
+
+class CleanupPlaceholderTest(unittest.TestCase):
+    def setUp(self):
+        FakeVql.instances.clear()
+        self.root = Path(tempfile.mkdtemp())
+        self.manifest = self.root / "chain.toml"
+        self.manifest.write_text("""
+[values]
+database = "denodo_skills_test"
+
+[cleanup]
+vql = [
+  "DROP DATABASE IF EXISTS {database} CASCADE",
+  "DROP TAG IF EXISTS {tag_prefix}pii",
+]
+
+[[step]]
+id = "fix"
+kind = "fixture"
+channel = "vql"
+vql = "CONNECT DATABASE {database};"
+""", encoding="utf-8")
+        self.chain = load_chain(self.manifest)
+
+    def test_resolved_placeholders_run_the_chain_normally(self):
+        doc, code = run_chain(profile(), self.chain, root=self.root, vql_factory=FakeVql,
+                              values_override={"tag_prefix": "verify_"})
+        self.assertEqual(code, 0)
+        self.assertTrue(doc["cleanup"]["ran"])
+
+    def test_an_unresolved_cleanup_placeholder_fails_before_touching_the_network(self):
+        # No tag_prefix supplied: {tag_prefix} in the cleanup section cannot resolve.
+        with self.assertRaises(ChainError) as ctx:
+            run_chain(profile(), self.chain, root=self.root, vql_factory=FakeVql)
+        self.assertIn("tag_prefix", str(ctx.exception))
+        self.assertIn("DROP TAG IF EXISTS {tag_prefix}pii", str(ctx.exception))
+        self.assertEqual(FakeVql.instances, [])  # failed before any session was opened
 
 
 class RunCheckConnectionErrorTest(unittest.TestCase):

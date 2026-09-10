@@ -165,15 +165,25 @@ def run_chain(
     step; every later step is reported ``skipped`` with a reason instead of attempted,
     and a skipped step does not by itself make the run fail.
 
-    Cleanup (``_cleanup``) runs after the chain regardless of how it ended — success or
-    the first failed step — unless ``keep`` is set: a run that did not clean up must say
-    so in the report rather than leaving objects on the stand silently. A cleanup
-    statement that fails makes the whole run fail, even if every step passed, because an
-    object left behind on a shared stand is what the next run trips over.
+    Cleanup (``_cleanup``) runs after the chain regardless of how it ended — success, the
+    first failed step, or even an exception escaping the step loop — unless ``keep`` is
+    set: a run that did not clean up must say so in the report rather than leaving
+    objects on the stand silently. The step loop is wrapped in ``try``/``finally`` so
+    that guarantee is structural, not an accident of what today's vql channel happens to
+    catch: an exception the loop does not otherwise handle still triggers cleanup, and is
+    then left to propagate — a crash must still be a crash, just not a leaking one. A
+    cleanup statement that fails makes the whole run fail, even if every step passed,
+    because an object left behind on a shared stand is what the next run trips over.
 
     ``values_override`` is merged into the run's values after ``database``, so a caller
     (a test, or later the CLI) can supply values the manifest itself does not define —
-    e.g. a ``tag_prefix`` used only by ``[cleanup]``.
+    e.g. a ``tag_prefix`` used only by ``[cleanup]``. Before anything touches the network,
+    every ``{placeholder}`` in ``chain.cleanup`` is checked against the merged values
+    (``_check_cleanup_placeholders``) and raises ``ChainError`` if one is missing: a
+    cleanup statement's placeholders are not covered by ``render``'s own unknown-value
+    check (that check only inspects the ``substitute`` mapping, and cleanup renders with
+    none), so an unresolved placeholder would otherwise reach the live server verbatim
+    and fail there with a confusing remote syntax error instead of a local, immediate one.
 
     ``rest_factory`` and ``update_marks`` are accepted so the call signature already
     matches what the http channel and mark-rewriting (later tasks) will need; neither
@@ -185,25 +195,50 @@ def run_chain(
         values["database"] = database
     if values_override:
         values.update(values_override)
+    _check_cleanup_placeholders(chain, values)
     reports: list[dict] = []
     stop = False
-    for step in chain.steps:
-        if stop:
-            reports.append(_skipped(step, "an earlier step failed"))
-            continue
-        if step.marketplace and not with_marketplace:
-            reports.append(_skipped(step, "marketplace steps need --with-marketplace"))
-            continue
-        report = _run_step(profile, step, values=values, root=root, vql_factory=vql_factory)
-        reports.append(report)
-        if not report["ok"]:
-            stop = True
+    try:
+        for step in chain.steps:
+            if stop:
+                reports.append(_skipped(step, "an earlier step failed"))
+                continue
+            if step.marketplace and not with_marketplace:
+                reports.append(_skipped(step, "marketplace steps need --with-marketplace"))
+                continue
+            report = _run_step(profile, step, values=values, root=root, vql_factory=vql_factory)
+            reports.append(report)
+            if not report["ok"]:
+                stop = True
+    finally:
+        # Runs on the way out no matter how the loop ended — normal completion, an
+        # earlier `stop`, or an exception propagating through — so an exception raised
+        # here (see the docstring) still leaves cleanup done before it surfaces.
+        cleanup_report = _cleanup(profile, chain, values=values, vql_factory=vql_factory, keep=keep)
     ok = all(r["ok"] for r in reports if not r["skipped"])
-    cleanup_report = _cleanup(profile, chain, values=values, vql_factory=vql_factory, keep=keep)
     ok = ok and (cleanup_report["ran"] is False or all(s["ok"] for s in cleanup_report["statements"]))
     doc = envelope(ok, profile, "verify", database=values.get("database"), steps=reports,
                    summary=_summary(reports), cleanup=cleanup_report)
     return doc, EXIT_OK if ok else EXIT_EXECUTION
+
+
+def _check_cleanup_placeholders(chain: Chain, values: dict[str, str]) -> None:
+    """Fail fast, before any network call, on an unresolved cleanup placeholder.
+
+    ``_cleanup`` renders each statement with ``render(s, {}, values)`` — an empty
+    ``substitute`` — and ``render``'s own unknown-value check only inspects
+    ``substitute.values()``, so it never sees a ``{name}`` occurring directly in the
+    cleanup text; left alone, ``render`` would pass such a placeholder through verbatim.
+    Checking here, ahead of the whole run, turns that into a local ``ChainError`` naming
+    the missing value and the statement, instead of a remote syntax error discovered only
+    after the run has already touched the stand.
+    """
+    for statement in chain.cleanup:
+        for match in PLACEHOLDER.finditer(statement):
+            name = match.group(1)
+            if name not in values:
+                raise ChainError(
+                    f"cleanup statement {statement!r} refers to unknown value {{{name}}}")
 
 
 def _cleanup(profile: Profile, chain: Chain, *, values: dict[str, str], vql_factory: Callable,
