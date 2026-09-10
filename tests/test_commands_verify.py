@@ -369,6 +369,65 @@ class FakeVqlSecondSessionFails:
         pass
 
 
+class CleanupTest(unittest.TestCase):
+    def setUp(self):
+        FakeVql.instances.clear()
+        self.root = Path(tempfile.mkdtemp())
+        self.manifest = self.root / "chain.toml"
+        self.manifest.write_text("""
+[values]
+database = "denodo_skills_test"
+
+[cleanup]
+vql = [
+  "DROP DATABASE IF EXISTS {database} CASCADE",
+  "DROP TAG IF EXISTS {tag_prefix}pii",
+]
+
+[[step]]
+id = "fix"
+kind = "fixture"
+channel = "vql"
+vql = "CONNECT DATABASE {database};"
+""", encoding="utf-8")
+        self.chain = load_chain(self.manifest)
+
+    def test_cleanup_runs_after_a_successful_chain(self):
+        doc, code = run_chain(profile(), self.chain, root=self.root, vql_factory=FakeVql,
+                              values_override={"tag_prefix": "verify_"})
+        self.assertEqual(code, 0)
+        self.assertTrue(doc["cleanup"]["ran"])
+        dropped = " ".join(FakeVql.instances[-1].executed)
+        self.assertIn("DROP DATABASE IF EXISTS denodo_skills_test CASCADE", dropped)
+        self.assertIn("DROP TAG IF EXISTS verify_pii", dropped)
+
+    def test_cleanup_runs_after_a_failed_chain_too(self):
+        self.manifest.write_text(self.manifest.read_text(encoding="utf-8").replace(
+            'vql = "CONNECT DATABASE {database};"', 'vql = "BOOM"'), encoding="utf-8")
+        doc, code = run_chain(profile(), load_chain(self.manifest), root=self.root, vql_factory=FakeVql,
+                              values_override={"tag_prefix": "verify_"})
+        self.assertEqual(code, 1)
+        self.assertTrue(doc["cleanup"]["ran"])
+
+    def test_keep_skips_cleanup_and_says_so(self):
+        doc, _ = run_chain(profile(), self.chain, root=self.root, vql_factory=FakeVql, keep=True,
+                           values_override={"tag_prefix": "verify_"})
+        self.assertFalse(doc["cleanup"]["ran"])
+        self.assertIn("--keep", doc["cleanup"]["reason"])
+        self.assertNotIn("DROP DATABASE", " ".join(FakeVql.instances[-1].executed))
+
+    def test_a_failing_cleanup_statement_is_reported_and_the_rest_still_run(self):
+        self.manifest.write_text(self.manifest.read_text(encoding="utf-8").replace(
+            '"DROP TAG IF EXISTS {tag_prefix}pii",', '"DROP TAG BOOM", "DROP TAG IF EXISTS x",'),
+            encoding="utf-8")
+        doc, code = run_chain(profile(), load_chain(self.manifest), root=self.root, vql_factory=FakeVql,
+                              values_override={"tag_prefix": "verify_"})
+        self.assertEqual(code, 1)                       # уборка не убралась — это провал прогона
+        self.assertTrue(doc["cleanup"]["ran"])
+        kinds = [s["ok"] for s in doc["cleanup"]["statements"]]
+        self.assertEqual(kinds, [True, False, True])
+
+
 class RunCheckConnectionErrorTest(unittest.TestCase):
     def setUp(self):
         FakeVqlSecondSessionFails.calls = 0

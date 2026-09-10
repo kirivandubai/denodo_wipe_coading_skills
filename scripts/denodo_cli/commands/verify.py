@@ -52,6 +52,7 @@ class Step:
 class Chain:
     values: dict[str, str]
     steps: list[Step]
+    cleanup: list[str] = field(default_factory=list)
 
 
 def load_chain(path: Path) -> Chain:
@@ -70,7 +71,8 @@ def load_chain(path: Path) -> Chain:
         steps.append(step)
     if not steps:
         raise ChainError(f"chain manifest {path} has no steps")
-    return Chain(values=values, steps=steps)
+    cleanup = [str(s) for s in (document.get("cleanup") or {}).get("vql", [])]
+    return Chain(values=values, steps=steps, cleanup=cleanup)
 
 
 def _step(raw: dict) -> Step:
@@ -152,6 +154,7 @@ def run_chain(
     keep: bool = False,
     update_marks: bool = False,
     today: dt.date | None = None,
+    values_override: dict[str, str] | None = None,
 ) -> tuple[dict, int]:
     """Run every vql-channel step of ``chain`` in order and report what happened.
 
@@ -162,14 +165,26 @@ def run_chain(
     step; every later step is reported ``skipped`` with a reason instead of attempted,
     and a skipped step does not by itself make the run fail.
 
-    ``rest_factory``, ``keep`` and ``update_marks`` are accepted so the call signature
-    already matches what the http channel, cleanup and mark-rewriting (later tasks)
-    will need; none of them does anything yet — a marketplace step is simply skipped
-    unless ``with_marketplace`` is set.
+    Cleanup (``_cleanup``) runs after the chain regardless of how it ended — success or
+    the first failed step — unless ``keep`` is set: a run that did not clean up must say
+    so in the report rather than leaving objects on the stand silently. A cleanup
+    statement that fails makes the whole run fail, even if every step passed, because an
+    object left behind on a shared stand is what the next run trips over.
+
+    ``values_override`` is merged into the run's values after ``database``, so a caller
+    (a test, or later the CLI) can supply values the manifest itself does not define —
+    e.g. a ``tag_prefix`` used only by ``[cleanup]``.
+
+    ``rest_factory`` and ``update_marks`` are accepted so the call signature already
+    matches what the http channel and mark-rewriting (later tasks) will need; neither
+    does anything yet — a marketplace step is simply skipped unless ``with_marketplace``
+    is set.
     """
     values = dict(chain.values)
     if database:
         values["database"] = database
+    if values_override:
+        values.update(values_override)
     reports: list[dict] = []
     stop = False
     for step in chain.steps:
@@ -184,9 +199,38 @@ def run_chain(
         if not report["ok"]:
             stop = True
     ok = all(r["ok"] for r in reports if not r["skipped"])
+    cleanup_report = _cleanup(profile, chain, values=values, vql_factory=vql_factory, keep=keep)
+    ok = ok and (cleanup_report["ran"] is False or all(s["ok"] for s in cleanup_report["statements"]))
     doc = envelope(ok, profile, "verify", database=values.get("database"), steps=reports,
-                   summary=_summary(reports))
+                   summary=_summary(reports), cleanup=cleanup_report)
     return doc, EXIT_OK if ok else EXIT_EXECUTION
+
+
+def _cleanup(profile: Profile, chain: Chain, *, values: dict[str, str], vql_factory: Callable,
+             keep: bool) -> dict:
+    """Always runs, including after a failure: a run that did not clean up must say so.
+
+    Cleanup statements are destructive by definition (``DROP ...``), so they run with
+    ``allow_destructive=True`` — a production profile must not be able to refuse a run's
+    own cleanup — and ``continue_on_error=True``, so one failed drop does not hide the
+    drops that were still meant to happen after it.
+
+    Statement order is exactly the manifest's order — never sorted, deduplicated, or
+    reordered. It is load-bearing: e.g. ``DROP TAG`` is refused while the tag is still
+    assigned to a view, and only succeeds after an earlier ``DROP DATABASE ... CASCADE``
+    has removed the views carrying that assignment.
+    """
+    if keep:
+        return {"ran": False, "reason": "--keep was given; objects were left on the stand",
+                "statements": []}
+    if not chain.cleanup:
+        return {"ran": False, "reason": "the manifest has no cleanup section", "statements": []}
+    statements = [render(s, {}, values) for s in chain.cleanup]
+    doc, _ = run_statements(profile, statements, transport_factory=vql_factory, max_rows=MAX_ROWS,
+                            allow_destructive=True, continue_on_error=True)
+    return {"ran": True, "reason": None,
+            "statements": [{"statement": s["statement"], "ok": s["ok"], "error": s["error"]}
+                           for s in doc.get("statements") or []]}
 
 
 def _skipped(step: Step, reason: str) -> dict:
