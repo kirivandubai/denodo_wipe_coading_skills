@@ -66,15 +66,18 @@ without one lands at the root of the database.
 - **One view per grain.** The join lives in `/02 - integration` at the row grain of the
   entity; the aggregate is a second view in `/03 - business entities`. Stacking `GROUP BY`
   on top of the join in a single statement works, but the join is then not reusable and
-  the mart cannot be checked against it.
+  the mart cannot be checked against it. "The mart has to be one object" is about what the
+  consumer reads, and it still is: the intermediate view is yours, not theirs.
 - **Naming.** In `/02 - integration` the prefix is `iv_` and the name says what the view
   does; in `/03 - business entities` there is no prefix and the name says what the
   consumer gets (`household_income_by_band`). `iv_` means *integration view*, not
   *interface view* — the interface view is the one below, and it is the one that gets the
   bare business name.
-- `AVG` over an integer already returns a double — *verified: 9.5.1 (стенд, 2026-09-10)*.
-  Casting it first is not a fix for anything and `AVG(TO_DECIMAL(x))` under a `GROUP BY`
-  is rejected outright (see Common mistakes).
+- **Types an aggregate produces**, which you need the moment an interface view is declared
+  over the mart: `COUNT` gives `long` (`DESC` prints it as `BIGINT`), `AVG` over an integer
+  gives `double` — *verified: 9.5.1 (стенд, 2026-09-10)*. Casting the input first is not a
+  fix for anything, and `AVG(TO_DECIMAL(x))` under a `GROUP BY` is rejected outright (see
+  Common mistakes).
 - Attaching tags: `TAGS ( pii )` before the field properties for the whole view,
   `( email ( description = '…' ) TAGS ( pii ) )` for one column — both
   *verified: 9.5.1 (стенд, 2026-09-10)*. The tag itself is `/denodo:catalog` and must
@@ -107,6 +110,12 @@ underneath: a published data product, a consumer outside the team, a top-down de
 the contract is agreed before the implementation exists. If nothing has to survive, a
 derived view is the simpler object.
 
+**Where the implementation lives.** The derived view above sits in
+`/03 - business entities` because it *is* what the consumer reads. As soon as a contract
+goes in front of it, it stops being that: the interface view takes the business name and
+the `/03` folder, and the aggregate moves to `/02 - integration` under an `iv_` name with
+the rest of the machinery. Everything the consumer does not name belongs in `/02`.
+
 **Swapping the implementation** is a re-apply of the same file with a different view after
 `SET IMPLEMENTATION`. Nothing the consumer sees changes. When the new implementation names
 its columns differently, map them — the field list stays as it was:
@@ -128,6 +137,19 @@ Left of `=` is the interface field, right is the implementation's column.
 place, and it is what you use when the contract was created ahead of its implementation —
 but it is an `ALTER` of an existing object, so the human confirms it first
 (`/denodo:vql`). Re-applying the file is the default.
+
+**When a column is renamed underneath an existing contract**, the mapping and the contract
+are two different answers, and the request decides which:
+
+| The rename is | Do | Because |
+|---|---|---|
+| internal — a tidy-up, a refactor, a naming convention inside your layer | keep the field list, map the new column: `SET IMPLEMENTATION v ( vehicles = vehicle_count, … )` | that is the whole point of the contract; the consumer is not involved |
+| the point — "call it that everywhere, including what they read" | change the field list too, in the same file | a contract that hides the rename does not deliver the request |
+
+Changing the field list **is a breaking change for the consumer**, whatever it says on the
+object: the old column is gone. Say so when you report it, and if the request was
+ambiguous, ask before you narrow the contract — widening it is safe, dropping a field is
+not.
 
 ### Association — the relationship, recorded
 
@@ -210,8 +232,9 @@ can then be written in VQL names. Unchanged either way: `decimal`, `float`, `boo
 | Name | conventions in `/denodo:vql`; the `iv_` / bare-name split above |
 | Derived view or interface view | interface view only when name and schema must survive a change of the implementation. Otherwise a derived view |
 | Interface field types | the types of the implementation's columns, in VQL names (`int`, `long`, `text`) — read them off `DESC`, do not translate from memory |
-| Association endpoints and multiplicity | the data, not the wish: check with a `SELECT` that the child really has at most one parent before writing `(1)` |
+| Association endpoints and multiplicity | the data, not the wish: `(1)` claims every child row has a parent, so a **nullable foreign key makes it `(0,1)`** — count the NULLs before choosing. Orphans (a key with no match) are a different question and rule out `REFERENTIAL CONSTRAINT`, not the multiplicity |
 | `REFERENTIAL CONSTRAINT` or not | yes for a real foreign key. The source guarantees the integrity, Denodo does not enforce it — declaring it where it does not hold gives wrong results, not errors |
+| Whether the measures are complete | `COUNT(*)` counts rows, `COUNT(<measure>)` counts rows where the measure is not null, and when they differ, `AVG` divides by the second while the consumer will divide by the first. Count the NULLs; if there are any, either publish both counts or say in the `DESCRIPTION` which one the average is over. The same NULLs decide `INNER JOIN` against `LEFT JOIN` |
 | Existing dependants | `USED_BY()` before touching anything that already exists — see Verify |
 
 Do not ask about cache, swap, statistics or indexes: they have server defaults, they are
@@ -234,10 +257,12 @@ the reason this skill exists.** After applying, always:
 
 | Question | Read-back |
 |---|---|
-| Did the objects land, and where | `SELECT name, type, subtype, folder FROM GET_ELEMENTS() WHERE input_database_name = '<db>' AND type IN ('view', 'association')` — `subtype` is `base`, `derived` or `interface` |
-| **Is anything broken now** | `SELECT name, view_type, view_status FROM GET_VIEWS() WHERE input_database_name = '<db>' AND input_retrieve_invalid_views_only = true` — **empty is the only good answer.** `view_type`: `0` base, `1` derived, `2` interface |
+| Did the objects land, and where | `SELECT name, type, subtype, folder FROM GET_ELEMENTS() WHERE input_database_name = '<db>' AND type = 'view'` — `subtype` is `base`, `derived` or `interface`; associations are `type = 'association'`, one query per value because input parameters take `=` only |
+| **Is anything broken now** | `SELECT name, view_type, view_status FROM GET_VIEWS() WHERE input_database_name = '<db>' AND input_retrieve_invalid_views_only = true` — **empty is the only good answer.** `view_type` here is the same fact as `subtype` above in numbers: `0` base, `1` derived, `2` interface |
 | Does it carry rows | `SELECT * FROM <view> LIMIT 10`, and a count that can be checked against the input |
 | Schema of the contract | `vql desc --env lab --database <db> <interface view>` — the columns the consumer sees |
+| **Which implementation is actually behind a contract** | `vql desc … <interface view> --vql` — plain `DESC` can never tell you: it shows the declared schema whatever is underneath. This is also how you prove a swap happened |
+| Nothing changed for the consumer | take the schema and a `SELECT … LIMIT n` through the contract **before** the change, keep them, and diff against the same two afterwards. That is the only claim the consumer cares about, and it is cheap to make checkable |
 | Are the associations still whole | `SELECT association_name, mappings, valid FROM GET_ASSOCIATIONS() WHERE input_database_name = '<db>' AND input_type = 'views'` — **`valid` must be `true`** |
 | One association in full | `vql desc --env lab --database <db> <name> --type association` — roles, multiplicities, mappings, principal side |
 | Who depends on this view | `SELECT view_name, used_by_name, depth FROM USED_BY() WHERE input_view_database_name = '<db>' AND input_view_name = '<view>'` — run it **before** a change, not after |

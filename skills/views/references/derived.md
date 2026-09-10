@@ -127,7 +127,7 @@ DROP { VIEW | INTERFACE VIEW | TABLE } [ IF EXISTS ] <name> [ CASCADE ]
 | Want | Statement |
 |---|---|
 | Schema and types | `vql desc --env lab --database <db> <view>` |
-| The exact VQL, including everything underneath | `vql desc --env lab --database <db> <view> --vql` — one row holding the whole dependency chain, which is the best syntax reference on any server |
+| The exact VQL, including everything underneath | `vql desc --env lab --database <db> <view> --vql` — one row holding the whole dependency chain. The best syntax reference on any server, and **not something to apply as it stands**: it opens with `DROP … CASCADE` for every object in the chain |
 | Health | `SELECT name, view_type, view_status FROM GET_VIEWS() WHERE input_database_name = '<db>'` |
 | Dependants | `SELECT view_name, used_by_name, depth FROM USED_BY() WHERE input_view_database_name = '<db>' AND input_view_name = '<view>'` |
 | Dependencies (downwards) | `SELECT * FROM VIEW_DEPENDENCIES() WHERE input_view_database_name = '<db>' AND input_view_name = '<view>'` — note `input_view_database_name`, not `input_database_name` |
