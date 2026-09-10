@@ -20,7 +20,7 @@ from . import EXIT_EXECUTION, EXIT_OK
 from .vql import run_statements
 from ..output import envelope
 from ..profiles import Profile
-from ..templates import TemplateError, load_block
+from ..templates import TemplateError, format_mark, load_block, update_mark
 from ..vql_split import split_statements
 
 KINDS = ("template", "fixture")
@@ -194,10 +194,18 @@ def run_chain(
     ``_cleanup`` itself is skipped: cleanup will not run, so an unresolved placeholder in
     it must not abort a run that has nothing to do with cleanup.
 
-    ``rest_factory`` and ``update_marks`` are accepted so the call signature already
-    matches what the http channel and mark-rewriting (later tasks) will need; neither
-    does anything yet — a marketplace step is simply skipped unless ``with_marketplace``
-    is set.
+    ``rest_factory`` is accepted so the call signature already matches what the http
+    channel (a later task) will need; it does nothing yet — a marketplace step is simply
+    skipped unless ``with_marketplace`` is set.
+
+    ``update_marks`` rewrites the ``-- verified: ...`` mark of every ``template`` step
+    that passed, with the version the server actually reported and ``today`` (or
+    ``dt.date.today()`` when ``today`` is not given). The version is read once, before
+    the first step, with ``_server_version`` — one extra round trip per run rather than
+    one per step, since it never changes mid-run. Reading it eagerly, even though the
+    first template step might fail before any mark would be written, keeps the timing
+    simple; the query is one row and cheap enough that the slight waste on a run that
+    fails immediately is not worth a lazier, harder-to-follow path.
     """
     values = dict(chain.values)
     if database:
@@ -209,6 +217,8 @@ def run_chain(
         # cleanup never renders or runs, so an unresolved cleanup placeholder must not
         # abort a run that has nothing to do with cleanup.
         _check_cleanup_placeholders(chain, values)
+    version = _server_version(profile, vql_factory) if update_marks else None
+    day = today or dt.date.today()
     reports: list[dict] = []
     stop = False
     try:
@@ -219,7 +229,8 @@ def run_chain(
             if step.marketplace and not with_marketplace:
                 reports.append(_skipped(step, "marketplace steps need --with-marketplace"))
                 continue
-            report = _run_step(profile, step, values=values, root=root, vql_factory=vql_factory)
+            report = _run_step(profile, step, values=values, root=root, vql_factory=vql_factory,
+                               update_marks=update_marks, version=version, day=day)
             reports.append(report)
             if not report["ok"]:
                 stop = True
@@ -283,7 +294,37 @@ def _cleanup(profile: Profile, chain: Chain, *, values: dict[str, str], vql_fact
 
 def _skipped(step: Step, reason: str) -> dict:
     return {"id": step.id, "kind": step.kind, "channel": step.channel, "source": step.address,
-            "ok": True, "skipped": True, "reason": reason, "error": None, "check": None}
+            "ok": True, "skipped": True, "reason": reason, "error": None, "check": None, "mark": None}
+
+
+VERSION_NUMBER = re.compile(r"\d+(?:\.\d+)+")
+
+
+def _server_version(profile: Profile, vql_factory: Callable) -> str:
+    """The server's reported version, once per run.
+
+    ``GET_SERVER_INFO()`` — the stored procedure a first draft of this function assumed
+    — does not exist on Denodo 9.5.1; the stand answers "View 'get_server_info' not
+    found". What does work, confirmed against the lab stand, is ``SELECT version()``
+    (the Postgres-wire-protocol compatibility layer VDP exposes on the same channel used
+    everywhere else in this file), which answers a single row like
+    ``"Denodo Virtual DataPort 9.5.1"`` — the version is the *last* token, wrapped in a
+    product name prefix, not the first bare token a differently-shaped answer might have
+    suggested. Picking the dotted-number substring out with a regex, rather than trusting
+    a fixed token position, survives either shape (a prefix here, a trailing build suffix
+    elsewhere) without caring which. Any failure to read it (the query itself failing, an
+    empty result, or a row with no recognizable version number) falls back to ``"9.5"``
+    — the bare major.minor the rest of the project already treats as the floor — rather
+    than raising, since a server-version hiccup should not turn into a crash of the whole
+    verify run.
+    """
+    doc, code = run_statements(profile, ["SELECT version()"],
+                               transport_factory=vql_factory, max_rows=1)
+    rows = ((doc.get("statements") or [{}])[0]).get("rows") if code == EXIT_OK else None
+    if not rows:
+        return "9.5"
+    match = VERSION_NUMBER.search(str(rows[0][0]))
+    return match.group(0) if match else "9.5"
 
 
 def _summary(reports: list[dict]) -> dict:
@@ -294,9 +335,10 @@ def _summary(reports: list[dict]) -> dict:
     }
 
 
-def _run_step(profile: Profile, step: Step, *, values: dict[str, str], root: Path, vql_factory: Callable) -> dict:
+def _run_step(profile: Profile, step: Step, *, values: dict[str, str], root: Path, vql_factory: Callable,
+             update_marks: bool = False, version: str | None = None, day: dt.date | None = None) -> dict:
     report = {"id": step.id, "kind": step.kind, "channel": step.channel, "source": step.address,
-              "ok": False, "skipped": False, "error": None, "check": None, "statements": None}
+              "ok": False, "skipped": False, "error": None, "check": None, "statements": None, "mark": None}
     try:
         body = _body(step, root=root, values=values)
         # Optional per-step database, e.g. "{database}" — the mechanism a check already
@@ -326,8 +368,16 @@ def _run_step(profile: Profile, step: Step, *, values: dict[str, str], root: Pat
         if not report["ok"]:
             report["error"] = report["check"].get("error") or {
                 "kind": "check", "message": f"check expected {step.expect}"}
-        return report
-    report["ok"] = True
+    else:
+        report["ok"] = True
+
+    # Only a template step that actually passed gets its mark rewritten: a fixture
+    # verifies nothing, and a failed step must keep whatever mark it already had — the
+    # run just disproved it, it did not confirm it.
+    if report["ok"] and step.kind == "template" and update_marks and version:
+        block = load_block(root, step.address or "")
+        report["mark"] = {"updated": update_mark(block, version=version, day=day),
+                          "text": format_mark(version, day)}
     return report
 
 

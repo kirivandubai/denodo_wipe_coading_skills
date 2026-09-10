@@ -1,3 +1,4 @@
+import datetime as dt
 import tempfile
 import unittest
 from pathlib import Path
@@ -224,7 +225,14 @@ class FakeVql:
         if "BOOM" in statement:
             raise RuntimeError("ERROR:  boom\nDETAIL:  java.sql.SQLException: Syntax error near 'BOOM'\n")
         if statement.upper().startswith(("SELECT", "DESC")):
-            rows = [] if "GET_VIEWS" in statement else [["denodo_skills_test"]]
+            if "VERSION()" in statement.upper():
+                # Mirrors the real server (confirmed on the lab stand): the version
+                # number is the last token, wrapped in a product-name prefix.
+                rows = [["Denodo Virtual DataPort 9.5.1"]]
+            elif "GET_VIEWS" in statement:
+                rows = []
+            else:
+                rows = [["denodo_skills_test"]]
             return VqlResult(statement=statement, columns=["c"], rows=rows)
         return VqlResult(statement=statement, columns=None, rows=None)
 
@@ -568,6 +576,55 @@ vql = "CONNECT DATABASE {database};"
         self.assertEqual(code, 0)
         self.assertFalse(doc["cleanup"]["ran"])
         self.assertIn("--keep", doc["cleanup"]["reason"])
+
+
+class UpdateMarksTest(unittest.TestCase):
+    def setUp(self):
+        FakeVql.instances.clear()
+        self.root = Path(tempfile.mkdtemp())
+        (self.root / "skills" / "catalog").mkdir(parents=True)
+        self.skill = self.root / "skills" / "catalog" / "SKILL.md"
+        self.skill.write_text(SKILL_TEXT, encoding="utf-8")
+        self.manifest = self.root / "chain.toml"
+        self.manifest.write_text("""
+[values]
+database = "denodo_skills_test"
+[[step]]
+id = "database"
+kind = "template"
+channel = "vql"
+address = "skills/catalog/SKILL.md#Database"
+substitute = { sales_analytics = "{database}" }
+[[step]]
+id = "fix"
+kind = "fixture"
+channel = "vql"
+vql = "CONNECT DATABASE {database};"
+""", encoding="utf-8")
+        self.chain = load_chain(self.manifest)
+
+    def test_marks_are_untouched_without_the_flag(self):
+        run_chain(profile(), self.chain, root=self.root, vql_factory=FakeVql)
+        self.assertIn("2026-09-01", self.skill.read_text(encoding="utf-8"))
+
+    def test_a_passed_template_step_gets_todays_mark(self):
+        doc, _ = run_chain(profile(), self.chain, root=self.root, vql_factory=FakeVql,
+                           update_marks=True, today=dt.date(2026, 9, 10))
+        self.assertIn("-- verified: 9.5.1 (стенд, 2026-09-10)", self.skill.read_text(encoding="utf-8"))
+        self.assertTrue(doc["steps"][0]["mark"]["updated"])
+
+    def test_a_fixture_step_has_no_mark_in_the_report(self):
+        doc, _ = run_chain(profile(), self.chain, root=self.root, vql_factory=FakeVql,
+                           update_marks=True, today=dt.date(2026, 9, 10))
+        self.assertIsNone(doc["steps"][1]["mark"])
+
+    def test_a_failed_step_keeps_its_old_mark(self):
+        self.manifest.write_text(self.manifest.read_text(encoding="utf-8").replace(
+            "#Database", "#Boom"), encoding="utf-8")
+        run_chain(profile(), load_chain(self.manifest), root=self.root, vql_factory=FakeVql,
+                  update_marks=True, today=dt.date(2026, 9, 10))
+        self.assertIn("2026-09-01", self.skill.read_text(encoding="utf-8"))
+        self.assertNotIn("2026-09-10", self.skill.read_text(encoding="utf-8"))
 
 
 class RunCheckConnectionErrorTest(unittest.TestCase):

@@ -21,7 +21,7 @@ attached to views that must already exist.
 ### Database
 
 ```sql
--- verified: 9.5.1 (стенд, 2026-09-09)
+-- verified: 9.5.1 (стенд, 2026-09-10)
 CREATE OR REPLACE DATABASE sales_analytics 'Sales data products' CHARSET DEFAULT;
 ```
 
@@ -35,7 +35,7 @@ LDAP. `CREATE OR REPLACE DATABASE` keeps the objects inside.
 ### Folders
 
 ```sql
--- verified: 9.5.1 (стенд, 2026-09-09)
+-- verified: 9.5.1 (стенд, 2026-09-10)
 CONNECT DATABASE sales_analytics;
 
 CREATE OR REPLACE FOLDER '/01 - connectivity' DESCRIPTION 'data sources, wrappers, base views';
@@ -63,7 +63,7 @@ rewrites its description for every database that uses it — that is a change to
 existing object, show it and get a yes first.
 
 ```sql
--- verified: 9.5.1 (стенд, 2026-09-09)
+-- verified: 9.5.1 (стенд, 2026-09-10)
 CREATE OR REPLACE TAG pii
     DESCRIPTION = 'Personal data, GDPR scope'
     ADD_TO      ( VIEWS () COLUMNS ( sales_analytics.customer.email, sales_analytics.customer.phone ) )
