@@ -204,7 +204,7 @@ class CliTest(unittest.TestCase):
         self.assertEqual(doc["error"]["kind"], "usage")
 
 
-class VerifyCommandTest(unittest.TestCase):
+class VerifyCommandTest(CliTest):
     def test_parser_accepts_the_flags(self):
         args = cli.build_parser().parse_args(["verify", "--env", "lab", "--with-marketplace", "--keep",
                                               "--update-marks", "--chain", "verification/chain.toml"])
@@ -226,11 +226,12 @@ class VerifyCommandTest(unittest.TestCase):
         path.write_text("[[step]]\nid = 'x'\nkind = 'magic'\nchannel = 'vql'\n", encoding="utf-8")
         out = io.StringIO()
         with redirect_stdout(out):
-            code = cli.main(["verify", "--env", "nonexistent-profile", "--chain", str(path)])
+            code = cli.main(["verify", "--env", "dev", "--chain", str(path)])
         doc = json.loads(out.getvalue())
         self.assertEqual(code, 2)
         self.assertFalse(doc["ok"])
-        self.assertIn(doc["error"]["kind"], ("config", "usage"))
+        self.assertEqual(doc["error"]["kind"], "usage")
+        self.assertIn("magic", doc["error"]["message"])
 
 
 if __name__ == "__main__":
