@@ -342,3 +342,55 @@ address = "skills/catalog/SKILL.md#No Such Section"
         doc, code = run_chain(profile(), chain, root=self.root, vql_factory=FakeVql)
         self.assertEqual(code, 1)
         self.assertIn("No Such Section", doc["steps"][0]["error"]["message"])
+
+
+class FakeVqlSecondSessionFails:
+    """First session (the step's own body) behaves normally; opening a second one fails.
+
+    Models a session dropped between running a step and running its check: the check's
+    own ``run_statements`` call never gets far enough to execute a statement, so its
+    envelope carries only a top-level ``error`` and no ``statements`` list at all.
+    """
+
+    calls = 0
+
+    def __init__(self, profile, database=None):
+        type(self).calls += 1
+        if type(self).calls == 2:
+            raise RuntimeError(
+                "ERROR:  could not connect\nDETAIL:  java.sql.SQLException: session dropped\n")
+        self.executed = []
+
+    def execute(self, statement):
+        self.executed.append(statement)
+        return VqlResult(statement=statement, columns=None, rows=None)
+
+    def close(self):
+        pass
+
+
+class RunCheckConnectionErrorTest(unittest.TestCase):
+    def setUp(self):
+        FakeVqlSecondSessionFails.calls = 0
+        self.root = Path(tempfile.mkdtemp())
+        self.manifest = self.root / "chain.toml"
+        self.manifest.write_text("""
+[values]
+database = "denodo_skills_test"
+[[step]]
+id = "fix"
+kind = "fixture"
+channel = "vql"
+vql = "CONNECT DATABASE {database};"
+check = "SELECT 1 FROM DUAL()"
+""", encoding="utf-8")
+        self.chain = load_chain(self.manifest)
+
+    def test_a_connection_failure_in_the_check_is_reported_not_masked_as_a_mismatch(self):
+        doc, code = run_chain(profile(), self.chain, root=self.root,
+                              vql_factory=FakeVqlSecondSessionFails)
+        self.assertEqual(code, 1)
+        self.assertFalse(doc["steps"][0]["check"]["ok"])
+        self.assertIn("session dropped", doc["steps"][0]["check"]["error"]["message"])
+        self.assertIn("session dropped", doc["steps"][0]["error"]["message"])
+        self.assertNotIn("check expected", doc["steps"][0]["error"]["message"])

@@ -204,7 +204,7 @@ def _summary(reports: list[dict]) -> dict:
 
 def _run_step(profile: Profile, step: Step, *, values: dict[str, str], root: Path, vql_factory: Callable) -> dict:
     report = {"id": step.id, "kind": step.kind, "channel": step.channel, "source": step.address,
-              "ok": False, "skipped": False, "error": None, "check": None}
+              "ok": False, "skipped": False, "error": None, "check": None, "statements": None}
     try:
         body = _body(step, root=root, values=values)
     except (TemplateError, ChainError) as exc:
@@ -245,7 +245,11 @@ def _run_check(profile: Profile, step: Step, *, values: dict[str, str], vql_fact
                                max_rows=MAX_ROWS, database=values.get("database"))
     entry = (doc.get("statements") or [{}])[0]
     if code != EXIT_OK:
-        return {"ok": False, "statement": statement, "row_count": None, "error": entry.get("error")}
+        # Mirrors _run_step's own failure path: when the failure happens before any
+        # statement runs (the transport factory itself raised), entry carries nothing
+        # and the real cause is only on the envelope's top-level "error".
+        return {"ok": False, "statement": statement, "row_count": None, "expect": step.expect,
+                "error": entry.get("error") or doc.get("error")}
     count = entry.get("row_count") or 0
     ok = count > 0 if step.expect == "rows" else count == 0
     return {"ok": ok, "statement": statement, "row_count": count, "expect": step.expect, "error": None}
