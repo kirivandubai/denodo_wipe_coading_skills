@@ -1,7 +1,13 @@
 # verification/chain.toml
-# The v1 chain, end to end. Bodies of the "template" steps come from the skills themselves
-# (address = file#section); "fixture" steps carry their own body and verify nothing — they
-# only make the next template reachable. Design spec, section 11.1.
+# Verifies 7 of the v1 templates end to end: catalog database, folders, the DF (CSV) data
+# source, derived views, the interface view, the association, and tags. Bodies of the
+# "template" steps come from the skills themselves (address = file#section); "fixture"
+# steps carry their own body and verify nothing — they only make the next template
+# reachable. Design spec, section 11.1.
+#
+# Deliberately out of scope here: the JSON and JDBC datasource templates (no fixtures for
+# them on the stand), and every Data Marketplace template — that tail is a later task,
+# gated behind --with-marketplace.
 
 [values]
 database = "denodo_skills_test"
