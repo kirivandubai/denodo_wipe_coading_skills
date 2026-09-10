@@ -52,7 +52,14 @@ class FakeRest:
         return HttpResult(status=200, body={"ok": True}, headers={}, elapsed_ms=1)
 
 
-class CliTest(unittest.TestCase):
+class CliHarness:
+    """Profiles file, fake transports and a ``run_cli`` helper, shared by the CLI suites.
+
+    A mixin rather than a base ``TestCase``: subclassing a ``TestCase`` re-runs every one of
+    its tests under the subclass's name too, so a second suite built on it would double-count
+    the first suite's coverage instead of adding to it.
+    """
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
@@ -75,6 +82,8 @@ class CliTest(unittest.TestCase):
             code = cli.main(list(argv))
         return json.loads(out.getvalue()), code
 
+
+class CliTest(CliHarness, unittest.TestCase):
     def test_env_list(self):
         doc, code = self.run_cli("env", "list")
         self.assertEqual(code, 0)
@@ -202,6 +211,63 @@ class CliTest(unittest.TestCase):
         doc, code = self.run_cli("vql", "frobnicate")
         self.assertEqual(code, 2)
         self.assertEqual(doc["error"]["kind"], "usage")
+
+
+class VerifyCommandTest(CliHarness, unittest.TestCase):
+    def test_parser_accepts_the_flags(self):
+        args = cli.build_parser().parse_args(["verify", "--env", "lab", "--with-marketplace", "--keep",
+                                              "--update-marks", "--allow-destructive",
+                                              "--chain", "verification/chain.toml"])
+        self.assertEqual(args.group, "verify")
+        self.assertTrue(args.with_marketplace)
+        self.assertTrue(args.keep)
+        self.assertTrue(args.update_marks)
+        self.assertTrue(args.allow_destructive)
+        self.assertEqual(args.chain, "verification/chain.toml")
+
+    def test_defaults(self):
+        args = cli.build_parser().parse_args(["verify", "--env", "lab"])
+        self.assertFalse(args.with_marketplace)
+        self.assertFalse(args.keep)
+        self.assertFalse(args.update_marks)
+        self.assertFalse(args.allow_destructive)
+        self.assertIsNone(args.chain)
+
+    def test_a_malformed_manifest_is_a_usage_error_in_json(self):
+        path = Path(tempfile.mkdtemp()) / "chain.toml"
+        path.write_text("[[step]]\nid = 'x'\nkind = 'magic'\nchannel = 'vql'\n", encoding="utf-8")
+        out = io.StringIO()
+        with redirect_stdout(out):
+            code = cli.main(["verify", "--env", "dev", "--chain", str(path)])
+        doc = json.loads(out.getvalue())
+        self.assertEqual(code, 2)
+        self.assertFalse(doc["ok"])
+        self.assertEqual(doc["error"]["kind"], "usage")
+        self.assertIn("magic", doc["error"]["message"])
+
+    def test_a_run_time_chain_error_is_a_usage_error_in_json_too(self):
+        # _check_cleanup_placeholders raises ChainError from inside run_chain, well after
+        # load_chain returned. With a user-supplied --chain that is the likeliest first
+        # failure, and it used to escape as a traceback with no JSON document at all.
+        path = Path(tempfile.mkdtemp()) / "chain.toml"
+        path.write_text("""
+[values]
+database = "denodo_skills_test"
+
+[cleanup]
+vql = ["DROP TAG IF EXISTS {tag_prefix}pii"]
+
+[[step]]
+id = "fix"
+kind = "fixture"
+channel = "vql"
+vql = "SELECT 1 FROM DUAL()"
+""", encoding="utf-8")
+        doc, code = self.run_cli("verify", "--env", "dev", "--chain", str(path))
+        self.assertEqual(code, 2)
+        self.assertFalse(doc["ok"])
+        self.assertEqual(doc["error"]["kind"], "usage")
+        self.assertIn("tag_prefix", doc["error"]["message"])
 
 
 if __name__ == "__main__":

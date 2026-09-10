@@ -1,0 +1,253 @@
+# verification/chain.toml
+# Verifies 10 of the v1 templates end to end: catalog database, folders, the DF (CSV) data
+# source, derived views, the interface view, the association, and tags (vql channel), plus
+# the Data Marketplace catalog sync, a tag and a category (http channel). Bodies of the
+# "template" steps come from the skills themselves (address = file#section); "fixture"
+# steps carry their own body and verify nothing — they only make the next template
+# reachable. Design spec, section 11.1.
+#
+# The three http steps carry marketplace = true and only run with --with-marketplace: they
+# write to the shared marketplace catalog, not to denodo_skills_test alone. Two kinds of
+# write, and [cleanup] http undoes both. The tag and the category are named with the
+# verify_ prefix and removed by id, captured from their create call. The catalog sync is
+# not named at all: marketplace-sync imports whatever VDP has, which by then includes this
+# run's own database and its six views, and the only way back out is to run the same two
+# synchronize calls once VDP no longer has them — which is why they are repeated at the end
+# of [cleanup] http, after DROP DATABASE ... CASCADE. Without that, every run left its
+# database and views behind in a catalog everyone shares, as orphans (localElements in
+# .../changes), while reporting itself green.
+#
+# Deliberately out of scope here: the JSON and JDBC datasource templates (no fixtures for
+# them on the stand), and the external-element template — its chain applies VQL generated
+# from a marketplace response (vql-metadata), a "one channel's body feeds another channel's
+# input" shape this executor does not support yet (task 9 brief).
+
+[values]
+database = "denodo_skills_test"
+csv_dir = "/opt/denodo/demos/csv"
+tag_prefix = "verify_"
+# The lab stand's only VDP server ("Demo Standard Default" — GET /public/api/configuration/
+# servers). 206 ("Verticals") is a different server and is out of scope for this chain.
+server_id = "306"
+
+[cleanup]
+vql = [
+  "DROP DATABASE IF EXISTS {database} CASCADE",
+  "DROP TAG IF EXISTS {tag_prefix}pii",
+  "DROP TAG IF EXISTS {tag_prefix}finance_sensitive",
+]
+http = [
+  { method = "delete", path = "/public/api/tags/{tag_id}", params = { serverId = "{server_id}" } },
+  { method = "delete", path = "/public/api/category-management/categories/{category_id}", params = { serverId = "{server_id}" } },
+  # The same two calls marketplace-sync makes, in the same order and the same conflict mode.
+  # Run now, after the vql cleanup above dropped the database, they mean the opposite thing:
+  # a synchronize removes from the marketplace whatever VDP no longer has (see
+  # scripts/denodo_cli/safety.py), so this pair takes this run's database and views back out
+  # of the shared catalog. DATABASES first is enough on its own — removing the database
+  # takes its views with it — but the pair is kept whole to match the template it undoes.
+  # Both classify as "replace", so on a production profile they demand --allow-destructive
+  # exactly like the DROPs above. Like the whole http tail they run only under
+  # --with-marketplace: a default run put nothing into the catalog, and these two entries
+  # name no captured id, so nothing else would have kept them from firing on every run.
+  { method = "post", path = "/public/api/element-management/DATABASES/synchronize", params = { serverId = "{server_id}" }, json = { proceedWithConflicts = "SERVER_WITH_LOCAL_CHANGES" } },
+  { method = "post", path = "/public/api/element-management/VIEWS/synchronize", params = { serverId = "{server_id}" }, json = { proceedWithConflicts = "SERVER_WITH_LOCAL_CHANGES" } },
+]
+
+[[step]]
+id = "database"
+kind = "template"
+channel = "vql"
+address = "skills/catalog/SKILL.md#Database"
+substitute = { sales_analytics = "{database}" }
+check = "SELECT db_name FROM GET_DATABASES() WHERE db_name = '{database}'"
+
+[[step]]
+id = "folders"
+kind = "template"
+channel = "vql"
+address = "skills/catalog/SKILL.md#Folders"
+substitute = { sales_analytics = "{database}" }
+database = "{database}"
+check = "SELECT name FROM GET_ELEMENTS() WHERE input_database_name = '{database}' AND type = 'folder'"
+
+[[step]]
+id = "df-source"
+kind = "template"
+channel = "vql"
+address = "skills/datasources/SKILL.md#Delimited file (CSV) — DF"
+substitute = { sales_analytics = "{database}" }
+database = "{database}"
+# no check on rows: the file this template names does not exist on the stand, and that is
+# the point — the parser accepts the DDL, only SELECT would fail (spec 11.1)
+check = "SELECT name FROM GET_ELEMENTS() WHERE input_database_name = '{database}' AND name = 'bv_crm_customers'"
+
+[[step]]
+id = "fixture-base-views"
+kind = "fixture"
+channel = "vql"
+database = "{database}"
+check = "SELECT COUNT(*) AS n FROM bv_income_band"
+vql = """
+CONNECT DATABASE {database};
+
+CREATE OR REPLACE DATASOURCE DF ds_demo_csv
+    FOLDER = '/01 - connectivity'
+    IGNOREMATCHINGERRORS = FALSE
+    ROUTE LOCAL 'LocalConnection' '{csv_dir}/income_band.csv'
+    CHARSET = 'UTF-8'
+    COLUMNDELIMITER = ','
+    HEADER = TRUE;
+
+CREATE OR REPLACE WRAPPER DF wr_income_band
+    FOLDER = '/01 - connectivity'
+    DATASOURCENAME = ds_demo_csv
+    OUTPUTSCHEMA (
+        ib_income_band_sk = '"IB_INCOME_BAND_SK"',
+        ib_lower_bound = '"IB_LOWER_BOUND"',
+        ib_upper_bound = '"IB_UPPER_BOUND"'
+    );
+
+CREATE OR REPLACE TABLE bv_income_band I18N us_pst (
+        ib_income_band_sk:int, ib_lower_bound:int, ib_upper_bound:int
+    )
+    FOLDER = '/01 - connectivity'
+    CACHE OFF
+    TIMETOLIVEINCACHE DEFAULT
+    ADD SEARCHMETHOD wr_income_band (
+        OUTPUTLIST ( ib_income_band_sk, ib_lower_bound, ib_upper_bound )
+        WRAPPER (df wr_income_band)
+    );
+
+CREATE OR REPLACE DATASOURCE DF ds_demo_households
+    FOLDER = '/01 - connectivity'
+    IGNOREMATCHINGERRORS = FALSE
+    ROUTE LOCAL 'LocalConnection' '{csv_dir}/household_demographics.csv'
+    CHARSET = 'UTF-8'
+    COLUMNDELIMITER = ','
+    HEADER = TRUE;
+
+CREATE OR REPLACE WRAPPER DF wr_household_demographics
+    FOLDER = '/01 - connectivity'
+    DATASOURCENAME = ds_demo_households
+    OUTPUTSCHEMA (
+        hd_demo_sk = '"HD_DEMO_SK"',
+        hd_income_band_sk = '"HD_INCOME_BAND_SK"',
+        hd_buy_potential = '"HD_BUY_POTENTIAL"',
+        hd_dep_count = '"HD_DEP_COUNT"',
+        hd_vehicle_count = '"HD_VEHICLE_COUNT"'
+    );
+
+CREATE OR REPLACE TABLE bv_household_demographics I18N us_pst (
+        hd_demo_sk:int, hd_income_band_sk:int, hd_buy_potential:text,
+        hd_dep_count:int, hd_vehicle_count:int
+    )
+    FOLDER = '/01 - connectivity'
+    CACHE OFF
+    TIMETOLIVEINCACHE DEFAULT
+    ADD SEARCHMETHOD wr_household_demographics (
+        OUTPUTLIST ( hd_demo_sk, hd_income_band_sk, hd_buy_potential, hd_dep_count, hd_vehicle_count )
+        WRAPPER (df wr_household_demographics)
+    );
+"""
+
+[[step]]
+id = "derived-views"
+kind = "template"
+channel = "vql"
+address = "skills/views/SKILL.md#Derived view"
+substitute = { sales_analytics = "{database}" }
+database = "{database}"
+check = "SELECT COUNT(*) AS n FROM household_income_by_band"
+
+[[step]]
+id = "interface-view"
+kind = "template"
+channel = "vql"
+address = "skills/views/SKILL.md#Interface view — a contract you can re-implement"
+# This block has no CONNECT DATABASE of its own — an unqualified SET IMPLEMENTATION
+# relies on the session already being connected (real usage: --database on the command,
+# per skills/execute/SKILL.md). `database` connects the step's own session directly, so
+# the block runs verbatim, exactly as an agent would read it off the skill.
+database = "{database}"
+check = "SELECT household_sk FROM household_income LIMIT 10"
+
+[[step]]
+id = "association"
+kind = "template"
+channel = "vql"
+address = "skills/views/SKILL.md#Association — the relationship, recorded"
+# Same reason as interface-view above: this block has no CONNECT DATABASE either.
+database = "{database}"
+check = "SELECT association_name FROM GET_ASSOCIATIONS() WHERE input_database_name = '{database}' AND input_type = 'views' AND valid = true"
+
+[[step]]
+id = "tags"
+kind = "template"
+channel = "vql"
+address = "skills/catalog/SKILL.md#Tags, with their assignments"
+substitute = { sales_analytics = "{database}", "CREATE OR REPLACE TAG pii" = "CREATE OR REPLACE TAG {tag_prefix}pii", "CREATE OR REPLACE TAG finance_sensitive" = "CREATE OR REPLACE TAG {tag_prefix}finance_sensitive", "{database}.customer.email" = "{database}.household_income.buy_potential", "{database}.customer.phone" = "{database}.household_income.household_sk", "{database}.order_summary" = "{database}.household_income_by_band" }
+database = "{database}"
+check = "SELECT tag_name FROM GET_VIEW_TAGS() WHERE input_database_name = '{database}'"
+
+[[step]]
+id = "nothing-invalid"
+kind = "fixture"
+channel = "vql"
+database = "{database}"
+vql = "CONNECT DATABASE {database};"
+check = "SELECT name FROM GET_VIEWS() WHERE input_database_name = '{database}' AND input_retrieve_invalid_views_only = true"
+expect = "no rows"
+
+# --- Data Marketplace tail: http channel, gated behind --with-marketplace --------------
+#
+# Not idempotent, by design: marketplace-tag fires its lookup and create calls
+# unconditionally (see its own comment below) rather than branching on the lookup's
+# answer; marketplace-category has no lookup call at all — the skill's "Category tree"
+# block goes straight to create (calls = [0]) — so there is nothing to branch on in the
+# first place. Either way, this step model has no way to express "read, then decide", and
+# adding one would turn the manifest into the interpreter this design deliberately avoids
+# (skills/marketplace/SKILL.md's own rule, "anything that runs twice must read before it
+# writes", is deliberately not followed here). A second
+# --with-marketplace run against a marketplace that still holds the previous run's objects
+# — the state a --keep run leaves behind — fails loudly on 409 (duplicate name) at the
+# create call, exactly as the skill's own "common mistakes" table predicts; that failure is
+# honest, not a bug. The fix is operational, not code: either let a normal (non --keep) run
+# finish so its own cleanup removes what it created, or remove the leftover tag/category by
+# hand (DELETE /public/api/tags/{id}, DELETE /public/api/category-management/categories/{id})
+# before running again.
+
+[[step]]
+id = "marketplace-sync"
+kind = "template"
+channel = "http"
+address = "skills/marketplace/SKILL.md#Synchronising the marketplace catalog with VDP"
+marketplace = true
+substitute = { "serverId=306" = "serverId={server_id}" }
+# calls = [] (default): all four — the two read-only "changes" calls, then both
+# synchronize calls, which the block itself already pins to proceedWithConflicts =
+# "SERVER_WITH_LOCAL_CHANGES", the only mode approved for this chain to run unattended.
+
+[[step]]
+id = "marketplace-tag"
+kind = "template"
+channel = "http"
+address = "skills/marketplace/SKILL.md#Tag, with an assignment"
+marketplace = true
+# 0 = lookup by nameFilter, 1 = create. 2 (update) and 3 (assign to a view) are left out:
+# this chain never conditions on the lookup's answer, and it has no marketplace view id to
+# assign to — assigning is the skill's concern, not this template's verification.
+calls = [0, 1]
+capture = { tag_id = "id" }
+substitute = { "serverId=306" = "serverId={server_id}", "nameFilter=pii" = "nameFilter={tag_prefix}pii", "\"name\":\"pii\"" = "\"name\":\"{tag_prefix}pii\"" }
+
+[[step]]
+id = "marketplace-category"
+kind = "template"
+channel = "http"
+address = "skills/marketplace/SKILL.md#Category tree"
+marketplace = true
+# 0 = create the top-level category. 1 (create a child under it) and 2 (assign it to
+# views) are left out for the same reason as the tag step above.
+calls = [0]
+capture = { category_id = "id" }
+substitute = { "serverId=306" = "serverId={server_id}", "\"name\":\"Consumer marts\"" = "\"name\":\"{tag_prefix}Consumer marts\"" }

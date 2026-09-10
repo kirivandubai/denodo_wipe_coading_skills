@@ -27,7 +27,8 @@ Remote: `github.com/kirivandubai/denodo_wipe_coading_skills` (имя на GitHub
 Юнит-тесты гоняются без зависимостей: `PYTHONPATH=scripts python3 -m unittest discover -s tests -t .`;
 интеграционные — против стенда: `DENODO_TEST_ENV=dev uv run --with denodo-sqlalchemy
 --with psycopg2-binary python -m unittest tests.integration.test_stand` (с `PYTHONPATH=scripts`).
-Сам инструмент: `scripts/denodo --help`.
+Прогон верификации шаблонов — `scripts/denodo verify --env lab`. Сам инструмент:
+`scripts/denodo --help`.
 
 ## Рабочий процесс
 

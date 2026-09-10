@@ -26,7 +26,7 @@ after a fix is safe — with one exception, the JDBC password, called out below.
 ### Delimited file (CSV) — DF
 
 ```sql
--- verified: 9.5.1 (стенд, 2026-09-09)
+-- verified: 9.5.1 (стенд, 2026-09-10)
 CONNECT DATABASE sales_analytics;
 
 CREATE OR REPLACE DATASOURCE DF ds_crm
