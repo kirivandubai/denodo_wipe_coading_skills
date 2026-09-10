@@ -8,6 +8,7 @@ block of a section. A broken address fails loudly; a copy would have drifted sil
 
 from __future__ import annotations
 
+import datetime as dt
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -18,6 +19,7 @@ MARK = re.compile(r"^\s*(?:--|#|//)\s*((?:un)?verified:.*)$")
 FENCE = re.compile(r"^(\s*)```(\w*)\s*$")
 HEADING = re.compile(r"^(#{1,6})\s+(.*?)\s*$")
 ADDRESS = re.compile(r"^(?P<path>[^#]+)#(?P<section>[^\[\]]+?)(?:\[(?P<index>\d+)\])?$")
+MARK_BODY = re.compile(r"^(?:un)?verified:\s*[^(]*\((?P<place>[^,]+),\s*[^)]*\)(?P<note>.*)$")
 
 
 class TemplateError(Exception):
@@ -119,3 +121,28 @@ def _blocks_of_section(lines: list[str], section: str, relative: str) -> list[tu
         elif inside:
             body.append(line)
     return blocks
+
+
+def format_mark(version: str, day: dt.date) -> str:
+    """Format a verification mark string with version and date."""
+    return f"verified: {version} (стенд, {day.isoformat()})"
+
+
+def update_mark(block: TemplateBlock, *, version: str, day: dt.date) -> bool:
+    """Rewrite the block's mark in place. False when there is nothing to rewrite."""
+    if block.mark_line is None or block.mark is None:
+        return False
+    lines = block.path.read_text(encoding="utf-8").splitlines(keepends=True)
+    old = lines[block.mark_line - 1]
+    prefix = old[: len(old) - len(old.lstrip())]
+    comment = "#" if old.lstrip().startswith("#") else ("//" if old.lstrip().startswith("//") else "--")
+    note = ""
+    parsed = MARK_BODY.match(block.mark)
+    if parsed:
+        note = parsed["note"]
+    new = f"{prefix}{comment} {format_mark(version, day)}{note}\n"
+    if new == old:
+        return False
+    lines[block.mark_line - 1] = new
+    block.path.write_text("".join(lines), encoding="utf-8")
+    return True
