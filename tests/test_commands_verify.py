@@ -90,6 +90,53 @@ class LoadChainTest(unittest.TestCase):
             load_chain(self.path)
         self.assertIn("sneaky", str(ctx.exception))
 
+    def test_non_string_id_is_rejected(self):
+        self.path.write_text(
+            '[[step]]\nid = 5\nkind = "fixture"\nchannel = "vql"\nvql = "SELECT 1"\n', encoding="utf-8")
+        with self.assertRaises(ChainError) as ctx:
+            load_chain(self.path)
+        self.assertIn("id", str(ctx.exception))
+
+    def test_calls_entry_non_integer_is_rejected(self):
+        self.path.write_text(
+            '[[step]]\nid = "x"\nkind = "fixture"\nchannel = "vql"\nvql = "SELECT 1"\ncalls = ["a"]\n',
+            encoding="utf-8")
+        with self.assertRaises(ChainError) as ctx:
+            load_chain(self.path)
+        self.assertIn("x", str(ctx.exception))
+        self.assertIn("'a'", str(ctx.exception))
+
+    def test_calls_entry_float_is_rejected(self):
+        self.path.write_text(
+            '[[step]]\nid = "x"\nkind = "fixture"\nchannel = "vql"\nvql = "SELECT 1"\ncalls = [0.9]\n',
+            encoding="utf-8")
+        with self.assertRaises(ChainError) as ctx:
+            load_chain(self.path)
+        self.assertIn("x", str(ctx.exception))
+        self.assertIn("0.9", str(ctx.exception))
+
+    def test_calls_entry_bool_is_rejected(self):
+        # bool is an int subclass in Python; a TOML `true`/`false` must not pass as 0/1.
+        self.path.write_text(
+            '[[step]]\nid = "x"\nkind = "fixture"\nchannel = "vql"\nvql = "SELECT 1"\ncalls = [true]\n',
+            encoding="utf-8")
+        with self.assertRaises(ChainError):
+            load_chain(self.path)
+
+    def test_template_step_with_non_string_address_is_rejected(self):
+        self.path.write_text(
+            '[[step]]\nid = "x"\nkind = "template"\nchannel = "vql"\naddress = 5\n', encoding="utf-8")
+        with self.assertRaises(ChainError) as ctx:
+            load_chain(self.path)
+        self.assertIn("address", str(ctx.exception))
+
+    def test_fixture_step_with_non_string_vql_is_rejected(self):
+        self.path.write_text(
+            '[[step]]\nid = "x"\nkind = "fixture"\nchannel = "vql"\nvql = 5\n', encoding="utf-8")
+        with self.assertRaises(ChainError) as ctx:
+            load_chain(self.path)
+        self.assertIn("vql", str(ctx.exception))
+
 
 class RenderTest(unittest.TestCase):
     def test_exact_string_is_replaced_everywhere(self):

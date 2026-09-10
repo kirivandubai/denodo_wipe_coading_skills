@@ -66,8 +66,11 @@ def load_chain(path: Path) -> Chain:
 
 def _step(raw: dict) -> Step:
     step_id = raw.get("id")
-    if not step_id:
-        raise ChainError("every step needs an id")
+    # Not just falsy: a non-string id (e.g. a bare TOML integer) would build a Step whose
+    # id violates the declared type, then poison the duplicate-id check and every later
+    # report line that assumes a string.
+    if not isinstance(step_id, str) or not step_id:
+        raise ChainError(f"every step needs a non-empty string id, got {step_id!r}")
     kind, channel = raw.get("kind"), raw.get("channel")
     if kind not in KINDS:
         raise ChainError(f"step {step_id!r}: kind must be one of {KINDS}, got {kind!r}")
@@ -76,21 +79,40 @@ def _step(raw: dict) -> Step:
     expect = raw.get("expect", "rows")
     if expect not in EXPECTS:
         raise ChainError(f"step {step_id!r}: expect must be one of {EXPECTS}, got {expect!r}")
-    if kind == "template" and not raw.get("address"):
-        raise ChainError(f"step {step_id!r}: a template step needs an address")
-    if kind == "fixture" and not raw.get("vql"):
-        raise ChainError(f"step {step_id!r}: a fixture step needs a vql body")
+    address = raw.get("address")
+    if kind == "template" and not (isinstance(address, str) and address):
+        raise ChainError(f"step {step_id!r}: a template step needs a string address")
+    vql = raw.get("vql")
+    if kind == "fixture" and not (isinstance(vql, str) and vql):
+        raise ChainError(f"step {step_id!r}: a fixture step needs a string vql body")
     marketplace = bool(raw.get("marketplace", False))
     if channel == "http" and not marketplace:
         # The executor (a later task) only implements the vql channel; http steps are
         # guarded behind --with-marketplace. Without this, an http step lacking the flag
         # would fall through into the vql branch of a default run.
         raise ChainError(f"step {step_id!r}: an http-channel step must set marketplace = true")
-    return Step(id=step_id, kind=kind, channel=channel, address=raw.get("address"), vql=raw.get("vql"),
-                calls=[int(c) for c in raw.get("calls", [])],
+    return Step(id=step_id, kind=kind, channel=channel, address=address, vql=vql,
+                calls=_int_calls(raw.get("calls", []), step_id),
                 substitute={str(k): str(v) for k, v in (raw.get("substitute") or {}).items()},
                 capture={str(k): str(v) for k, v in (raw.get("capture") or {}).items()},
                 check=raw.get("check"), expect=expect, marketplace=marketplace)
+
+
+def _int_calls(raw_calls: object, step_id: str) -> list[int]:
+    """Validate ``calls`` — indexes into a template's http calls.
+
+    A bad manifest must fail as ``ChainError`` here, not as a bare ``ValueError`` from
+    ``int()`` on a non-numeric string, and not as a silently truncated index from a float
+    (``int(0.9) == 0`` would pick the wrong call without any error at all). ``bool`` is
+    rejected too: it is an ``int`` subclass in Python, so a stray TOML ``true``/``false``
+    would otherwise pass through as ``1``/``0``.
+    """
+    if not isinstance(raw_calls, list):
+        raise ChainError(f"step {step_id!r}: calls must be a list of integers, got {raw_calls!r}")
+    for item in raw_calls:
+        if type(item) is not int:
+            raise ChainError(f"step {step_id!r}: calls entries must be integers, got {item!r}")
+    return list(raw_calls)
 
 
 def render(text: str, substitute: dict[str, str], values: dict[str, str]) -> str:
