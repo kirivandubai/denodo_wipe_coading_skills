@@ -26,6 +26,46 @@ CREATE OR REPLACE FOLDER '/01 - connectivity';
 -- verified: 9.5.1 (стенд, 2026-09-09)
 CREATE OR REPLACE FOLDER '/02 - integration';
 ```
+
+### No mark
+
+```sql
+SELECT 1 FROM DUAL();
+```
+"""
+
+INDENTED_SAMPLE = (
+    "# Skill\n"
+    "\n"
+    "## Templates\n"
+    "\n"
+    "### Wrapped\n"
+    "\n"
+    "1. Step one:\n"
+    "   ```sql\n"
+    "   -- verified: 9.5.1 (стенд, 2026-09-09)\n"
+    "   SELECT 1 FROM DUAL();\n"
+    "```\n"  # closing fence at a different indent (column 0) than the opening one
+    "2. Step two.\n"
+)
+
+DUPLICATE_SAMPLE = """# Skill
+
+## Templates
+
+### Database
+
+```sql
+-- verified: 9.5.1 (стенд, 2026-09-09)
+SELECT 1 FROM DUAL();
+```
+
+### Database
+
+```sql
+-- verified: 9.5.1 (стенд, 2026-09-09)
+SELECT 2 FROM DUAL();
+```
 """
 
 
@@ -82,3 +122,62 @@ class LoadBlockTest(unittest.TestCase):
     def test_block_index_out_of_range_is_an_error(self):
         with self.assertRaises(TemplateError):
             load_block(self.root, "skills/catalog/SKILL.md#Database[3]")
+
+    def test_block_without_a_mark_has_none_for_mark_and_mark_line(self):
+        block = load_block(self.root, "skills/catalog/SKILL.md#No mark")
+        self.assertIsNone(block.mark)
+        self.assertIsNone(block.mark_line)
+
+
+class IndentedFenceTest(unittest.TestCase):
+    """A fence nested inside a list item — the opening ``` is not at column 0."""
+
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp())
+        (self.root / "skills" / "listy").mkdir(parents=True)
+        (self.root / "skills" / "listy" / "SKILL.md").write_text(INDENTED_SAMPLE, encoding="utf-8")
+
+    def test_fence_indented_inside_a_list_item_is_found_and_dedented(self):
+        block = load_block(self.root, "skills/listy/SKILL.md#Wrapped")
+        self.assertEqual(block.language, "sql")
+        self.assertEqual(block.mark, "verified: 9.5.1 (стенд, 2026-09-09)")
+        # dedented: no leading spaces left, even though the closing fence was
+        # unindented while the opening one (and its body) were indented by three spaces
+        self.assertEqual(
+            block.body,
+            "-- verified: 9.5.1 (стенд, 2026-09-09)\nSELECT 1 FROM DUAL();",
+        )
+
+
+class DuplicateSectionTest(unittest.TestCase):
+    """Two headings with the same text make an address ambiguous."""
+
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp())
+        (self.root / "skills" / "dup").mkdir(parents=True)
+        (self.root / "skills" / "dup" / "SKILL.md").write_text(DUPLICATE_SAMPLE, encoding="utf-8")
+
+    def test_duplicate_section_heading_is_an_error(self):
+        with self.assertRaises(TemplateError) as ctx:
+            load_block(self.root, "skills/dup/SKILL.md#Database")
+        message = str(ctx.exception)
+        self.assertIn("Database", message)
+        self.assertIn("SKILL.md", message)
+
+
+class RealSkillFileTest(unittest.TestCase):
+    """Regression coverage against the actual repository content, not a fixture."""
+
+    def test_when_you_cannot_see_the_file_section_resolves_and_second_block_carries_a_mark(self):
+        root = Path(__file__).resolve().parents[1]
+        first = load_block(root, "skills/datasources/SKILL.md#When you cannot see the file")
+        self.assertEqual(first.language, "sql")
+        self.assertIsNone(first.mark)
+
+        second = load_block(root, "skills/datasources/SKILL.md#When you cannot see the file[1]")
+        self.assertEqual(second.language, "sql")
+        self.assertEqual(second.mark, "verified: 9.5.1 (стенд, 2026-09-09)")
+        self.assertIn("CREATE OR REPLACE DATASOURCE DF ds_crm", second.body)
+        # dedented: the raw file indents this fence by three spaces (it lives inside a
+        # numbered list), so an un-dedented body would still carry that indentation here
+        self.assertTrue(second.body.startswith("-- verified:"))
