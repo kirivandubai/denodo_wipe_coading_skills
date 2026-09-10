@@ -90,9 +90,19 @@ datasources → folders → database.
 | `Error executing query. Total time …` + in `raw`: `[DF ROUTE] [PARSE_ERROR] … Error getting input Stream` | `SELECT` from a DF base view | the file path in the datasource `ROUTE` is wrong or unreadable on the *server* (paths are server-side) |
 | `authentication error: The username or password is incorrect` | any (arrives as `error.kind: connection`) | profile password wrong — the human edits `profiles.toml` |
 
-Silent failure worth knowing: a DF wrapper whose `OUTPUTSCHEMA` lists only some of
-the file's columns creates without error and its base view returns **zero rows**.
-List every column.
+Silent failures worth knowing — `ok:true` and a broken object, every one of them
+*verified: 9.5.1 (стенд)*:
+
+| What creates cleanly | What is actually wrong | How you find out |
+|---|---|---|
+| a DF wrapper whose `OUTPUTSCHEMA` lists only some of the file's columns | its base view returns **zero rows** | `SELECT` — list every column of the file (`/denodo:datasources`) |
+| `CREATE OR REPLACE VIEW` that renames or drops a column | every view above it goes to `view_status = 'INVALID'`, every association mapping it goes to `valid = false` | `GET_VIEWS(… input_retrieve_invalid_views_only = true)` and `GET_ASSOCIATIONS()` (`/denodo:views`) |
+| `SET IMPLEMENTATION` over a view that does not match the interface | the contract fails on `SELECT` with `… <NAME> [INTERFACE] [ERROR]`, which names nothing else | `SELECT` through the interface view, and `view_status` — `INVALID`, or `INTERFACE_NOT_IMPLEMENTED` when there is no implementation at all |
+| `ENDPOINT … PRINCIPAL` without `REFERENTIAL CONSTRAINT` | not a foreign key; clients see no relationship | `is_referential_constraint` in `GET_ASSOCIATIONS()` |
+| an `ADD_TO` naming a view or column that does not exist | the tag is simply not assigned | `GET_VIEW_TAGS()` (`/denodo:catalog`) |
+
+The shape is always the same: the statement is checked, the object is not. **Read the
+object back** — that is what the Verify section of every domain skill is for.
 
 ## 2. Data Marketplace HTTP
 

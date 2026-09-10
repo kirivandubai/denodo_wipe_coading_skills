@@ -27,7 +27,7 @@ tool reads host, user and password from `~/.denodo/profiles.toml` itself.
 | Another database | add `--database <db>` (or put `CONNECT DATABASE <db>;` first in the file) |
 | Schema of an object | `vql desc --env dev bv_orders` (`--type view` is the default and covers base views too — there is no `DESC TABLE`) |
 | Server-generated VQL | `vql desc --env dev bv_orders --vql` |
-| Other types | `--type database`, `--type "datasource df"`, `--type "wrapper df"`, `--type tag`; folders take a quoted path: `vql desc --env dev "'/sales'" --type folder --vql` |
+| Other types | `--type database`, `--type "datasource df"`, `--type "wrapper df"`, `--type tag`, `--type association`, `--type "interface view"`; folders take a quoted path: `vql desc --env dev "'/sales'" --type folder --vql` |
 | Marketplace call | `api get --env dev /public/api/tags` |
 | … with a body | `api post --env dev /public/api/tags --json '{"name":"pii","description":"…","descriptionType":"TEXT"}'` |
 | … query params / multipart | `--param k=v` (repeatable), `--part field=@file` / `field=json:{…}` |
