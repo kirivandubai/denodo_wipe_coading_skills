@@ -23,7 +23,7 @@ Remote: `github.com/kirivandubai/denodo_wipe_coading_skills` (имя на GitHub
 
 **Текущая очередь работ — `docs/TASKS.md`.** Задача берётся оттуда, а не придумывается.
 
-Слой исполнения (`scripts/denodo` + `scripts/denodo_cli/`) реализован в T5; готовы навыки `vql`, `execute`, `catalog`, `datasources`, `views`, `marketplace`, `procedures` (последний — вне объёма v1); `query` впереди.
+Слой исполнения (`scripts/denodo` + `scripts/denodo_cli/`) реализован в T5; готовы навыки `vql`, `execute`, `catalog`, `datasources`, `views`, `marketplace`, `procedures` (последний — вне объёма v1). Обе вехи закрыты приёмками: A — T13, B — T19. Навыка `query` нет и ссылок на него в текстах тоже: `SELECT` — обычный SQL, дельта диалекта живёт там, где кусается.
 Юнит-тесты гоняются без зависимостей: `PYTHONPATH=scripts python3 -m unittest discover -s tests -t .`;
 интеграционные — против стенда: `DENODO_TEST_ENV=dev uv run --with denodo-sqlalchemy
 --with psycopg2-binary python -m unittest tests.integration.test_stand` (с `PYTHONPATH=scripts`).
