@@ -3,6 +3,7 @@
   "name": "denodo",
   "displayName": "Denodo Skills",
   "version": "0.1.0",
+  "license": "MIT",
   "description": "Create Denodo 9.5 objects from plain-language intent: databases, folders, tags, JDBC/DF/JSON data sources and wrappers, base, derived and interface views, associations, and Data Marketplace tags, categories and external elements.",
   "author": {
     "name": "kirivandubai",
