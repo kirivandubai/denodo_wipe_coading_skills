@@ -24,6 +24,12 @@ intent in words
   → the file stays in git
 ```
 
+**When there is no project** — an empty directory, a stand and nothing else — the file is
+still written: put it in the working directory and say in the summary where it is and that
+it is outside version control. What the rule protects is the artifact, not the repository:
+an object living only on a server is the failure mode whether or not there is a git to
+commit the file to.
+
 **Inline `-e` is for reading only** — `SELECT`, `DESC`, `GET_ELEMENTS()`, `GET_VIEW_TAGS()`.
 Every `CREATE`, `ALTER` and `DROP` goes through a file, including the first exploratory one.
 
@@ -127,7 +133,7 @@ destructive as a `DROP`, and none of them contains the word:
 | `DELETE /public/api/category-management/categories/{id}` | the category **and all its children** |
 | `DELETE /public/api/external-tool-servers/{id}` | the server and **every element it imported** |
 | `POST /public/api/tags/vdp/synchronize` | every imported VDP tag missing from the list you send |
-| `POST /public/api/element-management/all/synchronize` with `proceedWithConflicts:"SERVER"` | local edits in the marketplace |
+| `POST /public/api/element-management/{all,DATABASES,VIEWS,…}/synchronize` | everything the marketplace holds that VDP no longer has — `changes.localElements` is that list, and it goes whatever `proceedWithConflicts` says; `"SERVER"` additionally overwrites descriptions edited in the marketplace |
 | `POST /public/api/views/{id}/tags`, `.../categories` | the view's previous assignments — this is "set", not "add" |
 
 Sending a *complete* list to a `synchronize` call is not a substitute for asking: you are
@@ -142,6 +148,13 @@ still replacing a set you did not read out to the human.
 | "Cleanup of my own probe objects doesn't count" | It is a `DROP` on a shared server. Same rule. |
 | "I'll list what I removed in the summary" | Disclosure after the fact is not consent. |
 
+**One named exception, and only this one:** the first
+`POST /public/api/external-tool-servers/synchronize` on an external tool server you created
+in this same session imports elements and can delete none, because that server has imported
+none yet. Every later import on it is back under the rule. Nothing else about a `synchronize`
+is exempt, and on a `production` profile the tool refuses it regardless — see
+`/denodo:marketplace`.
+
 **Red flags — stop and ask:** you are about to send `DELETE` or a `synchronize`; you are
 writing `--allow-destructive`; `env.production` is `true`; you are removing something you
 did not create in this session; you are "cleaning up" anything.
@@ -155,8 +168,12 @@ did not create in this session; you are "cleaning up" anything.
 | Derived views, interface views, associations | `/denodo:views` |
 | Marketplace tags, categories, external elements (REST) | `/denodo:marketplace` |
 | Stored procedures — calling one, or writing one | `/denodo:procedures` |
-| SELECT, expressions, Denodo dialect | `/denodo:query` |
 | Running anything against a live server, reading its errors | `/denodo:execute` |
+
+There is no skill for the `SELECT` itself: it is ordinary SQL. The dialect deltas that cost
+data rather than merely surprising you live where they bite — aggregate result types and
+what survives a `GROUP BY` in `/denodo:views`, the server's own error texts in
+`/denodo:execute`.
 
 VDP tags (`CREATE TAG`, VQL, port 9996) and Data Marketplace tags
 (`POST /public/api/tags`, REST) are different objects on different servers. "Tag" alone

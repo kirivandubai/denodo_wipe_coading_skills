@@ -1,7 +1,8 @@
 # `CREATE VIEW` in full
 
-Everything `/denodo:views` leaves out of the minimal template. The SELECT itself —
-functions, expressions, joins, the Denodo dialect — is `/denodo:query`.
+Everything `/denodo:views` leaves out of the minimal template. The SELECT itself is
+ordinary SQL; the dialect deltas worth knowing are in the aggregate table of
+`/denodo:views`.
 
 ## Grammar (documentation 9.5)
 

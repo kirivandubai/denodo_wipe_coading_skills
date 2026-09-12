@@ -110,6 +110,9 @@ api post --env lab /public/api/tags/627/views --json '[7484]'
   `PUT`-ing over somebody else's tag. A namesake differing only in case is a collision, not a
   match: creating the second one is `409`, so that case is a question for the human, not
   something to resolve automatically.
+- **The two base paths are the API's own, not a slip in this template:** the paged lookup is
+  `/public/api/tag-management/tags`, while create, update and the per-tag reads are
+  `/public/api/tags/…`. Do not "correct" one to match the other.
 - `name`, `description` and `descriptionType` are all mandatory on create; missing ones are
   `400 VALIDATE_FIELD`. `descriptionType` is `TEXT` or `RICH_TEXT` (the latter renders HTML).
 - A duplicate name is `409` with an **empty body** — no message to read. That is why step 1
@@ -208,6 +211,8 @@ api post --env lab /public/api/external-providers-types \
     --part 'request=json:{"name":"ACME_BI","visualName":"Acme BI"}'
 # → 201 {"externalProviderTypeId":30,"iconImage":null, …}
 #   with a logo:  --part 'icon=@./acme.svg'
+#   the next call answers 200, this one 201 — check 2xx, never a particular code
+#   — verified: 9.5.1 (стенд, 2026-09-12)
 
 # 2. the server that will read the contract. The interface view need not exist yet
 api post --env lab /public/api/external-tool-servers \
@@ -216,15 +221,32 @@ api post --env lab /public/api/external-tool-servers \
              "databaseName":"sales_analytics","viewName":"i_acme_bi_elements"}'
 # → {"id":217, …}
 
-# 3. ask the marketplace for the contract it expects, and apply it as VQL
+# 3. ask the marketplace for the contract it expects. NOT a file to apply as it stands:
+#    the two CREATE TYPE come back usable verbatim, the interface view comes back
+#    without SET IMPLEMENTATION and without FOLDER — you write the implementation
 api get --env lab /public/api/external-tool-servers/217/vql-metadata
-# → a JSON string: CONNECT DATABASE …; two CREATE TYPE; CREATE INTERFACE VIEW …
+# → a JSON string: CONNECT DATABASE …; two CREATE TYPE; CREATE INTERFACE VIEW (columns only)
 
 # 4. import
 api post --env lab /public/api/external-tool-servers/synchronize \
     --json '{"externalToolServerIds":[217]}'
 # → externalElementsAdded / Updated / Deleted, per server
 ```
+
+**Step 4 is a `synchronize`, and the safety rule of `/denodo:vql` says stop and ask before
+one — but the first import on a server you have just created cannot delete anything.** The
+call deletes elements *absent from the snapshot*, and a server created in this same session
+has imported none. So: your own new server, first import — go, and say in the summary what
+was imported. **From the second import on, the confirmation is back**, because the interface
+view is the whole picture and a row that stopped being selected is an element that gets
+removed with its tags and categories. Read the current set first and show the human what is
+about to disappear — the server's own elements are
+`POST /public/api/search/external-elements/metadata` with `externalToolServerIds: [<id>]`
+and the nine other mandatory fields — *verified: 9.5.1 (стенд, 2026-09-12)*.
+There is no `GET …/external-tool-servers/{id}/external-elements`: that path is `404`.
+None of this changes the tool: the call is stamped
+`destructive: replace` either way, and on a `production` profile it is refused without
+`--allow-destructive`, which only a human may add.
 
 **Both type steps are usually unnecessary, and they are different objects.** Look each one
 up before creating it — a new type is a marketplace-wide object that everyone then sees:
@@ -243,7 +265,13 @@ FontAwesome key). Both listings return the name under a different key than the o
 the element type is `externalElementTypeName` when read and `name` when written, and the read
 form has no `description` at all.
 
-The VQL half — the implementation behind the contract from step 3:
+The VQL half — the implementation behind the contract from step 3. **Its names are outside
+the naming convention of `/denodo:vql` on purpose:** the interface view's name is part of
+the contract you gave the tool server, and the three views under it are its implementation,
+not integration-layer or business-entity objects. Keep them together in one folder and named
+after the tool, as below; do not rename them to `iv_…` to match the table.
+
+
 
 ```sql
 -- verified: 9.5.1 (стенд, 2026-09-12)
@@ -323,8 +351,9 @@ that does not match it, and only the `SELECT` shows it (`/denodo:views`).
 | Which "tag" | marketplace tag = visible in the Data Marketplace UI, created here; VDP tag = `LIST TAGS`, `/denodo:catalog`. When the request does not say, ask — the call succeeds either way, on the wrong server |
 | `serverId` | `marketplace_server_id` in the profile — the human's to set, and the tool adds it for you; the ids are in `GET /public/api/configuration/servers`. Needed as soon as more than one VDP is registered. Do not put it in a call unless you mean a server other than the profile's |
 | Tag or category name, description | the human. Both are shown to consumers browsing the marketplace, so they read as labels, not as identifiers |
+| A new category's parent | `GET …/categories/tree` first. A live marketplace's tree is a taxonomy somebody designed — hang the new category inside the branch it belongs to. A **new top-level** category is a question for the human, not a default: it adds an axis to what everybody browsing sees. (`GET …/categories/{id}/potential-parent` is for moving an existing one) |
 | Every numeric id | never a template, never memory: a `GET` in this session. Ids differ per installation and per server |
-| View ids to assign to | `GET /public/api/view-details?databaseName=…&viewName=…`; `id:null` means synchronise first |
+| View ids to assign to | `GET /public/api/view-details?databaseName=…&viewName=…`; `id:null` means synchronise first. Project `id`, `inLocal` and `inVDP` out of the answer — it carries the view's whole field list and its connection URIs, and truncating it instead is how the three fields get missed |
 | Whether the catalog may be synchronised | the human, if `changes` shows anything under `localElements` or a modified element that is not yours — it is a shared catalog |
 | For an external element: the type | `GET /public/api/external-elements-types` — 24 built in; invent one only if none fits |
 | For an external element: id, name, url, timestamps | the source tool. `updated_at` is what drives updates — an element whose `updated_at` does not move is never refreshed |
