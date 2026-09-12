@@ -96,11 +96,16 @@ class VerifyChainTest(unittest.TestCase):
     def _local_elements(self, element_type: str) -> list[dict]:
         """``localElements`` of the marketplace's own changes endpoint: in the catalog,
         gone from VDP. Read directly, not through the chain, so it is evidence about the
-        server rather than a restatement of the run's own report."""
+        server rather than a restatement of the run's own report.
+
+        No ``serverId`` here either: like every call the chain makes, this one takes the
+        server from the profile. Against a stand with several VDP servers registered, a
+        profile without ``marketplace_server_id`` fails here rather than quietly reading a
+        different server's catalog and calling it clean.
+        """
         from denodo_cli.transports import get_rest_transport
 
         transport = get_rest_transport()(self.profile)
-        result = transport.call("GET", f"/public/api/element-management/{element_type}/changes",
-                                params={"serverId": self.chain.values["server_id"]})
+        result = transport.call("GET", f"/public/api/element-management/{element_type}/changes")
         self.assertTrue(result.ok, result.body)
         return result.body["localElements"]

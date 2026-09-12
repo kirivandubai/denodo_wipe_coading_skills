@@ -93,3 +93,29 @@ class ChainManifestMatchesSkillsTest(unittest.TestCase):
                         0 <= index < len(calls),
                         f"step {step.id!r}: calls names index {index}, but the block at "
                         f"{step.address!r} has {len(calls)} api call(s)")
+
+    def test_no_step_and_no_cleanup_entry_names_the_server_itself(self):
+        """``serverId`` comes from the profile, never from the manifest or the templates.
+
+        ``RestTransport`` adds ``marketplace_server_id`` to a call only when the call has
+        not named a server itself (``transports/api_rest.py``), so a literal ``serverId``
+        anywhere in this chain — in a rendered template body or in a cleanup entry —
+        silently disables the profile mechanism for everyone: a fork pointing at another
+        marketplace could then only change the id by editing this repository. That is the
+        gap task T16 closed, and this is what keeps it closed.
+        """
+        for step in [s for s in self.chain.steps if s.channel == "http"]:
+            with self.subTest(step=step.id):
+                body = render(load_block(REPO, step.address).body, step.substitute, self.chain.values)
+                for call in parse_api_calls(body):
+                    self.assertNotIn(
+                        "serverId", call["params"],
+                        f"step {step.id!r}: {call['method']} {call['path']} names the server "
+                        f"itself, so the profile's marketplace_server_id is never used")
+
+        for entry in self.chain.cleanup_http:
+            with self.subTest(cleanup=entry["path"]):
+                self.assertNotIn(
+                    "serverId", entry["params"],
+                    f"[cleanup] http {entry['method']} {entry['path']} names the server "
+                    f"itself, so the profile's marketplace_server_id is never used")
