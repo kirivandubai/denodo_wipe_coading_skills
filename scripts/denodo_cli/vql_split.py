@@ -11,6 +11,11 @@ every command between ``BEGIN`` and ``END``. Splitting on them turned one proced
 five broken fragments, so the scanner below keeps the body whole until the ``END`` that
 closes it. This is a single named special case, not a VQL parser: nothing else in the
 language nests statements this way.
+
+Comments are the other half of that: stripped everywhere else, passed through inside a
+procedure body. Not because the server keeps them — it normalises the body and
+``DESC VQL PROCEDURE`` prints it without them — but because the body is the user's text and
+this layer does not edit it.
 """
 
 from __future__ import annotations
@@ -31,10 +36,16 @@ def split_statements(text: str) -> list[str]:
             scanner.end_word()
             i = end
         elif ch == "#" or (ch == "-" and nxt == "-"):
-            i = _skip_to_end_of_line(text, i)
+            end = _skip_to_end_of_line(text, i)
+            if scanner.inside_body():
+                current.append(text[i:end])   # a comment of the body is part of the definition
+            i = end
         elif ch == "/" and nxt == "*":
-            end = text.find("*/", i + 2)
-            i = n if end < 0 else end + 2
+            close = text.find("*/", i + 2)
+            end = n if close < 0 else close + 2
+            if scanner.inside_body():
+                current.append(text[i:end])
+            i = end
         elif ch == ";":
             if scanner.body_is_open():
                 current.append(ch)       # a semicolon of the procedure's own body
@@ -95,6 +106,11 @@ class _ProcedureScanner:
             if word == "PROCEDURE" and self._previous_word == "VQL" and self._first_word == "CREATE":
                 self._in_procedure = True
         self._previous_word = word
+
+    def inside_body(self) -> bool:
+        """Whether the scanner stands inside a body right now; decides nothing about it."""
+        self.end_word()
+        return self._in_procedure
 
     def body_is_open(self) -> bool:
         """Called on a ``;``: the pending word ends here, and so may the body."""

@@ -153,6 +153,30 @@ class ProcedureBodyTest(unittest.TestCase):
         )
         self.assertEqual(len(split_statements(text)), 1)
 
+    def test_comment_inside_the_body_is_kept_in_the_statement(self):
+        """The body is the user's text: a comment in it goes to the server unedited."""
+        text = (
+            "CREATE OR REPLACE VQL PROCEDURE p (out_n OUT INTEGER)\n"
+            "AS (\n"
+            "    tmp INTEGER;\n"
+            ")\n"
+            "BEGIN\n"
+            "    -- why this is 1\n"
+            "    tmp := 1;\n"
+            "    RETURN ROW (out_n) VALUES (tmp);\n"
+            "END;"
+        )
+        self.assertIn("-- why this is 1", split_statements(text)[0])
+
+    def test_comment_before_the_procedure_is_still_stripped(self):
+        text = (
+            "-- file header\n"
+            "CREATE OR REPLACE VQL PROCEDURE p (out_n OUT INTEGER)\n"
+            "AS (\n    tmp INTEGER;\n)\n"
+            "BEGIN\n    tmp := 1;\n    RETURN ROW (out_n) VALUES (tmp);\nEND;"
+        )
+        self.assertNotIn("file header", split_statements(text)[0])
+
     def test_a_view_named_procedure_is_not_a_procedure(self):
         """Only the CREATE ... VQL PROCEDURE header opens a body; the word alone does not."""
         text = "CREATE OR REPLACE VIEW procedure_log AS SELECT 1 AS a FROM DUAL();\nSELECT 2 FROM DUAL();"
