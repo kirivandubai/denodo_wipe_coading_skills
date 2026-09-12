@@ -75,6 +75,7 @@ Virtual DataPort — основной адресат, но не единстве
 /denodo:datasources   источники, wrappers, base views
 /denodo:views         derived views, interface views, ассоциации
 /denodo:marketplace   Data Marketplace: теги, категории, external elements (REST)
+/denodo:procedures    хранимые процедуры: предопределённые, VQL, Java (вне v1)
 /denodo:query         диалект и выражения (в v1 — минимальная дельта)
 ```
 
@@ -86,6 +87,12 @@ Virtual DataPort — основной адресат, но не единстве
 
 **Граница `datasources` ↔ `views`:** base view создаётся вместе с источником и wrapper'ом
 и потому живёт в `datasources`; `views` отвечает за производные представления.
+
+**Граница `procedures` ↔ `datasources` проходит по задаче, а не по механизму.**
+Интроспекция JDBC-источника выполняется предопределёнными процедурами
+(`PING_DATA_SOURCE`, `GET_JDBC_DATASOURCE_TABLES`, `GENERATE_VQL_TO_CREATE_JDBC_BASE_VIEW`),
+но это шаг цепочки «источник → wrapper → base view», а не работа с процедурами. Он остаётся
+в `datasources`; `procedures` отвечает за вызов процедур как таковой и за написание своих.
 
 **Граница `catalog` ↔ `marketplace` проходит по серверу, а не по слову.** Теги есть и в
 Virtual DataPort, и в Data Marketplace, но это разные объекты: первые создаются через VQL,
@@ -118,9 +125,12 @@ denodo_skills/                        репозиторий = плагин = м
 │   ├── views/
 │   │   ├── SKILL.md
 │   │   └── references/               derived, base, interface
-│   └── marketplace/
+│   ├── marketplace/
+│   │   ├── SKILL.md
+│   │   └── references/               tags, categories, external elements
+│   └── procedures/
 │       ├── SKILL.md
-│       └── references/               tags, categories, external elements
+│       └── references/               predefined, vql-procedures, java-procedures
 ├── scripts/
 │   ├── denodo                        launcher (только stdlib)
 │   └── denodo_cli/                   реализация
@@ -514,8 +524,8 @@ Marketplace с последующей уборкой созданного. По�
 на базу и папку. Поштучный прогон проверял бы каждый шаблон в вакууме и пропускал бы
 ровно то, что ломается на практике, — стык между навыками. Поэтому `verify` исполняет
 один сценарий в порядке зависимостей: база → папки → файловый источник → wrapper →
-базовое представление → производное → интерфейсное → ассоциация, и по флагу хвост
-маркетплейса.
+базовое представление → производное → интерфейсное → ассоциация → процедуры, и по флагу
+хвост маркетплейса.
 
 **План цепочки — в манифесте, механика — в коде.** `verification/chain.toml` описывает
 только что и в каком порядке исполняется; фазы, правила безопасности, отчёт и уборка
@@ -658,6 +668,12 @@ elements Data Marketplace), `query` в объёме минимальной де�
 - flightsql-транспорт (заложен структурно, но не реализуется);
 - собственный MCP-сервер;
 - версии Denodo кроме 9.5.
+
+**Сверх v1 в наборе есть `/denodo:procedures`** (T14): хранимые процедуры в сценарии
+витрины не участвуют и в перечень шестнадцати не входят, но как навык полезны сами по
+себе. Добавлены тем же способом, что и остальные, — новым каталогом в `skills/`, без
+правки ядра и формата навыка. Слоя исполнения это стоило одной правки: тело VQL-процедуры
+несёт собственные `;`, и сплиттер научился держать его целым.
 
 ## 13. Риски и открытые вопросы
 
