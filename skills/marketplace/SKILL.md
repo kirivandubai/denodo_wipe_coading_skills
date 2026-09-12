@@ -159,7 +159,7 @@ Needed before any assignment to a view, and before an external element can name 
 at the radius first — the whole point of `changes` is that it costs nothing:
 
 ```bash
-# verified: 9.5.1 (стенд, 2026-09-10)
+# verified: 9.5.1 (стенд, 2026-09-12)
 api get --env lab /public/api/element-management/DATABASES/changes
 api get --env lab /public/api/element-management/VIEWS/changes
 # → {"serverElements":[…new…], "modifiedElements":[…], "localElements":[…gone from VDP…]}
@@ -246,7 +246,7 @@ form has no `description` at all.
 The VQL half — the implementation behind the contract from step 3:
 
 ```sql
--- verified: 9.5.1 (стенд, 2026-09-10)
+-- verified: 9.5.1 (стенд, 2026-09-12)
 CONNECT DATABASE sales_analytics;
 
 -- the two types come from vql-metadata verbatim. The names are part of the contract

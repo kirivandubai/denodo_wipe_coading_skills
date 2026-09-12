@@ -109,3 +109,61 @@ class VerifyChainTest(unittest.TestCase):
         result = transport.call("GET", f"/public/api/element-management/{element_type}/changes")
         self.assertTrue(result.ok, result.body)
         return result.body["localElements"]
+
+    @unittest.skipUnless(os.environ.get("DENODO_TEST_MARKETPLACE"), "DENODO_TEST_MARKETPLACE not set")
+    def test_the_external_element_is_actually_imported_and_goes_away_with_its_server(self):
+        """``200`` on synchronize is not evidence that anything was imported.
+
+        The import step answers ``externalElementsAdded/Updated/Deleted``, and an empty
+        answer is a perfectly good ``200`` — that is exactly how a chain that creates
+        nothing would report itself green. So this looks for the element itself, through
+        the marketplace's own search, and then for its absence once cleanup has removed
+        the tool server: the element exists only as that server's reading of the interface
+        view, and nothing else in the chain would delete it.
+
+        The run is deliberately a ``keep=True`` one, because the element is gone by the
+        time a normal run returns; cleanup is then invoked directly, in ``finally``, so a
+        failed assertion still cannot leave objects in a catalog everyone shares.
+        """
+        from denodo_cli.commands import verify as verify_module
+        from denodo_cli.transports import get_rest_transport
+
+        vql_factory = get_vql_transport(self.profile.transport)
+        rest_factory = get_rest_transport()
+        doc, code = run_chain(self.profile, self.chain, root=REPO, vql_factory=vql_factory,
+                              rest_factory=rest_factory, with_marketplace=True, keep=True)
+        values = doc["values"]
+        try:
+            self.assertEqual(code, 0, [s for s in doc["steps"] if not s["ok"]])
+            server_id = int(values["tool_server_id"])
+            imported = self._external_elements(server_id)
+            self.assertEqual([e["originalExternalElementId"] for e in imported], ["ACME-DASH-01"],
+                             f"the import step reported ok but the marketplace has no element "
+                             f"for tool server {server_id}: {imported}")
+            self.assertEqual(imported[0]["typeName"], "DASHBOARD")
+        finally:
+            cleanup = verify_module._cleanup(
+                self.profile, self.chain, values=values, vql_factory=vql_factory,
+                rest_factory=rest_factory, allow_destructive=False, keep=False,
+                with_marketplace=True)
+        self.assertTrue(all(s["ok"] for s in cleanup["statements"]), cleanup["statements"])
+        self.assertTrue(all(h["ok"] for h in cleanup["http"]), cleanup["http"])
+        self.assertEqual(self._external_elements(int(values["tool_server_id"])), [],
+                         "the element outlived the tool server that imported it")
+
+    def _external_elements(self, server_id: int) -> list[dict]:
+        """Elements the marketplace holds for one external tool server, read directly.
+
+        The filter body sends every field the endpoint declares required; an absent server
+        id simply matches nothing, which is what makes this usable both before and after
+        cleanup.
+        """
+        from denodo_cli.transports import get_rest_transport
+
+        transport = get_rest_transport()(self.profile)
+        result = transport.call("POST", "/public/api/search/external-elements/metadata", json_body={
+            "text": "", "externalElementTypeIds": [], "withEndorsements": False,
+            "withWarnings": False, "withDeprecations": False, "categoryIds": [], "tagIds": [],
+            "externalToolServerIds": [server_id], "limit": 50, "offset": 0})
+        self.assertTrue(result.ok, result.body)
+        return result.body["elements"]

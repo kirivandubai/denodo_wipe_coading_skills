@@ -28,7 +28,7 @@ after a fix is safe.
 ### Derived view
 
 ```sql
--- verified: 9.5.1 (стенд, 2026-09-10)
+-- verified: 9.5.1 (стенд, 2026-09-12)
 CONNECT DATABASE sales_analytics;
 
 CREATE OR REPLACE VIEW iv_household_income
@@ -119,7 +119,7 @@ without one lands at the root of the database.
 ### Interface view — a contract you can re-implement
 
 ```sql
--- verified: 9.5.1 (стенд, 2026-09-10)
+-- verified: 9.5.1 (стенд, 2026-09-12)
 CREATE OR REPLACE INTERFACE VIEW household_income (
         household_sk:int,
         income_band_sk:int,
@@ -187,7 +187,7 @@ not.
 ### Association — the relationship, recorded
 
 ```sql
--- verified: 9.5.1 (стенд, 2026-09-10)
+-- verified: 9.5.1 (стенд, 2026-09-12)
 CREATE OR REPLACE ASSOCIATION a_income_band_household REFERENTIAL CONSTRAINT
     FOLDER = '/06 - associations'
     ENDPOINT income_band bv_household_demographics (0,*)

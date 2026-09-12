@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Callable
 
 from . import EXIT_EXECUTION, EXIT_OK, EXIT_USAGE
-from .api import api_call
+from .api import api_call, parse_multipart_specs
 from .secret import encrypt_password
 from .vql import run_statements
 from ..output import envelope
@@ -186,7 +186,7 @@ def render(text: str, substitute: dict[str, str], values: dict[str, str]) -> str
 
 
 def parse_api_calls(body: str) -> list[dict]:
-    """``api <method> <path> [--param k=v] [--json '<text>']`` lines of a bash template.
+    """``api <method> <path> [--param k=v] [--json '<text>'] [--part 'f=json:<text>']`` lines.
 
     A marketplace template block is not a script to run verbatim — it interleaves real
     calls with ``# ...`` commentary and ``# → ...`` response illustrations, and sometimes
@@ -202,12 +202,62 @@ def parse_api_calls(body: str) -> list[dict]:
     ``--json`` body, a half-deleted line — is exactly how one gets here.
     """
     joined = re.sub(r"\\\s*\n\s*", " ", body)
-    return [_api_call(line.strip()) for line in joined.splitlines()
-            if line.strip().startswith("api ")]
+    return [_api_call(line) for line in _api_lines(joined)]
+
+
+def _api_lines(text: str) -> list[str]:
+    """The ``api ...`` lines of a block, each rejoined into one parseable line.
+
+    Two different things wrap a call across lines, and only one of them is a backslash
+    (already handled by the caller). The other is a quoted argument that simply contains
+    newlines — how ``skills/marketplace/SKILL.md`` writes the external-tool-server body:
+
+        api post /public/api/external-tool-servers \
+            --json '{"type":"CUSTOM","name":"acme_bi_server",
+                     "externalProviderTypeId":30}'
+
+    That is ordinary shell — inside single quotes a newline is just a character, and a
+    backslash there would land *inside* the JSON — so the block is right and a line-at-a-
+    time reader is wrong: it used to hand ``shlex`` a fragment ending mid-quote and report
+    the template as broken. A line is therefore extended with the ones after it until
+    ``shlex`` can parse it. An argument that never closes swallows the rest of the block
+    and is then reported by ``_api_call``, naming the line it started on — the same
+    failure as before, still loud, and still pointing at where the quote opened.
+    """
+    lines: list[str] = []
+    pending: str | None = None
+    for line in text.splitlines():
+        if pending is None:
+            if not line.strip().startswith("api "):
+                continue
+            pending = line.strip()
+        else:
+            pending = f"{pending} {line.strip()}"
+        if _parses(pending):
+            lines.append(pending)
+            pending = None
+    if pending is not None:
+        lines.append(pending)
+    return lines
+
+
+def _parses(line: str) -> bool:
+    try:
+        shlex.split(line)
+    except ValueError:
+        return False
+    return True
 
 
 def _api_call(line: str) -> dict:
-    """One ``api ...`` line as ``{method, path, params, json}``."""
+    """One ``api ...`` line as ``{method, path, params, json, multipart}``.
+
+    ``--part`` is parsed rather than dropped like the other flags this does not recognise
+    (``--env`` and friends): the marketplace has exactly one multipart call — creating an
+    external provider type — and dropping a flag drops its value too, which turned that
+    line into a POST with an empty body and sent it that way. A step may leave a call out
+    (``calls``); sending a call the template does not describe is a different thing.
+    """
     try:
         tokens = shlex.split(line)[1:]
     except ValueError as exc:
@@ -220,6 +270,7 @@ def _api_call(line: str) -> dict:
     method, path = tokens[0].upper(), None
     params: dict[str, str] = {}
     body_text: str | None = None
+    part_specs: list[str] = []
     index = 1
     while index < len(tokens):
         token = tokens[index]
@@ -234,6 +285,8 @@ def _api_call(line: str) -> dict:
             params[key] = value
         elif token == "--json":
             body_text = tokens[index + 1]
+        elif token == "--part":
+            part_specs.append(tokens[index + 1])
         index += 2       # --env, and every other flag, is dropped together with its value
     if path is None:
         raise ChainError(f"api line {line!r} names no path")
@@ -241,7 +294,15 @@ def _api_call(line: str) -> dict:
         json_body = json.loads(body_text) if body_text else None
     except json.JSONDecodeError as exc:
         raise ChainError(f"api line {line!r}: --json body is not valid JSON: {exc}") from exc
-    return {"method": method, "path": path, "params": params, "json": json_body}
+    try:
+        multipart = parse_multipart_specs(part_specs) if part_specs else None
+    except (ValueError, json.JSONDecodeError) as exc:
+        # parse_multipart_specs is the same parser `api --part` uses on the command line,
+        # so a template and a hand-run call fail on the same inputs; only the wrapper
+        # differs, because a manifest-level failure has to arrive as ChainError.
+        raise ChainError(f"api line {line!r}: --part does not parse: {exc}") from exc
+    return {"method": method, "path": path, "params": params, "json": json_body,
+            "multipart": multipart}
 
 
 def _select_calls(calls: list[dict], indexes: list[int]) -> list[dict]:
@@ -800,7 +861,7 @@ def _run_http(profile: Profile, step: Step, *, body: str, values: dict[str, str]
     for call in selected:
         doc, code = api_call(profile, call["method"], call["path"], transport_factory=rest_factory,
                              json_body=call["json"], params=call["params"],
-                             allow_destructive=allow_destructive)
+                             multipart=call["multipart"], allow_destructive=allow_destructive)
         executed.append({"method": call["method"], "path": call["path"],
                          "status": doc.get("status"), "ok": bool(doc.get("ok"))})
         if code != EXIT_OK:

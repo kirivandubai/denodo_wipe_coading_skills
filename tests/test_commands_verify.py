@@ -1520,3 +1520,140 @@ address = "skills/datasources/SKILL.md#Source"
         self.assertEqual(code, 0, doc)
         executed = " ".join(s for i in FakeVql.instances for s in i.executed)
         self.assertNotIn("ENCRYPT_PASSWORD", executed)
+
+
+class MultipartApiCallTest(unittest.TestCase):
+    """``--part``: the one marketplace call that is not a JSON body.
+
+    ``POST /public/api/external-providers-types`` takes multipart, and a flag this parser
+    does not know is dropped together with its value — so before this, that line parsed
+    into a POST with no body at all and went to the server empty. A step is allowed to
+    skip a call (``calls``); it must never send a mutilated one.
+    """
+
+    LINE = ("api post --env lab /public/api/external-providers-types "
+            "--part 'request=json:{\"name\":\"ACME_BI\",\"visualName\":\"Acme BI\"}'\n")
+
+    def test_a_part_becomes_a_multipart_body(self):
+        call = parse_api_calls(self.LINE)[0]
+        self.assertEqual(call["method"], "POST")
+        self.assertIsNone(call["json"])
+        name, content, content_type = call["multipart"]["request"]
+        self.assertIsNone(name)
+        self.assertEqual(content_type, "application/json")
+        self.assertIn(b"ACME_BI", content)
+
+    def test_a_call_without_parts_carries_no_multipart(self):
+        call = parse_api_calls("api get /public/api/tags --param nameFilter=pii\n")[0]
+        self.assertIsNone(call["multipart"])
+
+    def test_a_malformed_part_is_a_chain_error(self):
+        with self.assertRaises(ChainError) as ctx:
+            parse_api_calls("api post /public/api/external-providers-types --part 'request'\n")
+        self.assertIn("--part", str(ctx.exception))
+
+    def test_a_part_with_invalid_json_is_a_chain_error(self):
+        with self.assertRaises(ChainError) as ctx:
+            parse_api_calls("api post /x --part 'request=json:{\"name\",}'\n")
+        self.assertIn("--part", str(ctx.exception))
+
+
+class MultipartStepTest(unittest.TestCase):
+    """The multipart body has to survive all the way to the transport, substitutions and all."""
+
+    class FakeRest:
+        calls = []
+
+        def __init__(self, profile):
+            self.profile = profile
+
+        def call(self, method, path, *, json_body=None, params=None, multipart=None, timeout=None):
+            from denodo_cli.transports.base import HttpResult
+            MultipartStepTest.FakeRest.calls.append((method, path, json_body, multipart))
+            return HttpResult(status=201, body={"externalProviderTypeId": 30})
+
+    BLOCK = ("api post --env lab /public/api/external-providers-types \\\n"
+             "    --part 'request=json:{\"name\":\"ACME_BI\",\"visualName\":\"Acme BI\"}'\n")
+
+    def setUp(self):
+        FakeVql.instances.clear()
+        MultipartStepTest.FakeRest.calls.clear()
+        self.root = Path(tempfile.mkdtemp())
+        (self.root / "skills" / "marketplace").mkdir(parents=True)
+        (self.root / "skills" / "marketplace" / "SKILL.md").write_text(
+            "### External element\n\n```bash\n" + self.BLOCK + "```\n", encoding="utf-8")
+        self.manifest = self.root / "chain.toml"
+        self.manifest.write_text("""
+[values]
+database = "denodo_skills_test"
+tag_prefix = "verify_"
+[[step]]
+id = "provider-type"
+kind = "template"
+channel = "http"
+address = "skills/marketplace/SKILL.md#External element"
+marketplace = true
+calls = [0]
+capture = { provider_type_id = "externalProviderTypeId" }
+substitute = { "\\"ACME_BI\\"" = "\\"{tag_prefix}ACME_BI\\"" }
+""", encoding="utf-8")
+        self.chain = load_chain(self.manifest)
+
+    def test_the_part_reaches_the_transport_with_substitutions_applied(self):
+        doc, code = run_chain(profile(marketplace_url="http://x/y"), self.chain, root=self.root,
+                              vql_factory=FakeVql, rest_factory=MultipartStepTest.FakeRest,
+                              with_marketplace=True)
+        self.assertEqual(code, 0, doc)
+        _, path, json_body, multipart = MultipartStepTest.FakeRest.calls[0]
+        self.assertEqual(path, "/public/api/external-providers-types")
+        self.assertIsNone(json_body)
+        self.assertIn(b"verify_ACME_BI", multipart["request"][1])
+        self.assertEqual(doc["values"]["provider_type_id"], "30")
+
+
+class MultiLineApiCallTest(unittest.TestCase):
+    """A quoted argument may span lines — bash keeps the newline, and so must this.
+
+    ``skills/marketplace/SKILL.md`` writes the external-tool-server body across three
+    lines inside one pair of single quotes. That is ordinary shell (a newline inside
+    quotes is just a character; a trailing backslash would end up *inside* the JSON), so
+    the executor has to follow the template's form rather than the template following the
+    executor's.
+    """
+
+    BLOCK = """api post --env lab /public/api/external-tool-servers \\
+    --json '{"type":"CUSTOM","name":"acme_bi_server",
+             "externalProviderTypeId":30,
+             "databaseName":"sales_analytics","viewName":"i_acme_bi_elements"}'
+# → {"id":217, …}
+api get --env lab /public/api/external-tool-servers/217/vql-metadata
+"""
+
+    def test_a_quoted_body_spanning_lines_is_one_call(self):
+        calls = parse_api_calls(self.BLOCK)
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(calls[0]["json"]["viewName"], "i_acme_bi_elements")
+        self.assertEqual(calls[0]["json"]["externalProviderTypeId"], 30)
+        self.assertEqual(calls[1]["path"], "/public/api/external-tool-servers/217/vql-metadata")
+
+    def test_an_unbalanced_quote_still_fails_rather_than_swallowing_the_block(self):
+        with self.assertRaises(ChainError) as ctx:
+            parse_api_calls("api post /x --json '{\"a\":1}\napi get /y\n")
+        self.assertIn("api post", str(ctx.exception))
+
+
+class ExternalElementBlockTest(unittest.TestCase):
+    """The real block, as the skill writes it: four calls, one of them multipart."""
+
+    ADDRESS = ("skills/marketplace/SKILL.md#External element — a dashboard, job or "
+               "contract from another tool[0]")
+
+    def test_the_skill_block_parses_into_four_calls(self):
+        from denodo_cli.templates import load_block
+        repo = Path(__file__).resolve().parents[1]
+        calls = parse_api_calls(load_block(repo, self.ADDRESS).body)
+        self.assertEqual([c["method"] for c in calls], ["POST", "POST", "GET", "POST"])
+        self.assertIsNotNone(calls[0]["multipart"])
+        self.assertEqual(calls[1]["json"]["type"], "CUSTOM")
+        self.assertIn("vql-metadata", calls[2]["path"])
+        self.assertEqual(calls[3]["json"], {"externalToolServerIds": [217]})
