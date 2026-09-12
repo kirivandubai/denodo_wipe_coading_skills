@@ -16,3 +16,6 @@ profiles.toml
 
 # macOS
 .DS_Store
+
+# Результаты прогонов eval-сьюта
+evals/results/
