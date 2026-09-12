@@ -52,7 +52,7 @@ else entirely:
 | `/public/api/external-tool-servers` | `403`, empty body |
 | `/public/api/category-management/…` | works — categories are not server-scoped |
 
-*verified: 9.5.1 (стенд, 2026-09-10).* Read the ids once, then pass the one you mean:
+*verified: 9.5.1 (стенд, 2026-09-10).* Read the ids once:
 
 ```bash
 # verified: 9.5.1 (стенд, 2026-09-10)
@@ -60,8 +60,15 @@ api get --env lab /public/api/configuration/servers
 # → [{"id":306,"name":"Demo Standard Default","url":"//localhost:9999/admin"}, …]
 ```
 
-Either put it in the profile as `marketplace_server_id` (a human edits the profile, not you)
-or pass `--param serverId=306` on every call. One registered server needs neither.
+**The id belongs in the profile, as `marketplace_server_id` — a human puts it there, not
+you — and the tool adds it to every call by itself.** That is why no template below names a
+server: the profile is the single place the environment is described, so the same template
+works against any marketplace. One registered server needs no id at all.
+
+`--param serverId=<id>` overrides the profile for one call, and the transport then leaves
+that call alone. Reach for it only when you genuinely mean a different server than the
+profile's — asking each registered server which one holds a view, just below, is the case
+that needs it. Putting it on ordinary calls silently pins the environment into a command.
 
 **Which id is the right one is not visible in the list** — the names and urls describe the
 VDP connection, not which databases a server carries. Ask the object you care about:
@@ -78,21 +85,21 @@ that "does not exist".
 # verified: 9.5.1 (стенд, 2026-09-10)
 
 # 1. does it exist? — the lookup that replaces CREATE OR REPLACE
-api get --env lab /public/api/tag-management/tags --param serverId=306 \
+api get --env lab /public/api/tag-management/tags \
     --param offset=0 --param limit=50 --param nameFilter=pii
 # → {"count":1,"elements":[{"id":627,"name":"pii_data", …}]}   ← NOT your tag
 
 # 2a. missing → create it
-api post --env lab /public/api/tags --param serverId=306 \
+api post --env lab /public/api/tags \
     --json '{"name":"pii","description":"Personal data, GDPR scope","descriptionType":"TEXT"}'
 # → {"id":627,"name":"pii","vdpTag":false, …}
 
 # 2b. present → update it, id and all four fields in the body
-api put --env lab /public/api/tags --param serverId=306 \
+api put --env lab /public/api/tags \
     --json '{"id":627,"name":"pii","description":"Personal data, GDPR scope","descriptionType":"TEXT"}'
 
 # 3. hang it on views, by marketplace view id
-api post --env lab /public/api/tags/627/views --param serverId=306 --json '[7484]'
+api post --env lab /public/api/tags/627/views --json '[7484]'
 # → []   ← empty list IS the success
 ```
 
@@ -126,14 +133,14 @@ api post --env lab /public/api/tags/627/views --param serverId=306 --json '[7484
 
 ```bash
 # verified: 9.5.1 (стенд, 2026-09-10)
-api post --env lab /public/api/category-management/categories --param serverId=306 \
+api post --env lab /public/api/category-management/categories \
     --json '{"name":"Consumer marts","description":"What analysts read","descriptionType":"TEXT"}'
 # → {"id":352,"parentId":null, …}
 
-api post --env lab /public/api/category-management/categories --param serverId=306 \
+api post --env lab /public/api/category-management/categories \
     --json '{"name":"Retail","description":"Retail marts","descriptionType":"TEXT","parentId":352}'
 
-api post --env lab /public/api/category-management/categories/352/views --param serverId=306 \
+api post --env lab /public/api/category-management/categories/352/views \
     --json '[7484,7485]'
 # → []
 ```
@@ -153,13 +160,13 @@ at the radius first — the whole point of `changes` is that it costs nothing:
 
 ```bash
 # verified: 9.5.1 (стенд, 2026-09-10)
-api get --env lab /public/api/element-management/DATABASES/changes --param serverId=306
-api get --env lab /public/api/element-management/VIEWS/changes     --param serverId=306
+api get --env lab /public/api/element-management/DATABASES/changes
+api get --env lab /public/api/element-management/VIEWS/changes
 # → {"serverElements":[…new…], "modifiedElements":[…], "localElements":[…gone from VDP…]}
 
-api post --env lab /public/api/element-management/DATABASES/synchronize --param serverId=306 \
+api post --env lab /public/api/element-management/DATABASES/synchronize \
     --json '{"proceedWithConflicts":"SERVER_WITH_LOCAL_CHANGES"}'
-api post --env lab /public/api/element-management/VIEWS/synchronize --param serverId=306 \
+api post --env lab /public/api/element-management/VIEWS/synchronize \
     --json '{"proceedWithConflicts":"SERVER_WITH_LOCAL_CHANGES"}'
 # → {"inserted":[…],"modified":[…],"removed":[…]}
 ```
@@ -197,24 +204,24 @@ chain runs VQL and REST alternately, and the whole block below carries one verif
 #    (previous template) — otherwise step 4 fails and nothing is created
 
 # 1. provider type: the tool the metadata comes from. Multipart, but the icon is optional
-api post --env lab /public/api/external-providers-types --param serverId=306 \
+api post --env lab /public/api/external-providers-types \
     --part 'request=json:{"name":"ACME_BI","visualName":"Acme BI"}'
 # → 201 {"externalProviderTypeId":30,"iconImage":null, …}
 #   with a logo:  --part 'icon=@./acme.svg'
 
 # 2. the server that will read the contract. The interface view need not exist yet
-api post --env lab /public/api/external-tool-servers --param serverId=306 \
+api post --env lab /public/api/external-tool-servers \
     --json '{"type":"CUSTOM","name":"acme_bi_server","description":"Acme BI dashboards",
              "externalProviderTypeId":30,
              "databaseName":"sales_analytics","viewName":"i_acme_bi_elements"}'
 # → {"id":217, …}
 
 # 3. ask the marketplace for the contract it expects, and apply it as VQL
-api get --env lab /public/api/external-tool-servers/217/vql-metadata --param serverId=306
+api get --env lab /public/api/external-tool-servers/217/vql-metadata
 # → a JSON string: CONNECT DATABASE …; two CREATE TYPE; CREATE INTERFACE VIEW …
 
 # 4. import
-api post --env lab /public/api/external-tool-servers/synchronize --param serverId=306 \
+api post --env lab /public/api/external-tool-servers/synchronize \
     --json '{"externalToolServerIds":[217]}'
 # → externalElementsAdded / Updated / Deleted, per server
 ```
@@ -314,7 +321,7 @@ that does not match it, and only the `SELECT` shows it (`/denodo:views`).
 | Slot | Where it comes from |
 |---|---|
 | Which "tag" | marketplace tag = visible in the Data Marketplace UI, created here; VDP tag = `LIST TAGS`, `/denodo:catalog`. When the request does not say, ask — the call succeeds either way, on the wrong server |
-| `serverId` | `GET /public/api/configuration/servers` — needed as soon as more than one VDP is registered; `marketplace_server_id` in the profile is the human's to set |
+| `serverId` | `marketplace_server_id` in the profile — the human's to set, and the tool adds it for you; the ids are in `GET /public/api/configuration/servers`. Needed as soon as more than one VDP is registered. Do not put it in a call unless you mean a server other than the profile's |
 | Tag or category name, description | the human. Both are shown to consumers browsing the marketplace, so they read as labels, not as identifiers |
 | Every numeric id | never a template, never memory: a `GET` in this session. Ids differ per installation and per server |
 | View ids to assign to | `GET /public/api/view-details?databaseName=…&viewName=…`; `id:null` means synchronise first |
@@ -365,7 +372,7 @@ other side where there is one.
 
 | You did | Server says | Fix |
 |---|---|---|
-| any tag or view call with several VDP servers registered | `500 GENERIC "Session Expired."` | `--param serverId=…`; the ids are in `/public/api/configuration/servers` |
+| any tag or view call with several VDP servers registered | `500 GENERIC "Session Expired."` | the profile has no `marketplace_server_id` — a human sets it, from `/public/api/configuration/servers`. `--param serverId=…` gets one call through in the meantime |
 | read `id: null` from `view-details` as "not synchronised" | `200`, and the same body a wrong `serverId` produces | ask the other servers first; only then synchronise |
 | `GET …/categories/{id}/views` without paging | `400 MISSING_REQUEST_PARAMETER` | `--param offset=0 --param limit=50` |
 | the same on `/external-tool-servers` | `403`, empty | the same cause, a different code |

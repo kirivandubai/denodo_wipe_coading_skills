@@ -26,9 +26,14 @@
 database = "denodo_skills_test"
 csv_dir = "/opt/denodo/demos/csv"
 tag_prefix = "verify_"
-# The lab stand's only VDP server ("Demo Standard Default" — GET /public/api/configuration/
-# servers). 206 ("Verticals") is a different server and is out of scope for this chain.
-server_id = "306"
+# No server_id here on purpose: the http steps and the cleanup below never name a VDP
+# server, so RestTransport puts the profile's marketplace_server_id on every call
+# (transports/api_rest.py). That is the only way a fork verifying against its own
+# marketplace can point this chain at its own server without editing this file — an
+# explicit serverId in a call always wins over the profile, so one written here would
+# disable the profile mechanism for everyone. On a marketplace with several VDP servers
+# registered, a profile without marketplace_server_id fails at the first tag call with
+# 500 "Session Expired." (skills/marketplace/SKILL.md, "Name the server").
 
 [cleanup]
 vql = [
@@ -37,8 +42,8 @@ vql = [
   "DROP TAG IF EXISTS {tag_prefix}finance_sensitive",
 ]
 http = [
-  { method = "delete", path = "/public/api/tags/{tag_id}", params = { serverId = "{server_id}" } },
-  { method = "delete", path = "/public/api/category-management/categories/{category_id}", params = { serverId = "{server_id}" } },
+  { method = "delete", path = "/public/api/tags/{tag_id}" },
+  { method = "delete", path = "/public/api/category-management/categories/{category_id}" },
   # The same two calls marketplace-sync makes, in the same order and the same conflict mode.
   # Run now, after the vql cleanup above dropped the database, they mean the opposite thing:
   # a synchronize removes from the marketplace whatever VDP no longer has (see
@@ -49,8 +54,8 @@ http = [
   # exactly like the DROPs above. Like the whole http tail they run only under
   # --with-marketplace: a default run put nothing into the catalog, and these two entries
   # name no captured id, so nothing else would have kept them from firing on every run.
-  { method = "post", path = "/public/api/element-management/DATABASES/synchronize", params = { serverId = "{server_id}" }, json = { proceedWithConflicts = "SERVER_WITH_LOCAL_CHANGES" } },
-  { method = "post", path = "/public/api/element-management/VIEWS/synchronize", params = { serverId = "{server_id}" }, json = { proceedWithConflicts = "SERVER_WITH_LOCAL_CHANGES" } },
+  { method = "post", path = "/public/api/element-management/DATABASES/synchronize", json = { proceedWithConflicts = "SERVER_WITH_LOCAL_CHANGES" } },
+  { method = "post", path = "/public/api/element-management/VIEWS/synchronize", json = { proceedWithConflicts = "SERVER_WITH_LOCAL_CHANGES" } },
 ]
 
 [[step]]
@@ -222,7 +227,6 @@ kind = "template"
 channel = "http"
 address = "skills/marketplace/SKILL.md#Synchronising the marketplace catalog with VDP"
 marketplace = true
-substitute = { "serverId=306" = "serverId={server_id}" }
 # calls = [] (default): all four — the two read-only "changes" calls, then both
 # synchronize calls, which the block itself already pins to proceedWithConflicts =
 # "SERVER_WITH_LOCAL_CHANGES", the only mode approved for this chain to run unattended.
@@ -238,7 +242,7 @@ marketplace = true
 # assign to — assigning is the skill's concern, not this template's verification.
 calls = [0, 1]
 capture = { tag_id = "id" }
-substitute = { "serverId=306" = "serverId={server_id}", "nameFilter=pii" = "nameFilter={tag_prefix}pii", "\"name\":\"pii\"" = "\"name\":\"{tag_prefix}pii\"" }
+substitute = { "nameFilter=pii" = "nameFilter={tag_prefix}pii", "\"name\":\"pii\"" = "\"name\":\"{tag_prefix}pii\"" }
 
 [[step]]
 id = "marketplace-category"
@@ -250,4 +254,4 @@ marketplace = true
 # views) are left out for the same reason as the tag step above.
 calls = [0]
 capture = { category_id = "id" }
-substitute = { "serverId=306" = "serverId={server_id}", "\"name\":\"Consumer marts\"" = "\"name\":\"{tag_prefix}Consumer marts\"" }
+substitute = { "\"name\":\"Consumer marts\"" = "\"name\":\"{tag_prefix}Consumer marts\"" }
