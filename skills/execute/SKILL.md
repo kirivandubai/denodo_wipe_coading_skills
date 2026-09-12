@@ -31,6 +31,7 @@ tool reads host, user and password from `~/.denodo/profiles.toml` itself.
 | Marketplace call | `api get --env dev /public/api/tags` |
 | … with a body | `api post --env dev /public/api/tags --json '{"name":"pii","description":"…","descriptionType":"TEXT"}'` |
 | … query params / multipart | `--param k=v` (repeatable), `--part field=@file` / `field=json:{…}` |
+| Encrypt a source password | `secret encrypt --env dev` — the password is typed into a hidden prompt (in a terminal) or piped in on stdin, never passed as an argument; the answer carries `encrypted` and nothing else. See **A password for a data source** below |
 | Which profiles exist | `env list` (never shows passwords) |
 | Is the server reachable | `env check --env dev` (VDP, and the marketplace if configured) |
 | Verify the skills' own templates | `verify --env dev` runs the chain in `verification/chain.toml` and removes everything it made: its own test database, and two server-level `verify_` tags beside it; `--with-marketplace` adds the REST tail, which also writes to the shared marketplace catalog and takes those entries back out during cleanup; `--keep` leaves it all for inspection, `--update-marks` rewrites the `verified:` lines that passed, `--allow-destructive` is required on a production profile — without it the whole run is refused before it creates anything |
@@ -105,6 +106,30 @@ It is interactive and hides the password. Then re-run your command.
 - Do not pass a password through an argument, an environment variable, `-e`, or a
   heredoc — anything that goes through Bash is kept in the session transcript.
 - If the human already pasted a password into the chat, say so and suggest rotating it.
+
+### A password for a data source
+
+The password a data source needs is not the profile's, and it must never reach the `.vql`
+file in clear text. `secret encrypt` is the whole procedure: it prints the ciphertext for
+`USERPASSWORD = '…' ENCRYPTED` and nothing else — not the password, not the statement that
+carried it, not even inside a server error.
+
+Ask the human to run it in their own terminal input, so the password goes into a hidden
+prompt and never into the transcript:
+
+```
+! ${CLAUDE_PLUGIN_ROOT}/scripts/denodo secret encrypt --env dev
+```
+
+A password manager can feed it instead — `op read op://vault/db/password | … secret
+encrypt --env dev` — which keeps the plaintext out of the terminal as well.
+
+- **Never build the statement yourself.** `vql run -e "ENCRYPT_PASSWORD '…'"` and a heredoc
+  into a file both put the password into a Bash argument, and that is kept in the transcript.
+- **The ciphertext belongs to the server that produced it** — `--env` therefore names the
+  environment the `.vql` will be applied to. Another environment means encrypting again there.
+- A wrong password encrypts just as happily; the mistake surfaces later as the source's own
+  `The username or password is incorrect`. *verified: 9.5.1 (стенд, 2026-09-12)*
 
 ### Destructive operations
 

@@ -13,6 +13,7 @@ from __future__ import annotations
 import os
 import unittest
 
+from denodo_cli.commands.secret import quote_literal
 from denodo_cli.profiles import load_profile
 
 ENV = os.environ.get("DENODO_TEST_ENV")
@@ -75,6 +76,23 @@ class VqlPsycopg2TransportTest(unittest.TestCase):
         with self.assertRaises(Exception):
             self.transport.execute("SELEKT 1 FROM DUAL()")
         self.assertEqual(self.transport.execute("SELECT 2 AS n FROM DUAL()").rows, [[2]])
+
+    def test_a_password_survives_quoting_into_a_vql_literal(self):
+        """What ``secret encrypt`` puts around a password has to reach the server intact.
+
+        The server is the only authority on the escaping rule, so the check is a round trip
+        through its parser: doubling the single quote is enough, and a backslash is literal.
+        Drop the doubling in ``quote_literal`` and the first case is a syntax error.
+        """
+        for password in ("pa'ss", "back\\slash", "per%cent", 'a"b', "два'слова \\ 100%", "  spaced  "):
+            with self.subTest(password=password):
+                result = self.transport.execute(f"SELECT {quote_literal(password)} AS p FROM DUAL()")
+                self.assertEqual(result.rows, [[password]])
+
+    def test_encrypt_password_is_salted(self):
+        """Two runs on one password differ — so a ciphertext can never be compared, only used."""
+        ciphers = {self.transport.execute("ENCRYPT_PASSWORD 'hunter2'").rows[0][0] for _ in range(2)}
+        self.assertEqual(len(ciphers), 2)
 
 
 @unittest.skipUnless(ENV, "DENODO_TEST_ENV not set")
