@@ -30,7 +30,7 @@ the file with `/denodo:execute`.
 ### Call a predefined procedure
 
 ```sql
--- unverified: только по документации 9.5
+-- verified: 9.5.1 (стенд, 2026-09-12)
 SELECT view_name, depth FROM USED_BY()
  WHERE input_view_database_name = 'sales_analytics'
    AND input_view_name = 'customer';
@@ -54,7 +54,7 @@ procedures accept no positional arguments at all (`PING_DATA_SOURCE(…)` answer
 ### VQL procedure
 
 ```sql
--- unverified: только по документации 9.5
+-- verified: 9.5.1 (стенд, 2026-09-12)
 CONNECT DATABASE sales_analytics;
 
 CREATE OR REPLACE VQL PROCEDURE order_size_band
