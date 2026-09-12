@@ -270,5 +270,54 @@ vql = "SELECT 1 FROM DUAL()"
         self.assertIn("tag_prefix", doc["error"]["message"])
 
 
+class SecretCommandTest(CliHarness, unittest.TestCase):
+    """The password reaches the server and nothing else: not a command line, not the output."""
+
+    def stdin(self, text):
+        return mock.patch("sys.stdin", io.StringIO(text))
+
+    def test_password_piped_in_is_encrypted(self):
+        with self.stdin("hunter2\n"):
+            doc, code = self.run_cli("secret", "encrypt", "--env", "dev")
+        self.assertEqual(code, 0)
+        self.assertEqual(FakeVql.executed, ["ENCRYPT_PASSWORD 'hunter2'"])
+        self.assertEqual(doc["command"], "secret encrypt")
+        self.assertNotIn("hunter2", json.dumps(doc))
+
+    def test_a_terminal_gets_a_hidden_prompt_instead(self):
+        tty = mock.MagicMock()
+        tty.isatty.return_value = True
+        with mock.patch("sys.stdin", tty), mock.patch.object(cli.getpass, "getpass", return_value="typed"):
+            doc, code = self.run_cli("secret", "encrypt", "--env", "dev")
+        self.assertEqual(code, 0)
+        self.assertEqual(FakeVql.executed, ["ENCRYPT_PASSWORD 'typed'"])
+        tty.read.assert_not_called()
+
+    def test_only_the_trailing_newline_is_stripped(self):
+        with self.stdin("  spaced pass  \n"):
+            self.run_cli("secret", "encrypt", "--env", "dev")
+        self.assertEqual(FakeVql.executed, ["ENCRYPT_PASSWORD '  spaced pass  '"])
+
+    def test_a_windows_line_ending_is_stripped_too(self):
+        with self.stdin("hunter2\r\n"):
+            self.run_cli("secret", "encrypt", "--env", "dev")
+        self.assertEqual(FakeVql.executed, ["ENCRYPT_PASSWORD 'hunter2'"])
+
+    def test_an_empty_password_is_a_usage_error(self):
+        with self.stdin("\n"):
+            doc, code = self.run_cli("secret", "encrypt", "--env", "dev")
+        self.assertEqual(code, 2)
+        self.assertEqual(doc["error"]["kind"], "usage")
+        self.assertEqual(FakeVql.executed, [])
+
+    def test_more_than_one_line_is_a_usage_error(self):
+        with self.stdin("first\nsecond\n"):
+            doc, code = self.run_cli("secret", "encrypt", "--env", "dev")
+        self.assertEqual(code, 2)
+        self.assertEqual(doc["error"]["kind"], "usage")
+        self.assertIn("one line", doc["error"]["message"])
+        self.assertEqual(FakeVql.executed, [])
+
+
 if __name__ == "__main__":
     unittest.main()

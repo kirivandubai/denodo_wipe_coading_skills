@@ -71,11 +71,14 @@ human asked for a specific pool. *verified: 9.5.1 (стенд, 2026-09-09)*
 | GCP | `GCP ( OAUTH_TYPE … PRIVATE_KEY … [ ENCRYPTED ] PROJECT_ID … SERVICE_ACCOUNT_EMAIL … )` | *unverified: только по документации 9.5* |
 | Pass-through session credentials | `WITH PASS-THROUGH SESSION CREDENTIALS ( <options> )` — the querying user's own credentials go to the source | *unverified*: the empty form `( )` is a syntax error on 9.5.1, so the options are not optional in practice |
 
-`ENCRYPT_PASSWORD '<password>'` is a VQL statement and returns the encrypted string in one
-row. Run it on the server the data source will live on: the ciphertext is server-specific.
-A ciphertext produced this way is accepted as a real credential — a deliberately wrong
-password encrypted with it fails with the source's own `password authentication failed`,
-not with a format error. *verified: 9.5.1 (стенд, 2026-09-09)*
+The ciphertext comes from `scripts/denodo secret encrypt --env <env>` — never write the
+underlying `ENCRYPT_PASSWORD '<password>'` yourself, because the plaintext would land in a
+Bash argument and stay in the transcript (`/denodo:execute`, "A password for a data
+source"). Encrypt on the server the data source will live on: the ciphertext is
+server-specific, and it is salted, so the same password encrypts to a different string
+every time. A ciphertext produced this way is accepted as a real credential — with a
+deliberately wrong password the source answers `The username or password is incorrect`,
+not a format error. *verified: 9.5.1 (стенд, 2026-09-12)*
 
 Credentials are **replaced, never merged**: re-applying `CREATE OR REPLACE DATASOURCE`
 without the `USERPASSWORD` clause leaves the source with no password, and the next query

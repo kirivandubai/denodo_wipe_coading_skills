@@ -385,32 +385,34 @@ no shell. Three ways to get it, in order of preference:
    object behind, it is just the first version of the file (`/denodo:vql`: no probe objects,
    one file applied whole).
 
-## Passwords: the human hands you one, the file only ever holds the ciphertext
+## Passwords: the file only ever holds the ciphertext, and you never see the plaintext
 
 `USERPASSWORD` is the only secret in these templates, and a `.vql` file lives in git. You
-do not need a vault, a server login, or a manual step from the human — encrypt it yourself
-through the same tool, and keep the plaintext out of both the repository and the command
-line:
+need no vault and no manual VQL: one command turns a password into the ciphertext, and the
+password never passes through you, through a command argument, or through the transcript.
+
+Ask the human to run it **in their own terminal input** — the `!` prefix — so the password
+goes into a hidden prompt:
 
 ```bash
-# verified: 9.5.1 (стенд, 2026-09-09)
-# 1. write the statement into a temp file OUTSIDE the repository — never `-e "…'<password>'"`,
-#    because command arguments are kept in the session transcript
-printf "ENCRYPT_PASSWORD '<password>';\n" > "$SCRATCH/enc.vql"
-
-# 2. one row comes back: the encrypted string
-${CLAUDE_PLUGIN_ROOT}/scripts/denodo vql run --env <env> "$SCRATCH/enc.vql"
-
-# 3. delete the temp file
-rm "$SCRATCH/enc.vql"
+# verified: 9.5.1 (стенд, 2026-09-12)
+! ${CLAUDE_PLUGIN_ROOT}/scripts/denodo secret encrypt --env <env>
 ```
 
-The project file then carries `USERPASSWORD = '<the string from step 2>' ENCRYPTED`, and
-the server accepts it — a wrong password encrypted this way fails with the source's own
-`password authentication failed`, which is proof the ciphertext was read.
+They can also pipe it from a password manager (`op read op://vault/db/password | …`). Either
+way the answer carries one field, `encrypted`, and the project file then reads
+`USERPASSWORD = '<that string>' ENCRYPTED`.
 
-- **The ciphertext is server-specific.** Encrypt on the server the file will be applied to;
-  moving a data source to another environment means repeating step 1–3 there.
+The server accepts such a ciphertext as a real credential: the same source with the
+ciphertext of a wrong password answers `The username or password is incorrect`, which is
+proof the string was decrypted and used. *verified: 9.5.1 (стенд, 2026-09-12)*
+
+**Never assemble `ENCRYPT_PASSWORD '<password>'` yourself** — neither with `-e` nor through
+a temp file written by `printf`: both put the plaintext into a Bash argument, and Bash
+arguments are kept in the session transcript.
+
+- **The ciphertext is server-specific.** `--env` names the environment the file will be
+  applied to; moving a data source to another environment means encrypting again there.
 - **A source to the same database may already exist — then you need no password at all.**
   `vql desc --env <env> --database <db> <existing_ds> --type "datasource jdbc" --vql`
   prints `USERNAME` and `USERPASSWORD '…' ENCRYPTED`, and both work verbatim in your own

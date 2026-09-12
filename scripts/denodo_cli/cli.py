@@ -15,6 +15,7 @@ from . import __version__
 from .commands import EXIT_ENVIRONMENT, EXIT_USAGE
 from .commands.api import api_call, parse_multipart_specs, parse_params
 from .commands.env import check_environment, init_environment, list_environments
+from .commands.secret import encrypt_password
 from .commands.vql import describe, run_statements
 from .commands.verify import ChainError, load_chain, run_chain
 from .output import envelope, to_json
@@ -82,6 +83,12 @@ def build_parser() -> argparse.ArgumentParser:
     api.add_argument("--allow-destructive", action="store_true",
                      help="required on a production profile for DELETE and set-replacing POST calls")
 
+    secret = top.add_parser("secret", help="credentials for data sources").add_subparsers(dest="action",
+                                                                                          required=True)
+    secret.add_parser("encrypt", parents=[env_opt],
+                      help="encrypt a password for USERPASSWORD … ENCRYPTED; the password is typed into a "
+                           "hidden prompt or piped in on stdin, never passed as an argument")
+
     env = top.add_parser("env", help="environment profiles").add_subparsers(dest="action", required=True)
     env.add_parser("list", help="profiles known on this machine (never shows passwords)")
     env.add_parser("check", parents=[env_opt], help="connect to VDP (and Data Marketplace if configured)")
@@ -121,6 +128,29 @@ def _read_vql(args) -> tuple[str, str]:
     if not path.is_file():
         raise UsageError(f"file not found: {path}")
     return path.read_text(encoding="utf-8"), str(path)
+
+
+def _read_password() -> str:
+    """The password for ``secret encrypt``: a hidden prompt in a terminal, stdin otherwise.
+
+    Both ways keep it out of the command line, and so out of the session transcript. Only
+    the line ending is stripped — spaces can be part of a password, a newline cannot.
+    """
+    if sys.stdin.isatty():
+        password = getpass.getpass("Password to encrypt (hidden): ")
+    else:
+        password = sys.stdin.read()
+        if password.endswith("\n"):
+            password = password[:-1]
+        if password.endswith("\r"):
+            password = password[:-1]
+    if not password:
+        raise UsageError("no password on stdin: pipe it in, or run the command yourself in a "
+                         "terminal (in Claude Code: `! scripts/denodo secret encrypt --env <env>`) "
+                         "to type it into a hidden prompt")
+    if "\n" in password or "\r" in password:
+        raise UsageError("the password must be one line; got several, so nothing was encrypted")
+    return password
 
 
 def _json_body(args):
@@ -165,6 +195,8 @@ def _dispatch(args) -> tuple[dict, int]:
                                    continue_on_error=args.continue_on_error)
         doc["source"] = source
         return doc, code
+    if args.group == "secret":  # encrypt
+        return encrypt_password(profile, _read_password(), transport_factory=resolve_vql_factory(profile))
     if args.group == "vql" and args.action == "desc":
         return describe(profile, args.name, kind=args.type, vql=args.vql, database=args.database,
                         transport_factory=resolve_vql_factory(profile), max_rows=args.max_rows)

@@ -301,6 +301,7 @@ scripts/denodo vql run   --env dev model/sales/views.vql     файл, '-' (stdi
 scripts/denodo vql desc  --env dev bv_orders [--vql] [--type "datasource df"]
 scripts/denodo api get   --env dev /public/api/tags/count   [--param k=v] [--json …] [--part …]
 scripts/denodo env list | check --env dev | init            профили; init — интерактивно
+scripts/denodo secret encrypt --env dev       пароль источника со stdin → шифр (T15)
 scripts/denodo verify    --env dev            прогон шаблонов, см. раздел 11.1 (появится в T12)
 ```
 
@@ -326,7 +327,12 @@ scripts/denodo verify    --env dev            прогон шаблонов, с�
 
 - **Креденшелы только через профиль среды и окружение, никогда в аргументах команды** —
   пароль в аргументе `Bash` оседает в транскрипте сессии. В команде фигурирует лишь имя
-  профиля.
+  профиля. Пароль **источника** профилем не покрыт: он нужен один раз, чтобы получить шифр
+  для `USERPASSWORD … ENCRYPTED`. Для него — `secret encrypt` (T15): пароль читается со
+  stdin (в терминале — скрытым промптом `getpass`, иначе пайпом), в ответе только поле
+  `encrypted`. Команда не идёт через `run_statements`, который кладёт текст выражения и в
+  результат, и в ошибку, а сообщение сервера перед печатью очищается от пароля — иначе
+  ошибка вида «syntax error near …» вернула бы плейнтекст в транскрипт.
 - **Профили сред лежат вне репозитория проекта** — по умолчанию `~/.denodo/profiles.toml`,
   другой путь — переменной `DENODO_PROFILES`. Так креденшелы не попадают в git ни случайно,
   ни намеренно. Формат зафиксирован в T5:
