@@ -328,15 +328,41 @@ CREATE OR REPLACE TABLE bv_orders_db_orders I18N us_pst (
 A file source needs the header verbatim, and the file lives on the server, where you have
 no shell. Three ways to get it, in order of preference:
 
-1. **Ask the human for `head -1`** (or the first 20 lines of the JSON). Cheapest and most
-   accurate; they usually have access even when you do not.
-2. **Read an existing wrapper over the same file.** Find candidates and compare paths:
+1. **Read an existing base view over the same file** — when the server has one, this is the
+   cheapest and the most accurate, because what comes back is already working on this
+   server. Find the candidates:
    ```sql
-   SELECT database_name, name, subtype FROM GET_ELEMENTS() WHERE type = 'datasource';
+   SELECT database_name, name FROM GET_ELEMENTS()
+    WHERE type = 'view' AND subtype = 'base' AND name LIKE '%<word from the file name>%';
    ```
-   then `vql desc --env <env> --database <db> <ds> --type "datasource df" --vql` to see the
-   `ROUTE`, and the same on the wrapper for the column list. Reading other databases is
-   allowed anywhere; changing them is not.
+   then ask the **base view** — not the source, not the wrapper — for its VQL, qualifying
+   the name so you do not have to switch databases:
+   ```bash
+   # verified: 9.5.1 (стенд, 2026-09-12)
+   ${CLAUDE_PLUGIN_ROOT}/scripts/denodo vql desc --env <env> "<other db>.<base view>" --vql
+   ```
+   One call returns the whole chain: the `ROUTE` with the server-side path, the parse clauses
+   (`COLUMNDELIMITER`, `ENDOFLINEDELIMITER`, `HEADER`, `CHARSET`), the wrapper's complete
+   `OUTPUTSCHEMA` in file order, and the `CREATE TABLE` types that are known to work.
+   The same call **on the source** returns only the source — no wrapper and no column list,
+   which is the one thing you came for. Reading other databases is allowed anywhere;
+   changing them is not.
+
+   Two things not to copy from the donor. It is a source of **grammar, not of defaults**:
+   server-generated sources carry no `IGNOREMATCHINGERRORS` and often no `CHARSET`, so you
+   add `IGNOREMATCHINGERRORS = FALSE` yourself — inheriting the donor's silence is exactly
+   the failure the template protects you from. And its mappings are written
+   `hd_demo_sk = '"HD_DEMO_SK"'`, quoted and upper-case, where the template writes
+   `hd_demo_sk = 'hd_demo_sk'`: both work, because the mapping is positional either way
+   (*verified: 9.5.1 (стенд, 2026-09-12)*). Do not conclude the template is stale.
+
+   Mind the truncation: `GET_ELEMENTS()` on a populated server returns more rows than
+   `--max-rows` keeps (125 sources on one demo server against a default of 100). Narrow the
+   query, and **look at `truncated` in the answer** — a truncated read looks exactly like
+   "there is no such object", and that mistake sends you to way 3 for nothing.
+2. **Ask the human for `head -1`** (or the first 20 lines of the JSON). Accurate, and they
+   usually have access even when you do not — but it costs a round trip, so it comes second
+   when the server already holds an object over the same file.
 3. **Let the server read the file for you, as one column per line.** A DF source whose
    `TUPLEPATTERN` captures the whole line returns the raw text of the file — header
    included, and it works for JSON too:
@@ -464,6 +490,7 @@ the data back, every time:
 | Rows arrive | `vql run --env dev --database <db> -e "SELECT COUNT(*) FROM <bv>"` | `0` — a DF wrapper missing columns, or an empty/unreachable file |
 | The count is *right* | compare with what the human expects the source to hold | a JSON wrapper without the `REGISTER OF` wrapper inflates rows through nested arrays |
 | Values are values | `SELECT * FROM <bv>` with `--max-rows 5`, look at every column | a whole column of `NULL` = the type in `CREATE TABLE` does not match the data (`cust_id:int` over `C-10472`) |
+| Text values have no padding | the same read-back — look at where each string **ends**, not just at what it says | `"0-500          "` — an export padded to a fixed width. Nothing fails, and then every `WHERE col = '0-500'` and every `GROUP BY` a consumer writes is wrong. `TRIM` it in the view above and say so in the `DESCRIPTION`; `NULLVALUE ''` (text columns only) handles the empty-string half of the same problem |
 | Schema is what you wrote | `vql desc --env dev --database <db> <bv>` | missing or extra columns |
 | A JDBC source can be reached | `SELECT status, down_cause FROM PING_DATA_SOURCE() WHERE database_name='<db>' AND data_source_type='JDBC' AND data_source_name='<ds>'` | `DOWN` with `UnknownHostException` (network/host), `ClassNotFoundException` (wrong `CLASSPATH`), authentication errors (credentials) |
 | The folder exists before you use it | `SELECT name, folder FROM GET_ELEMENTS() WHERE input_database_name = '<db>' AND type = 'folder'` — `LIST FOLDERS` does not exist |  `Syntax error … near 'FOLDERS'`; and a missing folder fails the `CREATE` itself |
@@ -477,8 +504,10 @@ prefix, the output ones do not.
 **When a template does not cover your case, ask the server, not your memory.**
 `vql desc --env dev --database <db> <object> --type "datasource json" --vql` prints the
 server's own `CREATE` statement for any existing object of that type — the exact 9.5.1
-syntax, including the parts no documentation shows. An existing source over the same file
-is also where the true column list comes from. This is read-only and allowed anywhere,
+syntax, including the parts no documentation shows. For a file already onboarded, ask its
+**base view** rather than its source: that answer carries the route, the parse clauses, the
+column list and the working types together (**When you cannot see the file** above, which
+also says what not to copy from it). All of this is read-only and allowed anywhere,
 production included.
 
 ## Common mistakes

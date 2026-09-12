@@ -68,16 +68,49 @@ without one lands at the root of the database.
   on top of the join in a single statement works, but the join is then not reusable and
   the mart cannot be checked against it. "The mart has to be one object" is about what the
   consumer reads, and it still is: the intermediate view is yours, not theirs.
+  **When no aggregate is wanted** — the consumer reads the joined rows themselves — the
+  join *is* the `/03 - business entities` object and takes the bare business name. Do not
+  add a pass-through view above it just to fill the layer.
+- **Count the dimension before you join it.** `SELECT COUNT(*), COUNT(DISTINCT <business
+  key>) FROM <dimension>` — a dimension that keeps history has several rows per business
+  key, and joining on that key multiplies every figure in the mart with no error anywhere.
+  The demo `store` dimension is 12 rows for 6 stores; the fact carries the surrogate key,
+  so join on that and project the business key as a column, so the consumer can still roll
+  up.
+- **`INNER` drops facts, and nobody is told.** The template joins `INNER` because its two
+  demo files match completely; real files do not — 10 062 of the 287 514 demo store returns
+  carry no store key at all, and 3 212 of the 71 763 web returns name no reason. Decide
+  which you want and record the decision in the `DESCRIPTION`:
+  - the unmatched rows matter → `LEFT OUTER JOIN` from the fact, with a label for the
+    group: `COALESCE(TRIM(r.reason_desc), '(reason not specified)')`. Two different things
+    land in that group — the fact's key is `NULL`, or the key has no row in the dimension —
+    so count the second kind (`WHERE fk IS NOT NULL AND dim_key IS NULL`) before you label
+    them, or the label is a lie;
+  - they do not → keep `INNER JOIN`, and put the number of rows you dropped in the
+    `DESCRIPTION`, measured, not guessed.
 - **Naming.** In `/02 - integration` the prefix is `iv_` and the name says what the view
   does; in `/03 - business entities` there is no prefix and the name says what the
   consumer gets (`household_income_by_band`). `iv_` means *integration view*, not
   *interface view* — the interface view is the one below, and it is the one that gets the
   bare business name.
 - **Types an aggregate produces**, which you need the moment an interface view is declared
-  over the mart: `COUNT` gives `long` (`DESC` prints it as `BIGINT`), `AVG` over an integer
-  gives `double` — *verified: 9.5.1 (стенд, 2026-09-10)*. Casting the input first is not a
-  fix for anything, and `AVG(TO_DECIMAL(x))` under a `GROUP BY` is rejected outright (see
-  Common mistakes).
+  over the mart: `COUNT` gives `long` (`DESC` prints it as `BIGINT`) and `AVG` over an
+  integer gives `double` — *verified: 9.5.1 (стенд, 2026-09-10)*; and **`SUM` over an `int`
+  column stays `int`** — *verified: 9.5.1 (стенд, 2026-09-12)*. The last one costs data,
+  not just a type: the sum accumulates in 32 bits,
+  and past `2147483647` the server returns a **wrong number with no error and no warning**
+  — stable across runs, so it reads like a real figure. Measured on a 68 636-row fact
+  column: `SUM(x)` answered `1140298269` where the true total is `168668968269`
+  (`SUM(CAST('long', x))`, cross-checked against `AVG × COUNT`); a two-row case built to
+  overflow returned `NULL` instead. **Cast the input for any `SUM` over a fact column:
+  `SUM(CAST('long', x))`.** This is the one aggregate where casting the input is the fix —
+  it is not one for `AVG`, and `AVG(TO_DECIMAL(x))` under a `GROUP BY` is rejected outright
+  (see Common mistakes).
+- **What does work under `GROUP BY`**, so you do not route around it: `COUNT(DISTINCT x)`,
+  and expressions over the grouped columns in the projection — `COALESCE(reason_sk, -1)`,
+  `TRIM(reason_desc)` — *verified: 9.5.1 (стенд, 2026-09-12)*. Only the aggregate-over-cast
+  form above is refused, and a mart that needs "returns" as well as "return lines" wants
+  both `COUNT(DISTINCT ticket_number)` and `COUNT(*)`.
 - Attaching tags: `TAGS ( pii )` before the field properties for the whole view,
   `( email ( description = '…' ) TAGS ( pii ) )` for one column — both
   *verified: 9.5.1 (стенд, 2026-09-10)*. The tag itself is `/denodo:catalog` and must
@@ -234,11 +267,39 @@ can then be written in VQL names. Unchanged either way: `decimal`, `float`, `boo
 | Interface field types | the types of the implementation's columns, in VQL names (`int`, `long`, `text`) — read them off `DESC`, do not translate from memory |
 | Association endpoints and multiplicity | the data, not the wish: `(1)` claims every child row has a parent, so a **nullable foreign key makes it `(0,1)`** — count the NULLs before choosing. Orphans (a key with no match) are a different question and rule out `REFERENTIAL CONSTRAINT`, not the multiplicity |
 | `REFERENTIAL CONSTRAINT` or not | yes for a real foreign key. The source guarantees the integrity, Denodo does not enforce it — declaring it where it does not hold gives wrong results, not errors |
-| Whether the measures are complete | `COUNT(*)` counts rows, `COUNT(<measure>)` counts rows where the measure is not null, and when they differ, `AVG` divides by the second while the consumer will divide by the first. Count the NULLs; if there are any, either publish both counts or say in the `DESCRIPTION` which one the average is over. The same NULLs decide `INNER JOIN` against `LEFT JOIN` |
+| Whether the measures are complete | `COUNT(*)` counts rows, `COUNT(<measure>)` counts rows where the measure is not null, and when they differ, `AVG` divides by the second while the consumer will divide by the first. Count the NULLs; if there are any, either publish both counts or say in the `DESCRIPTION` which one the average is over. Both notes have a place in the DDL: the per-column `( <column> ( description = '…' ) )` field property for what one column means, the view `DESCRIPTION` for the counts — with the date you measured them, because the next load changes them. The same NULLs decide `INNER JOIN` against `LEFT JOIN` |
 | Existing dependants | `USED_BY()` before touching anything that already exists — see Verify |
 
 Do not ask about cache, swap, statistics or indexes: they have server defaults, they are
 not part of creating these objects, and they are outside v1.
+
+## When the request asks for something the data does not have
+
+A mart is asked for in business words, and those words routinely name a dimension the files
+do not carry — "broken down by sales channel" over files with no channel column anywhere.
+The failure to avoid is inventing it: a plausible-looking expression yields a mart that
+answers a different question and says nothing about the substitution.
+
+1. **Establish it, do not assume it.** Read every column of both sides — `vql desc`, or
+   `SELECT column_name FROM GET_VIEW_COLUMNS() WHERE input_view_name = '<view>'` — then look
+   for the attribute in the neighbouring objects, and check they can be joined to the same
+   key at all. In the demo data each returns file *is* a channel, but only the store one
+   carries a store key, so "returns per store per channel" exists for one channel only, and
+   no expression changes that.
+2. **Then choose, and write the choice into the `DESCRIPTION`:**
+   - the attribute is a constant across the data you have → keep the column as a literal
+     (`'store' AS sales_channel`). The grain is then the one that was asked for, and a
+     second channel arrives later as another `UNION ALL` branch instead of a schema change;
+   - it exists somewhere that cannot be joined → leave it out and say where it lives. A mart
+     at the grain that *is* joinable is a different object, not a compromise version of this
+     one;
+   - it exists nowhere → leave it out.
+3. **Report the gap in the answer, not only in the DDL.** The human asked for a breakdown;
+   they need to hear that one of its axes is not in the data, and what you read to be sure.
+
+The same holds for a measure named loosely — "how many returns" over a file whose rows are
+return *lines*. Publish both counts under names that say which is which
+(`return_ticket_count`, `return_line_count`) rather than picking one silently.
 
 ## Reference
 
@@ -260,6 +321,7 @@ the reason this skill exists.** After applying, always:
 | Did the objects land, and where | `SELECT name, type, subtype, folder FROM GET_ELEMENTS() WHERE input_database_name = '<db>' AND type = 'view'` — `subtype` is `base`, `derived` or `interface`; associations are `type = 'association'`, one query per value because input parameters take `=` only |
 | **Is anything broken now** | `SELECT name, view_type, view_status FROM GET_VIEWS() WHERE input_database_name = '<db>' AND input_retrieve_invalid_views_only = true` — **empty is the only good answer.** `view_type` here is the same fact as `subtype` above in numbers: `0` base, `1` derived, `2` interface |
 | Does it carry rows | `SELECT * FROM <view> LIMIT 10`, and a count that can be checked against the input |
+| **Did the join keep every fact** | add the mart's row counters back up and compare with the fact it was built from: `SUM(<row count column>)` over the mart equals `COUNT(*)` of the input, minus exactly the rows you decided to drop. A join that quietly dropped the unmatched facts, or doubled them on a duplicated dimension key, passes every other check in this table |
 | Schema of the contract | `vql desc --env lab --database <db> <interface view>` — the columns the consumer sees |
 | **Which implementation is actually behind a contract** | `vql desc … <interface view> --vql` — plain `DESC` can never tell you: it shows the declared schema whatever is underneath. This is also how you prove a swap happened |
 | Nothing changed for the consumer | take the schema and a `SELECT … LIMIT n` through the contract **before** the change, keep them, and diff against the same two afterwards. That is the only claim the consumer cares about, and it is cheap to make checkable |

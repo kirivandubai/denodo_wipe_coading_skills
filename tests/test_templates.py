@@ -167,17 +167,22 @@ class DuplicateSectionTest(unittest.TestCase):
 class RealSkillFileTest(unittest.TestCase):
     """Regression coverage against the actual repository content, not a fixture."""
 
-    def test_when_you_cannot_see_the_file_section_resolves_and_second_block_carries_a_mark(self):
+    def test_when_you_cannot_see_the_file_section_resolves_and_marks_are_read(self):
         root = Path(__file__).resolve().parents[1]
         first = load_block(root, "skills/datasources/SKILL.md#When you cannot see the file")
         self.assertIsNone(first.mark)
 
+        # the donor read-back: a bash fence, so its mark is a `#` comment
         second = load_block(root, "skills/datasources/SKILL.md#When you cannot see the file[1]")
-        self.assertEqual(second.mark, "verified: 9.5.1 (стенд, 2026-09-09)")
-        self.assertIn("CREATE OR REPLACE DATASOURCE DF ds_crm", second.body)
+        self.assertEqual(second.mark, "verified: 9.5.1 (стенд, 2026-09-12)")
+        self.assertIn("vql desc", second.body)
+
+        third = load_block(root, "skills/datasources/SKILL.md#When you cannot see the file[2]")
+        self.assertEqual(third.mark, "verified: 9.5.1 (стенд, 2026-09-09)")
+        self.assertIn("CREATE OR REPLACE DATASOURCE DF ds_crm", third.body)
         # dedented: the raw file indents this fence by three spaces (it lives inside a
         # numbered list), so an un-dedented body would still carry that indentation here
-        self.assertTrue(second.body.startswith("-- verified:"))
+        self.assertTrue(third.body.startswith("-- verified:"))
 
 
 class UpdateMarkTest(unittest.TestCase):

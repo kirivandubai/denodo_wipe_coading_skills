@@ -26,7 +26,7 @@ tool reads host, user and password from `~/.denodo/profiles.toml` itself.
 | Read stdin | `vql run --env dev -` |
 | Another database | add `--database <db>` (or put `CONNECT DATABASE <db>;` first in the file) |
 | Schema of an object | `vql desc --env dev bv_orders` (`--type view` is the default and covers base views too — there is no `DESC TABLE`) |
-| Server-generated VQL | `vql desc --env dev bv_orders --vql` — read it, do not apply it: it rebuilds the whole dependency chain and opens with `DROP … CASCADE` for every object in it |
+| Server-generated VQL | `vql desc --env dev bv_orders --vql` — read it, do not apply it: it opens with `DROP … CASCADE` and rebuilds the object **together with what it depends on**, never with what depends on it. Which object you ask therefore decides what you get: a base view returns source, wrapper and `CREATE TABLE` in one answer; the source alone returns only itself, without the column list. A name can be qualified — `vql desc --env dev "other_db.bv_orders" --vql` reads another database without switching yours — *verified: 9.5.1 (стенд, 2026-09-12)* |
 | Other types | `--type database`, `--type "datasource df"`, `--type "wrapper df"`, `--type tag`, `--type association`, `--type "interface view"`; folders take a quoted path: `vql desc --env dev "'/sales'" --type folder --vql` |
 | Marketplace call | `api get --env dev /public/api/tags` |
 | … with a body | `api post --env dev /public/api/tags --json '{"name":"pii","description":"…","descriptionType":"TEXT"}'` |
@@ -68,8 +68,9 @@ The server message you match against the error reference is
 marketplace calls report failure inside a `200`: `POST /tags/{id}/views` answers
 with the list of ids it could *not* assign — success is an empty list.
 
-**`vql desc`** returns the DESC rows as `columns`/`rows` (`DESC VQL` puts the
-whole script in one cell).
+**`vql desc`** returns the DESC rows as `columns`/`rows` **at the top level of the
+envelope** — `statements[]` belongs to `vql run` alone, and a parser that expects it
+here fails on a call that succeeded. `DESC VQL` puts the whole script in one cell.
 
 **A `decimal` value arrives as a JSON string** (`"12.34"`), while `int`, `long` and
 `double` arrive as JSON numbers. That is the transport, not the column: it says
