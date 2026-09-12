@@ -211,6 +211,8 @@ api post --env lab /public/api/external-providers-types \
     --part 'request=json:{"name":"ACME_BI","visualName":"Acme BI"}'
 # → 201 {"externalProviderTypeId":30,"iconImage":null, …}
 #   with a logo:  --part 'icon=@./acme.svg'
+#   the next call answers 200, this one 201 — check 2xx, never a particular code
+#   — verified: 9.5.1 (стенд, 2026-09-12)
 
 # 2. the server that will read the contract. The interface view need not exist yet
 api post --env lab /public/api/external-tool-servers \
@@ -219,15 +221,32 @@ api post --env lab /public/api/external-tool-servers \
              "databaseName":"sales_analytics","viewName":"i_acme_bi_elements"}'
 # → {"id":217, …}
 
-# 3. ask the marketplace for the contract it expects, and apply it as VQL
+# 3. ask the marketplace for the contract it expects. NOT a file to apply as it stands:
+#    the two CREATE TYPE come back usable verbatim, the interface view comes back
+#    without SET IMPLEMENTATION and without FOLDER — you write the implementation
 api get --env lab /public/api/external-tool-servers/217/vql-metadata
-# → a JSON string: CONNECT DATABASE …; two CREATE TYPE; CREATE INTERFACE VIEW …
+# → a JSON string: CONNECT DATABASE …; two CREATE TYPE; CREATE INTERFACE VIEW (columns only)
 
 # 4. import
 api post --env lab /public/api/external-tool-servers/synchronize \
     --json '{"externalToolServerIds":[217]}'
 # → externalElementsAdded / Updated / Deleted, per server
 ```
+
+**Step 4 is a `synchronize`, and the safety rule of `/denodo:vql` says stop and ask before
+one — but the first import on a server you have just created cannot delete anything.** The
+call deletes elements *absent from the snapshot*, and a server created in this same session
+has imported none. So: your own new server, first import — go, and say in the summary what
+was imported. **From the second import on, the confirmation is back**, because the interface
+view is the whole picture and a row that stopped being selected is an element that gets
+removed with its tags and categories. Read the current set first and show the human what is
+about to disappear — the server's own elements are
+`POST /public/api/search/external-elements/metadata` with `externalToolServerIds: [<id>]`
+and the nine other mandatory fields — *verified: 9.5.1 (стенд, 2026-09-12)*.
+There is no `GET …/external-tool-servers/{id}/external-elements`: that path is `404`.
+None of this changes the tool: the call is stamped
+`destructive: replace` either way, and on a `production` profile it is refused without
+`--allow-destructive`, which only a human may add.
 
 **Both type steps are usually unnecessary, and they are different objects.** Look each one
 up before creating it — a new type is a marketplace-wide object that everyone then sees:
@@ -246,7 +265,13 @@ FontAwesome key). Both listings return the name under a different key than the o
 the element type is `externalElementTypeName` when read and `name` when written, and the read
 form has no `description` at all.
 
-The VQL half — the implementation behind the contract from step 3:
+The VQL half — the implementation behind the contract from step 3. **Its names are outside
+the naming convention of `/denodo:vql` on purpose:** the interface view's name is part of
+the contract you gave the tool server, and the three views under it are its implementation,
+not integration-layer or business-entity objects. Keep them together in one folder and named
+after the tool, as below; do not rename them to `iv_…` to match the table.
+
+
 
 ```sql
 -- verified: 9.5.1 (стенд, 2026-09-12)

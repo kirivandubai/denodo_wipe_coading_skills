@@ -46,6 +46,14 @@ and one created without an icon stands in that shared list logo-less next to the
 listing embeds those icons as base64 and is ~290 KB on 9.5.1: save it and project
 `{externalProviderTypeId, name, visualName}`.
 
+**"None fits" is decided by whose logo ends up on the card.** A provider type is what the
+consumer sees as the origin of the asset, so reusing `TABLEAU` for a dashboard that is not
+Tableau's puts another vendor's name and logo on it — a false statement about provenance,
+and cheaper only in calls. A own type without an icon is the better trade; it stands
+logo-less, which is honest. `name` is not validated against a shape: every built-in one is
+`UPPER_SNAKE`, and a lowercase name is accepted just the same — *verified: 9.5.1 (стенд,
+2026-09-12)*.
+
 Creating one is multipart: a part named `request` of type `application/json` carrying
 `{name, visualName}`,
 and optionally a part `icon` with an `.svg` or `.png`. **The icon is optional** — the call
@@ -85,6 +93,14 @@ Skip the `CONNECT DATABASE` line if the session is already in that database.
 | `url` | text | no | becomes the "open in tool" link |
 | `created_at` | timestamp | yes | |
 | `updated_at` | timestamp | yes | **drives updates** — an element whose value has not moved is never refreshed |
+
+Two gaps the source tool usually leaves, and both are yours to close: a date without a time
+(the columns are `timestamp`) — take midnight and write the convention down next to the
+view, because switching later to end-of-day moves `updated_at` backwards for the same day
+and the next import silently updates nothing; and a missing `description` — it is optional
+in the contract but it is the first thing a consumer reads, so build one out of facts you
+already have (what the asset is, which view it reads) rather than leaving it empty or
+inventing an audience for it.
 | `associations` | `external_element_association_array_type` | no | the 360 graph edges |
 
 Association record: `associated_element_id`, `external_tool_server_name`,

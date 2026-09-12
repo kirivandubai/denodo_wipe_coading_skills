@@ -148,6 +148,13 @@ still replacing a set you did not read out to the human.
 | "Cleanup of my own probe objects doesn't count" | It is a `DROP` on a shared server. Same rule. |
 | "I'll list what I removed in the summary" | Disclosure after the fact is not consent. |
 
+**One named exception, and only this one:** the first
+`POST /public/api/external-tool-servers/synchronize` on an external tool server you created
+in this same session imports elements and can delete none, because that server has imported
+none yet. Every later import on it is back under the rule. Nothing else about a `synchronize`
+is exempt, and on a `production` profile the tool refuses it regardless — see
+`/denodo:marketplace`.
+
 **Red flags — stop and ask:** you are about to send `DELETE` or a `synchronize`; you are
 writing `--allow-destructive`; `env.production` is `true`; you are removing something you
 did not create in this session; you are "cleaning up" anything.
