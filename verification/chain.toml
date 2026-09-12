@@ -216,10 +216,12 @@ expect = "no rows"
 # --with-marketplace run against a marketplace that still holds the previous run's objects
 # — the state a --keep run leaves behind — fails loudly on 409 (duplicate name) at the
 # create call, exactly as the skill's own "common mistakes" table predicts; that failure is
-# honest, not a bug. The fix is operational, not code: either let a normal (non --keep) run
-# finish so its own cleanup removes what it created, or remove the leftover tag/category by
-# hand (DELETE /public/api/tags/{id}, DELETE /public/api/category-management/categories/{id})
-# before running again.
+# honest, not a bug, and since T17 it explains itself in the report: a 409 arrives with an
+# empty body, so the step's error carries the hint HTTP_HINTS supplies
+# (denodo_cli/commands/verify.py) instead of a bare status. The fix stays operational, not
+# code: either let a normal (non --keep) run finish so its own cleanup removes what it
+# created, or remove the leftover tag/category by hand (DELETE /public/api/tags/<id>,
+# DELETE /public/api/category-management/categories/<id>) before running again.
 
 [[step]]
 id = "marketplace-sync"
