@@ -154,6 +154,7 @@ did not create in this session; you are "cleaning up" anything.
 | Data sources, wrappers, base views (JDBC, DF, JSON) | `/denodo:datasources` |
 | Derived views, interface views, associations | `/denodo:views` |
 | Marketplace tags, categories, external elements (REST) | `/denodo:marketplace` |
+| Stored procedures — calling one, or writing one | `/denodo:procedures` |
 | SELECT, expressions, Denodo dialect | `/denodo:query` |
 | Running anything against a live server, reading its errors | `/denodo:execute` |
 

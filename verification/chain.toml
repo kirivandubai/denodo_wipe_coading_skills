@@ -248,6 +248,32 @@ database = "{database}"
 check = "SELECT association_name FROM GET_ASSOCIATIONS() WHERE input_database_name = '{database}' AND input_type = 'views' AND valid = true"
 
 [[step]]
+id = "vql-procedure"
+kind = "template"
+channel = "vql"
+address = "skills/procedures/SKILL.md#VQL procedure"
+substitute = { sales_analytics = "{database}" }
+# The check is a call, not a lookup in GET_ELEMENTS: a VQL procedure binds its body when it
+# runs, so "the object exists" and "the object works" are two different facts here, and only
+# the second one is worth a step (skills/procedures/SKILL.md, Verify).
+check = "SELECT band FROM order_size_band() WHERE amount = 12000"
+
+[[step]]
+id = "predefined-procedure-call"
+kind = "template"
+channel = "vql"
+address = "skills/procedures/SKILL.md#Call a predefined procedure"
+# The block asks USED_BY about a view; on this run the view with dependants is the base view
+# the fixture built, and household_income_by_band and household_income stand on it.
+substitute = { sales_analytics = "{database}", "'customer'" = "'bv_income_band'" }
+database = "{database}"
+check = "SELECT view_name FROM USED_BY() WHERE input_view_database_name = '{database}' AND input_view_name = 'bv_income_band'"
+
+# The third block of that skill — CREATE PROCEDURE ... CLASSNAME, the Java form — is
+# deliberately not a step. It needs a JAR imported into the server, which this chain has no
+# way to produce; its mark stays unverified and no run here will re-date it.
+
+[[step]]
 id = "tags"
 kind = "template"
 channel = "vql"

@@ -116,6 +116,7 @@ phrasing; `/denodo:vql` is the entry point when the request is ambiguous.
 | `/denodo:datasources` | JDBC / DF / JSON data sources, their wrappers, base views; introspecting a source | VQL |
 | `/denodo:views` | derived views, interface views, associations | VQL |
 | `/denodo:marketplace` | marketplace tags, categories, external elements, catalog synchronisation | REST |
+| `/denodo:procedures` | calling the server's predefined procedures, writing your own in VQL, importing a Java one from a JAR | VQL |
 
 **A "tag" alone does not say which server you mean.** Virtual DataPort tags
 (`CREATE TAG`, VQL, port 9996) and Data Marketplace tags (REST, port 9090) are different
@@ -124,14 +125,15 @@ objects; tags imported into the marketplace from VDP are read-only there. `catal
 
 ## What v1 covers — and what it does not
 
-In scope: the sixteen objects listed above, everything needed to take a request from
-plain language to a mart a consumer can browse.
+In scope: the sixteen objects of the first six skills, everything needed to take a request
+from plain language to a mart a consumer can browse. `/denodo:procedures` sits outside that
+scope — stored procedures are not part of the mart scenario — and is there because it is
+useful on its own.
 
 Deliberately out of scope: a full function reference; performance and caching (summary
 views, materialized tables, remote tables, MPP); security and publication (users, roles,
 privileges, row/column restrictions, REST/SOAP/GraphQL/OData services); Scheduler,
-Solution Manager and cross-environment deployment; stored procedures; Denodo versions
-other than 9.5.
+Solution Manager and cross-environment deployment; Denodo versions other than 9.5.
 
 Every template carries its verification status in a comment on the line above it —
 `verified: 9.5.1 (стенд, <date>)` when it has been run against a live server, or

@@ -4,7 +4,7 @@
   "displayName": "Denodo Skills",
   "version": "0.1.0",
   "license": "MIT",
-  "description": "Create Denodo 9.5 objects from plain-language intent: databases, folders, tags, JDBC/DF/JSON data sources and wrappers, base, derived and interface views, associations, and Data Marketplace tags, categories and external elements.",
+  "description": "Create Denodo 9.5 objects from plain-language intent: databases, folders, tags, JDBC/DF/JSON data sources and wrappers, base, derived and interface views, associations, and Data Marketplace tags, categories and external elements, plus stored procedures — calling the predefined ones and writing your own in VQL.",
   "author": {
     "name": "kirivandubai",
     "url": "https://github.com/kirivandubai"
