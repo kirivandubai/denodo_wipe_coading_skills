@@ -1,4 +1,5 @@
 import datetime as dt
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -1403,3 +1404,256 @@ class ParseApiCallsFailureTest(unittest.TestCase):
         with self.assertRaises(ChainError) as ctx:
             parse_api_calls("api get /public/api/tags --param\n")
         self.assertIn("--param", str(ctx.exception))
+
+
+class FakeVqlEncrypting(FakeVql):
+    """``FakeVql`` plus the one statement the throwaway-password mechanism needs.
+
+    The stand answers ``ENCRYPT_PASSWORD '<plaintext>'`` with one row holding the
+    ciphertext; a data source refuses any other string with ``Invalid encrypted value``
+    (verified on the lab stand, 9.5.1), which is why the chain cannot simply carry a
+    literal one in the manifest.
+    """
+
+    def execute(self, statement):
+        if statement.startswith("ENCRYPT_PASSWORD"):
+            self.executed.append(statement)
+            return VqlResult(statement=statement, columns=["encrypted"], rows=[["Rr+OdGTW=="]])
+        return super().execute(statement)
+
+
+class FakeVqlEncryptionFails(FakeVql):
+    def execute(self, statement):
+        if statement.startswith("ENCRYPT_PASSWORD"):
+            self.executed.append(statement)
+            raise RuntimeError(
+                "ERROR:  connection reset\nDETAIL:  java.sql.SQLException: reset\n")
+        return super().execute(statement)
+
+
+ENCRYPTED_SKILL = """### Source
+
+```sql
+-- verified: 9.5.1 (стенд, 2026-09-01)
+CREATE OR REPLACE DATASOURCE JDBC ds_orders_db
+    USERPASSWORD = '<ciphertext — fill it in before applying>' ENCRYPTED;
+```
+"""
+
+
+class ThrowawayPasswordTest(unittest.TestCase):
+    """``@encrypt-throwaway``: a ciphertext the run itself produces on the stand.
+
+    The JDBC template carries ``USERPASSWORD … ENCRYPTED`` and the server validates the
+    ciphertext at creation time, so the step needs a real one — and a real one must never
+    be committed (it is a credential, and it is bound to the server that made it). The
+    manifest therefore declares the *intent* and the run fills in the value.
+    """
+
+    def setUp(self):
+        FakeVql.instances.clear()
+        self.root = Path(tempfile.mkdtemp())
+        (self.root / "skills" / "datasources").mkdir(parents=True)
+        (self.root / "skills" / "datasources" / "SKILL.md").write_text(ENCRYPTED_SKILL, encoding="utf-8")
+        self.manifest = self.root / "chain.toml"
+
+    def chain(self, text):
+        self.manifest.write_text(text, encoding="utf-8")
+        return load_chain(self.manifest)
+
+    MANIFEST = """
+[values]
+database = "denodo_skills_test"
+jdbc_password = "@encrypt-throwaway"
+[[step]]
+id = "jdbc-source"
+kind = "template"
+channel = "vql"
+address = "skills/datasources/SKILL.md#Source"
+substitute = { "<ciphertext — fill it in before applying>" = "{jdbc_password}" }
+"""
+
+    def test_the_marker_is_replaced_by_a_ciphertext_from_the_stand(self):
+        doc, code = run_chain(profile(), self.chain(self.MANIFEST), root=self.root,
+                              vql_factory=FakeVqlEncrypting)
+        self.assertEqual(code, 0, doc)
+        self.assertEqual(doc["values"]["jdbc_password"], "Rr+OdGTW==")
+        executed = " ".join(s for i in FakeVql.instances for s in i.executed)
+        self.assertIn("ENCRYPT_PASSWORD", executed)
+        self.assertIn("USERPASSWORD = 'Rr+OdGTW==' ENCRYPTED", executed)
+        self.assertNotIn("@encrypt-throwaway", executed)
+
+    def test_the_plaintext_never_reaches_the_report(self):
+        # The password is a throwaway, but the report is what a session keeps: the
+        # mechanism is worth nothing if the plaintext rides along in it.
+        doc, _ = run_chain(profile(), self.chain(self.MANIFEST), root=self.root,
+                           vql_factory=FakeVqlEncrypting)
+        sent = [s for i in FakeVql.instances for s in i.executed if s.startswith("ENCRYPT_PASSWORD")]
+        plaintext = sent[0][len("ENCRYPT_PASSWORD '"):-1]
+        self.assertTrue(plaintext, "the probe statement carried no password at all")
+        self.assertNotIn(plaintext, json.dumps(doc, ensure_ascii=False))
+
+    def test_a_failed_encryption_stops_the_run_before_the_first_step(self):
+        # A step whose body still says "{jdbc_password}" would reach the server verbatim
+        # and fail there with a confusing remote error; worse, it would report the
+        # template as broken when the stand simply could not be reached.
+        doc, code = run_chain(profile(), self.chain(self.MANIFEST), root=self.root,
+                              vql_factory=FakeVqlEncryptionFails)
+        self.assertEqual(code, 1, doc)
+        self.assertFalse(doc["ok"])
+        self.assertIn("jdbc_password", doc["error"]["message"])
+        self.assertNotIn("steps", doc)
+        executed = " ".join(s for i in FakeVql.instances for s in i.executed)
+        self.assertNotIn("CREATE OR REPLACE DATASOURCE", executed)
+
+    def test_an_ordinary_value_is_left_alone(self):
+        chain = self.chain("""
+[values]
+database = "denodo_skills_test"
+[[step]]
+id = "jdbc-source"
+kind = "template"
+channel = "vql"
+address = "skills/datasources/SKILL.md#Source"
+""")
+        doc, code = run_chain(profile(), chain, root=self.root, vql_factory=FakeVqlEncrypting)
+        self.assertEqual(code, 0, doc)
+        executed = " ".join(s for i in FakeVql.instances for s in i.executed)
+        self.assertNotIn("ENCRYPT_PASSWORD", executed)
+
+
+class MultipartApiCallTest(unittest.TestCase):
+    """``--part``: the one marketplace call that is not a JSON body.
+
+    ``POST /public/api/external-providers-types`` takes multipart, and a flag this parser
+    does not know is dropped together with its value — so before this, that line parsed
+    into a POST with no body at all and went to the server empty. A step is allowed to
+    skip a call (``calls``); it must never send a mutilated one.
+    """
+
+    LINE = ("api post --env lab /public/api/external-providers-types "
+            "--part 'request=json:{\"name\":\"ACME_BI\",\"visualName\":\"Acme BI\"}'\n")
+
+    def test_a_part_becomes_a_multipart_body(self):
+        call = parse_api_calls(self.LINE)[0]
+        self.assertEqual(call["method"], "POST")
+        self.assertIsNone(call["json"])
+        name, content, content_type = call["multipart"]["request"]
+        self.assertIsNone(name)
+        self.assertEqual(content_type, "application/json")
+        self.assertIn(b"ACME_BI", content)
+
+    def test_a_call_without_parts_carries_no_multipart(self):
+        call = parse_api_calls("api get /public/api/tags --param nameFilter=pii\n")[0]
+        self.assertIsNone(call["multipart"])
+
+    def test_a_malformed_part_is_a_chain_error(self):
+        with self.assertRaises(ChainError) as ctx:
+            parse_api_calls("api post /public/api/external-providers-types --part 'request'\n")
+        self.assertIn("--part", str(ctx.exception))
+
+    def test_a_part_with_invalid_json_is_a_chain_error(self):
+        with self.assertRaises(ChainError) as ctx:
+            parse_api_calls("api post /x --part 'request=json:{\"name\",}'\n")
+        self.assertIn("--part", str(ctx.exception))
+
+
+class MultipartStepTest(unittest.TestCase):
+    """The multipart body has to survive all the way to the transport, substitutions and all."""
+
+    class FakeRest:
+        calls = []
+
+        def __init__(self, profile):
+            self.profile = profile
+
+        def call(self, method, path, *, json_body=None, params=None, multipart=None, timeout=None):
+            from denodo_cli.transports.base import HttpResult
+            MultipartStepTest.FakeRest.calls.append((method, path, json_body, multipart))
+            return HttpResult(status=201, body={"externalProviderTypeId": 30})
+
+    BLOCK = ("api post --env lab /public/api/external-providers-types \\\n"
+             "    --part 'request=json:{\"name\":\"ACME_BI\",\"visualName\":\"Acme BI\"}'\n")
+
+    def setUp(self):
+        FakeVql.instances.clear()
+        MultipartStepTest.FakeRest.calls.clear()
+        self.root = Path(tempfile.mkdtemp())
+        (self.root / "skills" / "marketplace").mkdir(parents=True)
+        (self.root / "skills" / "marketplace" / "SKILL.md").write_text(
+            "### External element\n\n```bash\n" + self.BLOCK + "```\n", encoding="utf-8")
+        self.manifest = self.root / "chain.toml"
+        self.manifest.write_text("""
+[values]
+database = "denodo_skills_test"
+tag_prefix = "verify_"
+[[step]]
+id = "provider-type"
+kind = "template"
+channel = "http"
+address = "skills/marketplace/SKILL.md#External element"
+marketplace = true
+calls = [0]
+capture = { provider_type_id = "externalProviderTypeId" }
+substitute = { "\\"ACME_BI\\"" = "\\"{tag_prefix}ACME_BI\\"" }
+""", encoding="utf-8")
+        self.chain = load_chain(self.manifest)
+
+    def test_the_part_reaches_the_transport_with_substitutions_applied(self):
+        doc, code = run_chain(profile(marketplace_url="http://x/y"), self.chain, root=self.root,
+                              vql_factory=FakeVql, rest_factory=MultipartStepTest.FakeRest,
+                              with_marketplace=True)
+        self.assertEqual(code, 0, doc)
+        _, path, json_body, multipart = MultipartStepTest.FakeRest.calls[0]
+        self.assertEqual(path, "/public/api/external-providers-types")
+        self.assertIsNone(json_body)
+        self.assertIn(b"verify_ACME_BI", multipart["request"][1])
+        self.assertEqual(doc["values"]["provider_type_id"], "30")
+
+
+class MultiLineApiCallTest(unittest.TestCase):
+    """A quoted argument may span lines — bash keeps the newline, and so must this.
+
+    ``skills/marketplace/SKILL.md`` writes the external-tool-server body across three
+    lines inside one pair of single quotes. That is ordinary shell (a newline inside
+    quotes is just a character; a trailing backslash would end up *inside* the JSON), so
+    the executor has to follow the template's form rather than the template following the
+    executor's.
+    """
+
+    BLOCK = """api post --env lab /public/api/external-tool-servers \\
+    --json '{"type":"CUSTOM","name":"acme_bi_server",
+             "externalProviderTypeId":30,
+             "databaseName":"sales_analytics","viewName":"i_acme_bi_elements"}'
+# → {"id":217, …}
+api get --env lab /public/api/external-tool-servers/217/vql-metadata
+"""
+
+    def test_a_quoted_body_spanning_lines_is_one_call(self):
+        calls = parse_api_calls(self.BLOCK)
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(calls[0]["json"]["viewName"], "i_acme_bi_elements")
+        self.assertEqual(calls[0]["json"]["externalProviderTypeId"], 30)
+        self.assertEqual(calls[1]["path"], "/public/api/external-tool-servers/217/vql-metadata")
+
+    def test_an_unbalanced_quote_still_fails_rather_than_swallowing_the_block(self):
+        with self.assertRaises(ChainError) as ctx:
+            parse_api_calls("api post /x --json '{\"a\":1}\napi get /y\n")
+        self.assertIn("api post", str(ctx.exception))
+
+
+class ExternalElementBlockTest(unittest.TestCase):
+    """The real block, as the skill writes it: four calls, one of them multipart."""
+
+    ADDRESS = ("skills/marketplace/SKILL.md#External element — a dashboard, job or "
+               "contract from another tool[0]")
+
+    def test_the_skill_block_parses_into_four_calls(self):
+        from denodo_cli.templates import load_block
+        repo = Path(__file__).resolve().parents[1]
+        calls = parse_api_calls(load_block(repo, self.ADDRESS).body)
+        self.assertEqual([c["method"] for c in calls], ["POST", "POST", "GET", "POST"])
+        self.assertIsNotNone(calls[0]["multipart"])
+        self.assertEqual(calls[1]["json"]["type"], "CUSTOM")
+        self.assertIn("vql-metadata", calls[2]["path"])
+        self.assertEqual(calls[3]["json"], {"externalToolServerIds": [217]})
