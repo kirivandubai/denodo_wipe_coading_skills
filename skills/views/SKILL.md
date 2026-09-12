@@ -11,9 +11,10 @@ records how two views relate. Order in the chain: **base view → derived view �
 view → association**.
 
 Sources, wrappers and base views are `/denodo:datasources`; databases, folders and VDP
-tags are `/denodo:catalog`; the SELECT inside `AS` — expressions, functions, dialect — is
-`/denodo:query`. Applying files is `/denodo:execute`, and the working loop, the naming
-defaults and the safety rule are `/denodo:vql`.
+tags are `/denodo:catalog`. The SELECT inside `AS` is ordinary SQL and has no skill of its
+own; the dialect deltas that cost data are in the aggregate table below. Applying files is
+`/denodo:execute`, and the working loop, the naming defaults and the safety rule are
+`/denodo:vql`.
 
 **The dangerous part of this skill is what happens after a successful statement.** All
 three objects can be accepted by the server and be broken, and all three break *other
@@ -74,9 +75,11 @@ without one lands at the root of the database.
 - **Count the dimension before you join it.** `SELECT COUNT(*), COUNT(DISTINCT <business
   key>) FROM <dimension>` — a dimension that keeps history has several rows per business
   key, and joining on that key multiplies every figure in the mart with no error anywhere.
-  The demo `store` dimension is 12 rows for 6 stores; the fact carries the surrogate key,
-  so join on that and project the business key as a column, so the consumer can still roll
-  up.
+  The demo `store` dimension is 12 rows for 6 stores, the demo `call_center` 6 rows for 3
+  centres; the fact carries the surrogate key, so join on that and project the business key
+  as a column, so the consumer can still roll up. **The tell is a pair of validity columns**
+  — `rec_start_date` / `rec_end_date` and a business key repeating under them — so a
+  `DESC VIEW` answers the question before the `COUNT` does.
 - **`INNER` drops facts, and nobody is told.** The template joins `INNER` because its two
   demo files match completely; real files do not — 10 062 of the 287 514 demo store returns
   carry no store key at all, and 3 212 of the 71 763 web returns name no reason. Decide
@@ -102,8 +105,13 @@ without one lands at the root of the database.
   — stable across runs, so it reads like a real figure. Measured on a 68 636-row fact
   column: `SUM(x)` answered `1140298269` where the true total is `168668968269`
   (`SUM(CAST('long', x))`, cross-checked against `AVG × COUNT`); a two-row case built to
-  overflow returned `NULL` instead. **Cast the input for any `SUM` over a fact column:
-  `SUM(CAST('long', x))`.** This is the one aggregate where casting the input is the fix —
+  overflow returned `NULL` instead. **Cast the input for any `SUM` over an `int` fact
+  column — and only over an `int` one: `SUM(CAST('long', x))`.** Over a `decimal` measure
+  the very same cast *is* the data loss: it truncates every row before the sum, and on a
+  144 067-row money column it answered `183734747` against a true `183801994.51` — again
+  with no error and no warning — *verified: 9.5.1 (стенд, 2026-09-12)*. `DESC VIEW` names
+  the type; `decimal` and `double` measures need no cast at all.
+  This is the one aggregate where casting the input is the fix —
   it is not one for `AVG`, and `AVG(TO_DECIMAL(x))` under a `GROUP BY` is rejected outright
   (see Common mistakes).
 - **What does work under `GROUP BY`**, so you do not route around it: `COUNT(DISTINCT x)`,

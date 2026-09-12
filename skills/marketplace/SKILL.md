@@ -110,6 +110,9 @@ api post --env lab /public/api/tags/627/views --json '[7484]'
   `PUT`-ing over somebody else's tag. A namesake differing only in case is a collision, not a
   match: creating the second one is `409`, so that case is a question for the human, not
   something to resolve automatically.
+- **The two base paths are the API's own, not a slip in this template:** the paged lookup is
+  `/public/api/tag-management/tags`, while create, update and the per-tag reads are
+  `/public/api/tags/…`. Do not "correct" one to match the other.
 - `name`, `description` and `descriptionType` are all mandatory on create; missing ones are
   `400 VALIDATE_FIELD`. `descriptionType` is `TEXT` or `RICH_TEXT` (the latter renders HTML).
 - A duplicate name is `409` with an **empty body** — no message to read. That is why step 1
@@ -323,8 +326,9 @@ that does not match it, and only the `SELECT` shows it (`/denodo:views`).
 | Which "tag" | marketplace tag = visible in the Data Marketplace UI, created here; VDP tag = `LIST TAGS`, `/denodo:catalog`. When the request does not say, ask — the call succeeds either way, on the wrong server |
 | `serverId` | `marketplace_server_id` in the profile — the human's to set, and the tool adds it for you; the ids are in `GET /public/api/configuration/servers`. Needed as soon as more than one VDP is registered. Do not put it in a call unless you mean a server other than the profile's |
 | Tag or category name, description | the human. Both are shown to consumers browsing the marketplace, so they read as labels, not as identifiers |
+| A new category's parent | `GET …/categories/tree` first. A live marketplace's tree is a taxonomy somebody designed — hang the new category inside the branch it belongs to. A **new top-level** category is a question for the human, not a default: it adds an axis to what everybody browsing sees. (`GET …/categories/{id}/potential-parent` is for moving an existing one) |
 | Every numeric id | never a template, never memory: a `GET` in this session. Ids differ per installation and per server |
-| View ids to assign to | `GET /public/api/view-details?databaseName=…&viewName=…`; `id:null` means synchronise first |
+| View ids to assign to | `GET /public/api/view-details?databaseName=…&viewName=…`; `id:null` means synchronise first. Project `id`, `inLocal` and `inVDP` out of the answer — it carries the view's whole field list and its connection URIs, and truncating it instead is how the three fields get missed |
 | Whether the catalog may be synchronised | the human, if `changes` shows anything under `localElements` or a modified element that is not yours — it is a shared catalog |
 | For an external element: the type | `GET /public/api/external-elements-types` — 24 built in; invent one only if none fits |
 | For an external element: id, name, url, timestamps | the source tool. `updated_at` is what drives updates — an element whose `updated_at` does not move is never refreshed |
