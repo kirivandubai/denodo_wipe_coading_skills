@@ -4,6 +4,13 @@ Statements are separated by ``;`` outside of string literals, quoted identifiers
 comments. Comments (``--``, ``#`` and ``/* ... */``) are stripped so that a semicolon
 inside a comment never splits a statement. The user's VQL is otherwise passed through
 untouched — the execution layer never rewrites it.
+
+One statement carries semicolons of its own: the body of a VQL procedure
+(``CREATE [OR REPLACE] VQL PROCEDURE``), where they end a local variable declaration and
+every command between ``BEGIN`` and ``END``. Splitting on them turned one procedure into
+five broken fragments, so the scanner below keeps the body whole until the ``END`` that
+closes it. This is a single named special case, not a VQL parser: nothing else in the
+language nests statements this way.
 """
 
 from __future__ import annotations
@@ -13,6 +20,7 @@ def split_statements(text: str) -> list[str]:
     """Return the non-empty statements of ``text`` without their trailing ``;``."""
     statements: list[str] = []
     current: list[str] = []
+    scanner = _ProcedureScanner()
     i, n = 0, len(text)
     while i < n:
         ch = text[i]
@@ -20,6 +28,7 @@ def split_statements(text: str) -> list[str]:
         if ch == "'" or ch == '"':
             end = _skip_quoted(text, i, ch)
             current.append(text[i:end])
+            scanner.end_word()
             i = end
         elif ch == "#" or (ch == "-" and nxt == "-"):
             i = _skip_to_end_of_line(text, i)
@@ -27,13 +36,73 @@ def split_statements(text: str) -> list[str]:
             end = text.find("*/", i + 2)
             i = n if end < 0 else end + 2
         elif ch == ";":
-            _flush(statements, current)
+            if scanner.body_is_open():
+                current.append(ch)       # a semicolon of the procedure's own body
+            else:
+                _flush(statements, current)
+                scanner.reset()
             i += 1
         else:
             current.append(ch)
+            scanner.feed(ch)
             i += 1
     _flush(statements, current)
     return statements
+
+
+_BLOCK_ENDINGS = frozenset({"IF", "LOOP", "CASE"})
+
+
+class _ProcedureScanner:
+    """Tells the splitter whether it stands inside the body of a VQL procedure.
+
+    The body opens on the ``PROCEDURE`` of a ``CREATE [OR REPLACE] VQL PROCEDURE`` header
+    and closes on the first ``END`` that is not the end of a nested block — ``END IF``,
+    ``END LOOP`` and ``END CASE`` close what is inside the body, not the body itself.
+    """
+
+    def __init__(self) -> None:
+        self.reset()
+
+    def reset(self) -> None:
+        self._word: list[str] = []
+        self._first_word: str | None = None
+        self._previous_word: str | None = None
+        self._in_procedure = False
+        self._end_seen = False
+
+    def feed(self, ch: str) -> None:
+        if ch.isalnum() or ch == "_":
+            self._word.append(ch)
+        else:
+            self.end_word()
+
+    def end_word(self) -> None:
+        if not self._word:
+            return
+        word = "".join(self._word).upper()
+        self._word.clear()
+        if self._in_procedure:
+            if self._end_seen:
+                self._end_seen = False
+                if word not in _BLOCK_ENDINGS:
+                    self._in_procedure = False   # the body ended, this word is past it
+            elif word == "END":
+                self._end_seen = True
+        else:
+            if self._first_word is None:
+                self._first_word = word
+            if word == "PROCEDURE" and self._previous_word == "VQL" and self._first_word == "CREATE":
+                self._in_procedure = True
+        self._previous_word = word
+
+    def body_is_open(self) -> bool:
+        """Called on a ``;``: the pending word ends here, and so may the body."""
+        self.end_word()
+        if self._in_procedure and self._end_seen:
+            self._in_procedure = False           # ``END;`` — the body ends at this semicolon
+            self._end_seen = False
+        return self._in_procedure
 
 
 def _skip_quoted(text: str, start: int, quote: str) -> int:
