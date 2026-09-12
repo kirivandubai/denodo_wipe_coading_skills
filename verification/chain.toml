@@ -1,10 +1,18 @@
 # verification/chain.toml
-# Verifies 10 of the v1 templates end to end: catalog database, folders, the DF (CSV) data
-# source, derived views, the interface view, the association, and tags (vql channel), plus
-# the Data Marketplace catalog sync, a tag and a category (http channel). Bodies of the
+# Verifies 13 of the v1 templates end to end: catalog database, folders, the DF (CSV), JSON
+# and JDBC data sources, a hand-written JDBC wrapper and base view, derived views, the
+# interface view, the association, and tags (vql channel), plus the Data Marketplace catalog
+# sync, a tag and a category (http channel). Bodies of the
 # "template" steps come from the skills themselves (address = file#section); "fixture"
 # steps carry their own body and verify nothing — they only make the next template
 # reachable. Design spec, section 11.1.
+#
+# The three file/database source steps share one predicate: the source they name does not
+# exist and is not meant to. A CSV path that is not on the stand, a JSON file that is not
+# either, a JDBC host that does not resolve — the parser accepts all three, and only a
+# SELECT would fail (spec 11.1). What the chain proves about them is that the DDL is
+# right; that data reads through them is what the fixture below and the derived views
+# prove, over demo CSVs that do exist.
 #
 # The three http steps carry marketplace = true and only run with --with-marketplace: they
 # write to the shared marketplace catalog, not to denodo_skills_test alone. Two kinds of
@@ -17,15 +25,22 @@
 # database and views behind in a catalog everyone shares, as orphans (localElements in
 # .../changes), while reporting itself green.
 #
-# Deliberately out of scope here: the JSON and JDBC datasource templates (no fixtures for
-# them on the stand), and the external-element template — its chain applies VQL generated
-# from a marketplace response (vql-metadata), a "one channel's body feeds another channel's
-# input" shape this executor does not support yet (task 9 brief).
+# Deliberately out of scope here: the JDBC introspection block (PING_DATA_SOURCE and
+# friends), which needs a database that answers and therefore a real credential — see the
+# jdbc-base-view step.
 
 [values]
 database = "denodo_skills_test"
 csv_dir = "/opt/denodo/demos/csv"
 tag_prefix = "verify_"
+# Not a credential and not a literal: the JDBC template carries USERPASSWORD '...' ENCRYPTED,
+# and the server validates the ciphertext at creation time ("error creating new data source:
+# Invalid encrypted value" for anything it did not encrypt itself). A real ciphertext is a
+# credential, and it only works on the server that made it — so the run makes its own, on the
+# stand it is about to write to, and throws it away with the run (commands/verify.py,
+# _encrypt_throwaways). The alternative — rewriting the template to a plaintext password and
+# dropping ENCRYPTED — needs no code and verifies less than the block claims.
+jdbc_password = "@encrypt-throwaway"
 # No server_id here on purpose: the http steps and the cleanup below never name a VDP
 # server, so RestTransport puts the profile's marketplace_server_id on every call
 # (transports/api_rest.py). That is the only way a fork verifying against its own
@@ -85,6 +100,47 @@ database = "{database}"
 # no check on rows: the file this template names does not exist on the stand, and that is
 # the point — the parser accepts the DDL, only SELECT would fail (spec 11.1)
 check = "SELECT name FROM GET_ELEMENTS() WHERE input_database_name = '{database}' AND name = 'bv_crm_customers'"
+
+[[step]]
+id = "json-source"
+kind = "template"
+channel = "vql"
+address = "skills/datasources/SKILL.md#JSON file or endpoint"
+substitute = { sales_analytics = "{database}" }
+database = "{database}"
+# Same shape as df-source above and for the same reason: the file this block names does not
+# exist on the stand, so the check asks whether the objects were created, never whether they
+# read. The three CREATE TYPE statements are part of the predicate, not scaffolding — a
+# compound column cannot be declared inline, so a template that got them wrong would fail
+# here and nowhere else.
+check = "SELECT name FROM GET_ELEMENTS() WHERE input_database_name = '{database}' AND name = 'bv_oms_orders'"
+
+[[step]]
+id = "jdbc-source"
+kind = "template"
+channel = "vql"
+address = "skills/datasources/SKILL.md#Relational database over JDBC[0]"
+substitute = { sales_analytics = "{database}", "<ciphertext — see Passwords below; fill it in before applying>" = "{jdbc_password}" }
+database = "{database}"
+# The host oracle-edw.internal is unreachable from the stand on purpose (design spec 11.1:
+# the DDL parses without the source existing). The password is the one part that cannot be
+# faked — see jdbc_password above.
+check = "SELECT name FROM GET_ELEMENTS() WHERE input_database_name = '{database}' AND name = 'ds_orders_db'"
+
+[[step]]
+id = "jdbc-base-view"
+kind = "template"
+channel = "vql"
+# The third block of that section — the wrapper and base view written by hand for a source
+# that cannot be introspected. The second block (PING_DATA_SOURCE, GET_JDBC_DATASOURCE_TABLES,
+# GENERATE_VQL_TO_CREATE_JDBC_BASE_VIEW) is deliberately not a step: introspection needs a
+# database that actually answers, i.e. a real credential, and this chain has none by
+# construction. Its mark stays what T8b established against live Oracle, SQL Server and
+# PostgreSQL, and no run here will re-date it.
+address = "skills/datasources/SKILL.md#Relational database over JDBC[2]"
+# This block carries no CONNECT DATABASE of its own (same as interface-view below).
+database = "{database}"
+check = "SELECT name FROM GET_ELEMENTS() WHERE input_database_name = '{database}' AND name = 'bv_orders_db_orders'"
 
 [[step]]
 id = "fixture-base-views"

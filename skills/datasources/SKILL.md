@@ -211,7 +211,7 @@ self-signed certificate needs `;trustServerCertificate=true` appended, and that 
 question for the human, not a default you add silently.
 
 ```sql
--- verified: 9.5.1 (стенд, 2026-09-09) — created and queried against a live Oracle
+-- verified: 9.5.1 (стенд, 2026-09-09) — created against an unreachable host, ciphertext included
 CONNECT DATABASE sales_analytics;
 
 CREATE OR REPLACE DATASOURCE JDBC ds_orders_db

@@ -1,4 +1,5 @@
 import datetime as dt
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -1403,3 +1404,119 @@ class ParseApiCallsFailureTest(unittest.TestCase):
         with self.assertRaises(ChainError) as ctx:
             parse_api_calls("api get /public/api/tags --param\n")
         self.assertIn("--param", str(ctx.exception))
+
+
+class FakeVqlEncrypting(FakeVql):
+    """``FakeVql`` plus the one statement the throwaway-password mechanism needs.
+
+    The stand answers ``ENCRYPT_PASSWORD '<plaintext>'`` with one row holding the
+    ciphertext; a data source refuses any other string with ``Invalid encrypted value``
+    (verified on the lab stand, 9.5.1), which is why the chain cannot simply carry a
+    literal one in the manifest.
+    """
+
+    def execute(self, statement):
+        if statement.startswith("ENCRYPT_PASSWORD"):
+            self.executed.append(statement)
+            return VqlResult(statement=statement, columns=["encrypted"], rows=[["Rr+OdGTW=="]])
+        return super().execute(statement)
+
+
+class FakeVqlEncryptionFails(FakeVql):
+    def execute(self, statement):
+        if statement.startswith("ENCRYPT_PASSWORD"):
+            self.executed.append(statement)
+            raise RuntimeError(
+                "ERROR:  connection reset\nDETAIL:  java.sql.SQLException: reset\n")
+        return super().execute(statement)
+
+
+ENCRYPTED_SKILL = """### Source
+
+```sql
+-- verified: 9.5.1 (стенд, 2026-09-01)
+CREATE OR REPLACE DATASOURCE JDBC ds_orders_db
+    USERPASSWORD = '<ciphertext — fill it in before applying>' ENCRYPTED;
+```
+"""
+
+
+class ThrowawayPasswordTest(unittest.TestCase):
+    """``@encrypt-throwaway``: a ciphertext the run itself produces on the stand.
+
+    The JDBC template carries ``USERPASSWORD … ENCRYPTED`` and the server validates the
+    ciphertext at creation time, so the step needs a real one — and a real one must never
+    be committed (it is a credential, and it is bound to the server that made it). The
+    manifest therefore declares the *intent* and the run fills in the value.
+    """
+
+    def setUp(self):
+        FakeVql.instances.clear()
+        self.root = Path(tempfile.mkdtemp())
+        (self.root / "skills" / "datasources").mkdir(parents=True)
+        (self.root / "skills" / "datasources" / "SKILL.md").write_text(ENCRYPTED_SKILL, encoding="utf-8")
+        self.manifest = self.root / "chain.toml"
+
+    def chain(self, text):
+        self.manifest.write_text(text, encoding="utf-8")
+        return load_chain(self.manifest)
+
+    MANIFEST = """
+[values]
+database = "denodo_skills_test"
+jdbc_password = "@encrypt-throwaway"
+[[step]]
+id = "jdbc-source"
+kind = "template"
+channel = "vql"
+address = "skills/datasources/SKILL.md#Source"
+substitute = { "<ciphertext — fill it in before applying>" = "{jdbc_password}" }
+"""
+
+    def test_the_marker_is_replaced_by_a_ciphertext_from_the_stand(self):
+        doc, code = run_chain(profile(), self.chain(self.MANIFEST), root=self.root,
+                              vql_factory=FakeVqlEncrypting)
+        self.assertEqual(code, 0, doc)
+        self.assertEqual(doc["values"]["jdbc_password"], "Rr+OdGTW==")
+        executed = " ".join(s for i in FakeVql.instances for s in i.executed)
+        self.assertIn("ENCRYPT_PASSWORD", executed)
+        self.assertIn("USERPASSWORD = 'Rr+OdGTW==' ENCRYPTED", executed)
+        self.assertNotIn("@encrypt-throwaway", executed)
+
+    def test_the_plaintext_never_reaches_the_report(self):
+        # The password is a throwaway, but the report is what a session keeps: the
+        # mechanism is worth nothing if the plaintext rides along in it.
+        doc, _ = run_chain(profile(), self.chain(self.MANIFEST), root=self.root,
+                           vql_factory=FakeVqlEncrypting)
+        sent = [s for i in FakeVql.instances for s in i.executed if s.startswith("ENCRYPT_PASSWORD")]
+        plaintext = sent[0][len("ENCRYPT_PASSWORD '"):-1]
+        self.assertTrue(plaintext, "the probe statement carried no password at all")
+        self.assertNotIn(plaintext, json.dumps(doc, ensure_ascii=False))
+
+    def test_a_failed_encryption_stops_the_run_before_the_first_step(self):
+        # A step whose body still says "{jdbc_password}" would reach the server verbatim
+        # and fail there with a confusing remote error; worse, it would report the
+        # template as broken when the stand simply could not be reached.
+        doc, code = run_chain(profile(), self.chain(self.MANIFEST), root=self.root,
+                              vql_factory=FakeVqlEncryptionFails)
+        self.assertEqual(code, 1, doc)
+        self.assertFalse(doc["ok"])
+        self.assertIn("jdbc_password", doc["error"]["message"])
+        self.assertNotIn("steps", doc)
+        executed = " ".join(s for i in FakeVql.instances for s in i.executed)
+        self.assertNotIn("CREATE OR REPLACE DATASOURCE", executed)
+
+    def test_an_ordinary_value_is_left_alone(self):
+        chain = self.chain("""
+[values]
+database = "denodo_skills_test"
+[[step]]
+id = "jdbc-source"
+kind = "template"
+channel = "vql"
+address = "skills/datasources/SKILL.md#Source"
+""")
+        doc, code = run_chain(profile(), chain, root=self.root, vql_factory=FakeVqlEncrypting)
+        self.assertEqual(code, 0, doc)
+        executed = " ".join(s for i in FakeVql.instances for s in i.executed)
+        self.assertNotIn("ENCRYPT_PASSWORD", executed)
