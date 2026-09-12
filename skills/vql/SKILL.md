@@ -48,7 +48,7 @@ singular nouns, no environment name anywhere in an object name (`sales`, never
 | Object | Name |
 |---|---|
 | Database | the project or domain: `sales_analytics` |
-| Data source | `ds_<source system>` |
+| Data source | `ds_<source system>` — one file source is one file, so a system that arrives as several files gets one per file, named for what is in it: `ds_retail_store`, `ds_retail_store_returns` |
 | Wrapper | `wr_<source system>_<entity>` |
 | Base view | `bv_<source system>_<entity>` |
 | Derived view, integration layer | `iv_<what it does>` |
@@ -65,6 +65,9 @@ Layers are folders, and every object gets a `FOLDER =`:
 | `/02 - integration` | derived views that combine and transform |
 | `/03 - business entities` | canonical views and interface views for consumers |
 | `/06 - associations` | associations |
+
+Create the layers you actually fill, not the whole table: a mart over two files needs
+`/01`, `/02` and `/03`, and an empty `/06` is noise in someone's catalog.
 
 Folder paths are quoted, and a parent must exist before its child:
 `Cannot create folder /03 - business entities/sales: parent not found`. Create top-down;
