@@ -671,6 +671,36 @@ def _run_step(profile: Profile, step: Step, *, values: dict[str, str], root: Pat
     return report
 
 
+HTTP_HINTS = {
+    # The one marketplace status whose own answer says nothing: a duplicate name comes back
+    # 409 with an *empty body* (skills/marketplace/SKILL.md, "Tag, with an assignment"), so
+    # the report used to read "status: 409, body: null" — true, and no help to whoever has to
+    # act on it. The cause is almost never a bug in the template: the marketplace tail
+    # creates rather than looks up (verification/chain.toml explains why), so a name that is
+    # taken means an object from an earlier --keep run is still in the shared catalog.
+    409: ("duplicate name: the marketplace addresses objects by numeric id and refuses a "
+          "second object of the same name with 409 and an empty body. On this chain that is "
+          "normally what a previous --keep run left behind in the shared catalog — remove it "
+          "by id (DELETE /public/api/tags/<id>, DELETE "
+          "/public/api/category-management/categories/<id>) or let a run without --keep clean "
+          "up after itself."),
+}
+
+
+def _http_failure(doc: dict) -> dict:
+    """One failed call, in the shape a failed statement uses elsewhere in this file.
+
+    ``hint`` is added only for a status ``HTTP_HINTS`` knows, and is absent otherwise: a
+    hint on every failure would eventually explain a 400 as a leftover and send the
+    operator hunting for an object that was never created.
+    """
+    error = {"kind": "http", "status": doc.get("status"), "body": doc.get("body")}
+    hint = HTTP_HINTS.get(doc.get("status"))
+    if hint:
+        error["hint"] = hint
+    return error
+
+
 def _run_http(profile: Profile, step: Step, *, body: str, values: dict[str, str],
               rest_factory: Callable | None, allow_destructive: bool) -> dict:
     """Run the http-channel calls ``step.calls`` names out of ``body``'s ``api ...`` lines.
@@ -689,9 +719,10 @@ def _run_http(profile: Profile, step: Step, *, body: str, values: dict[str, str]
     The first non-2xx answer stops the step. When ``api_call`` itself carries a structured
     ``error`` (a refused destructive call, or a connection failure — cases where there is
     no real HTTP status to report), that error is reported verbatim so the refusal's own
-    message survives into the step's report; otherwise the failure is reported the same
-    shape a failed statement uses elsewhere in this file: ``{"kind": "http", "status": ...,
-    "body": ...}``.
+    message survives into the step's report; otherwise the failure goes through
+    ``_http_failure``, which reports it the same shape a failed statement uses elsewhere in
+    this file — ``{"kind": "http", "status": ..., "body": ...}`` — plus a ``hint`` for the
+    statuses whose own answer explains nothing (``HTTP_HINTS``).
 
     ``step.capture`` is read only from the *last* executed call's response body, by
     top-level field name — a lookup call earlier in the sequence never carries the id a
@@ -724,7 +755,7 @@ def _run_http(profile: Profile, step: Step, *, body: str, values: dict[str, str]
         executed.append({"method": call["method"], "path": call["path"],
                          "status": doc.get("status"), "ok": bool(doc.get("ok"))})
         if code != EXIT_OK:
-            error = doc.get("error") or {"kind": "http", "status": doc.get("status"), "body": doc.get("body")}
+            error = doc.get("error") or _http_failure(doc)
             return {"ok": False, "calls": executed, "partial": partial, "error": error}
         last_body = doc.get("body")
     if step.capture:

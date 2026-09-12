@@ -844,6 +844,40 @@ substitute = { "\\"pii\\"" = "\\"verify_pii\\"" }
         self.assertFalse(doc["steps"][0]["ok"])
         self.assertEqual(doc["steps"][0]["error"]["status"], 409)
 
+    def test_a_409_carries_a_hint_about_the_leftover_it_means(self):
+        # The marketplace answers a duplicate name with 409 and an empty body (skills/
+        # marketplace/SKILL.md, "common mistakes"), so the report alone used to say only
+        # "409, body: null" — true and useless. The leftover is almost always what a
+        # previous --keep run left in the shared catalog, and the way out is two DELETEs
+        # the operator has to be told about.
+        class Duplicate(HttpStepTest.FakeRest):
+            def call(self, method, path, **kw):
+                from denodo_cli.transports.base import HttpResult
+                return HttpResult(status=409, body=None)
+
+        doc, code = run_chain(profile(marketplace_url="http://x/y"), self.chain, root=self.root,
+                              vql_factory=FakeVql, rest_factory=Duplicate, with_marketplace=True)
+        self.assertEqual(code, 1)
+        hint = doc["steps"][0]["error"].get("hint")
+        self.assertIsNotNone(hint, doc["steps"][0]["error"])
+        self.assertIn("--keep", hint)
+        self.assertIn("/public/api/tags/", hint)
+
+    def test_another_status_carries_no_hint(self):
+        # The hint is knowledge about one status, not decoration on every failure: a 400
+        # (a body the server rejected) has nothing to do with a leftover, and claiming it
+        # does would send the operator hunting for an object that is not there.
+        class BadRequest(HttpStepTest.FakeRest):
+            def call(self, method, path, **kw):
+                from denodo_cli.transports.base import HttpResult
+                return HttpResult(status=400, body={"type": "VALIDATE_FIELD"})
+
+        doc, code = run_chain(profile(marketplace_url="http://x/y"), self.chain, root=self.root,
+                              vql_factory=FakeVql, rest_factory=BadRequest, with_marketplace=True)
+        self.assertEqual(code, 1)
+        self.assertEqual(doc["steps"][0]["error"]["status"], 400)
+        self.assertNotIn("hint", doc["steps"][0]["error"])
+
     def test_a_capture_field_missing_from_the_response_fails_the_step(self):
         # A response shaped differently than the template expects must not leave the step
         # silently uncaptured: that is exactly how the id-less object it just created stops
