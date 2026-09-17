@@ -96,6 +96,15 @@ class RunStatementsTest(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(FakeTransport.instances[0].executed, ["DROP VIEW v"])
 
+    def test_state_changing_procedure_on_production_is_refused(self):
+        doc, code = self.run_it(
+            ["SELECT * FROM GENERATE_STATS() WHERE input_database_name = 'd'"], profile_over={"production": True}
+        )
+        self.assertEqual(code, 2)
+        self.assertEqual(doc["error"]["kind"], "refused")
+        self.assertEqual(doc["error"]["destructive"][0]["kind"], "procedure")
+        self.assertEqual(FakeTransport.instances, [])
+
     def test_non_destructive_on_production_runs_without_flag(self):
         _, code = self.run_it(["SELECT 1 FROM DUAL()"], profile_over={"production": True})
         self.assertEqual(code, 0)

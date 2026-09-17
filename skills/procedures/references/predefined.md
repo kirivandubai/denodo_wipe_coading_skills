@@ -37,18 +37,40 @@ Through the execution layer: `vql desc --env <env> USED_BY --type procedure`.
 
 ## A call that looks like a read and is not
 
-`GENERATE_STATS`, `CREATE_REMOTE_TABLE`, `DROP_REMOTE_TABLE`, `CLEAN_CACHE_DATABASE`,
-`DROP_NONACTIVE_CACHE_TABLES`, `CREATE_SCHEMA_ON_SOURCE`, `DROP_SCHEMA_ON_SOURCE`,
-`REMOVE_ICEBERG_VIEW_SNAPSHOTS`, `ROLLBACK_ICEBERG_VIEW_TO_SNAPSHOT`,
-`UNLOCK_LOCAL_REPOSITORY` — every one of them changes state, and every one of them is
-invoked with `SELECT` or `CALL`.
+Every one of these changes state, and every one of them is invoked with `SELECT` or
+`CALL`. Treat a call like a `DROP`: show the human first.
 
-**The tool will not stop you.** `scripts/denodo` classifies VQL by its leading keyword
-(`safety.py`), so `SELECT * FROM DROP_REMOTE_TABLE(…)` comes back with
-`destructive: null` and runs on a production profile without `--allow-destructive`. The
-same trap the marketplace has with its `POST`s (design spec 6.3) exists here in the VQL
-channel. Read what a procedure does before calling it, and treat the state-changing ones
-like a `DROP`: show the human first.
+| Procedure | What it changes |
+|---|---|
+| `GENERATE_STATS` | overwrites the stored statistics of a view. Deprecated in 9.5, still shipped, still writes; its parameters are the old-style `viewname`, `databasename` — no `input_` prefix *(live, 2026-09-17)* |
+| `CREATE_REMOTE_TABLE` | creates a table **in the JDBC source**, fills it with a query's rows, and creates a base view over it |
+| `DROP_REMOTE_TABLE` | drops the base view and the table **in the source** behind it; with cascade, the dependants too |
+| `CLEAN_CACHE_DATABASE` | runs the cache maintenance task: deletes expired and invalidated cached rows of a database, or of one view |
+| `DROP_NONACTIVE_CACHE_TABLES` | drops cache tables no cached view references any more (its preview mode only lists them, and is flagged all the same) |
+| `CREATE_SCHEMA_ON_SOURCE` | DDL in the source (Lakehouse Accelerator and PrestoDB data sources) |
+| `DROP_SCHEMA_ON_SOURCE` | DDL in the source: removes a schema |
+| `REMOVE_ICEBERG_VIEW_SNAPSHOTS` ¹ | expires snapshots of the Iceberg table behind a view; what they held cannot be rolled back to |
+| `ROLLBACK_ICEBERG_VIEW_TO_SNAPSHOT` ¹ | replaces the current data of the table with an older snapshot |
+
+¹ documented for 9.5, but not among the 128 on a 9.5.1 server without the Lakehouse
+Accelerator — `LIST PROCEDURES` decides what your server has.
+
+**The tool stops on these.** `scripts/denodo` matches the procedure name in
+`SELECT … FROM name(…)` and `CALL name(…)` against this list and reports
+`destructive: "procedure"`; on a profile with `production: true` the call is refused
+until a human has confirmed and `--allow-destructive` is passed — the same gate as a
+`DROP` (`/denodo:execute`, *Destructive operations*). `DROP_REMOTE_TABLE()` gets no
+free pass for being spelled `SELECT`.
+
+The list above is the list the tool checks: it is kept once here and once in the tool's
+code (`safety.py`), and a unit test fails when the two differ. Adding a procedure means
+adding a row here and a name there, in the same change.
+
+**What the name check cannot see:** a VQL procedure of your own that runs DDL through
+`EXECUTE` inside its body. The tool sees `CALL my_cleanup()` and knows nothing about the
+`DROP` inside; the same goes for any predefined procedure not in this list. The rule is
+unchanged for those — read what the procedure does before calling it — the tool just
+cannot back it up.
 
 ## Families
 
@@ -66,7 +88,7 @@ ones worth knowing; `LIST PROCEDURES` has the rest.
 | Cache | `CACHE_CONTENT`, `GET_CACHE_TABLE`, `GET_CACHE_COLUMNS`, `GET_CACHE_CONFIGURATION`, `CLEAN_CACHE_DATABASE`, `COMPACT_CACHE`, `DROP_NONACTIVE_CACHE_TABLES` | the last three write |
 | MPP, lakehouse, Iceberg | `CREATE_REMOTE_TABLE`, `DROP_REMOTE_TABLE`, `REGISTER_EMBEDDED_MPP`, `DISCOVER_OBJECT_STORAGE_MPP_PROCEDURE`, `GET_ICEBERG_VIEW_SNAPSHOTS`, `ROLLBACK_ICEBERG_VIEW_TO_SNAPSHOT`, `OPTIMIZE_LAKEHOUSE_ACCELERATOR_CACHE_TABLES` | performance territory, outside v1 |
 | Query diagnostics | `GET_QUERY_EXECUTION_PLAN`, `GET_DELEGATED_SQLSENTENCE`, `GET_SELECT_NAVIGATIONAL_QUERY`, `GET_SESSIONS`, `GET_SERVER_CONNECTIVITY` | `GET_DELEGATED_SQLSENTENCE` is how you see what was actually pushed down to the source |
-| Server and logs | `LOGCONTROLLER`, `GET_ACTIVE_LOGGERS`, `WRITELOGINFO`, `WRITELOGERROR`, `GET_PARAMETER`, `WAIT`, `DUAL`, `CHECK_METADATA`, `MAINTAIN_METADATA_TABLES`, `UNLOCK_LOCAL_REPOSITORY` | `DUAL()` is the one-row table every "SELECT a literal" example uses |
+| Server and logs | `LOGCONTROLLER`, `GET_ACTIVE_LOGGERS`, `WRITELOGINFO`, `WRITELOGERROR`, `GET_PARAMETER`, `WAIT`, `DUAL`, `CHECK_METADATA`, `MAINTAIN_METADATA_TABLES` | `DUAL()` is the one-row table every "SELECT a literal" example uses |
 | Users and permissions | `GET_USER_ACCOUNTS`, `GET_USERS_WITH_ROLE`, `CATALOG_PERMISSIONS`, `GET_CATALOG_EFFECTIVE_PERMISSIONS`, `PROMPTS_AND_RESTRICTIONS` | security is outside v1, the read-backs still answer |
 | OAuth tokens | `GET_OAUTH20_ACCESS_TOKEN_CLIENT_CREDENTIALS`, `GET_OAUTH20_ACCESS_TOKEN_PASSWORD`, `GET_OAUTH20_ACCESS_TOKEN_CODE`, `GET_OAUTH20_AUTHORIZATION_URL`, `GET_OAUTH10A_ACCESS_TOKEN`, `GET_OAUTH10A_TEMPORARY_CREDENTIALS` | for data sources that authenticate with OAuth |
 | Web services | `WEBCONTAINER_ELEMENTS`, `WEBCONTAINER_ELEMENT_STATUS`, `WEBCONTAINER_META_INF`, `GET_CATALOG_METADATA_WS` | publication is outside v1 |
