@@ -1,4 +1,4 @@
-"""``verify``: run the v1 chain of skill templates against a stand and clean up.
+"""``verify``: run the v1 chain of skill templates against a live server and clean up.
 
 The plan is data (``verification/chain.toml``), the mechanics are here. A step either
 points at a block of a skill (``template`` — the thing being verified) or carries its own
@@ -91,7 +91,7 @@ def _cleanup_http_entries(raw: object, path: Path) -> list[dict]:
     Shape errors are caught here, at load time, for the same reason ``_int_calls``
     validates ``calls``: a malformed manifest must fail as ``ChainError`` naming the
     manifest, not surface later as a bare ``KeyError``/``AttributeError`` from deep inside
-    cleanup, after the chain has already touched the stand.
+    cleanup, after the chain has already touched the server.
 
     ``json`` is optional and holds the request body. Cleanup started out as a list of
     ``DELETE``s keyed on captured ids, which need none; undoing a marketplace catalog sync
@@ -352,12 +352,12 @@ def run_chain(
     Cleanup (``_cleanup``) runs after the chain regardless of how it ended — success, the
     first failed step, or even an exception escaping the step loop — unless ``keep`` is
     set: a run that did not clean up must say so in the report rather than leaving
-    objects on the stand silently. The step loop is wrapped in ``try``/``finally`` so
+    objects on the server silently. The step loop is wrapped in ``try``/``finally`` so
     that guarantee is structural, not an accident of what today's vql channel happens to
     catch: an exception the loop does not otherwise handle still triggers cleanup, and is
     then left to propagate — a crash must still be a crash, just not a leaking one. A
     cleanup statement that fails makes the whole run fail, even if every step passed,
-    because an object left behind on a shared stand is what the next run trips over.
+    because an object left behind on a shared server is what the next run trips over.
 
     Unless ``keep`` is set — the same condition that later makes ``_cleanup`` a no-op —
     every ``{placeholder}`` in ``chain.cleanup`` is checked against the run's values
@@ -371,7 +371,7 @@ def run_chain(
     it must not abort a run that has nothing to do with cleanup.
 
     The final ``values`` — the manifest's own (with every ``@encrypt-throwaway`` marker
-    already replaced by a ciphertext this stand produced, see ``_encrypt_throwaways``),
+    already replaced by a ciphertext this server produced, see ``_encrypt_throwaways``),
     plus ``database``, plus whatever an ``http``
     step's ``capture`` added along the way (e.g. ``tag_id`` from the
     Tag template's create call) — is returned verbatim as the report's ``values`` field, so
@@ -415,7 +415,7 @@ def run_chain(
         # abort a run that has nothing to do with cleanup.
         _check_cleanup_placeholders(chain, values)
     # After the local checks above and before anything is created: a value the manifest
-    # cannot hold literally (see _encrypt_throwaways) is filled in here, and a stand that
+    # cannot hold literally (see _encrypt_throwaways) is filled in here, and a server that
     # cannot produce it stops the run while nothing has been written yet.
     failure = _encrypt_throwaways(profile, values, vql_factory=vql_factory)
     if failure is not None:
@@ -461,13 +461,13 @@ def _encrypt_throwaways(profile: Profile, values: dict[str, str], *, vql_factory
     The JDBC data source template carries ``USERPASSWORD '<...>' ENCRYPTED``, and the
     server validates the ciphertext when the source is created: any other string is
     refused with ``error creating new data source: Invalid encrypted value`` (9.5.1, lab
-    stand). So the step needs a real ciphertext — and a real one cannot live in this
+    server). So the step needs a real ciphertext — and a real one cannot live in this
     repository. It is a credential, it is bound to the server that produced it (a fork
-    verifying against its own stand could not use ours anyway), and the whole point of
+    verifying against its own server could not use ours anyway), and the whole point of
     ``secret encrypt`` is that such a string is never written down by hand.
 
     Hence the marker: the manifest declares *that* a value is a throwaway password, and
-    the run fills in *what* it is — a random password encrypted on the stand it is about
+    the run fills in *what* it is — a random password encrypted on the server it is about
     to run against, thrown away with the run. Rewriting the template to drop ``ENCRYPTED``
     and pass a plaintext instead would have needed no code at all, and is exactly what
     makes this worth the code: the block carries one verification mark, and a run that
@@ -529,7 +529,7 @@ def _check_cleanup_placeholders(chain: Chain, values: dict[str, str]) -> None:
     cleanup text; left alone, ``render`` would pass such a placeholder through verbatim.
     Checking here, ahead of the whole run, turns that into a local ``ChainError`` naming
     the missing value and the statement, instead of a remote syntax error discovered only
-    after the run has already touched the stand.
+    after the run has already touched the server.
     """
     for statement in chain.cleanup:
         for match in PLACEHOLDER.finditer(statement):
@@ -574,7 +574,7 @@ def _cleanup(profile: Profile, chain: Chain, *, values: dict[str, str], vql_fact
     orphaned in the catalog.
     """
     if keep:
-        return {"ran": False, "reason": "--keep was given; objects were left on the stand",
+        return {"ran": False, "reason": "--keep was given; objects were left on the server",
                 "statements": [], "http": []}
     if not chain.cleanup and not chain.cleanup_http:
         return {"ran": False, "reason": "the manifest has no cleanup section",
@@ -677,8 +677,8 @@ def _server_version(profile: Profile, vql_factory: Callable) -> str | None:
     """The server's reported version, once per run — or ``None`` when it cannot be read.
 
     ``GET_SERVER_INFO()`` — the stored procedure a first draft of this function assumed
-    — does not exist on Denodo 9.5.1; the stand answers "View 'get_server_info' not
-    found". What does work, confirmed against the lab stand, is ``SELECT version()``
+    — does not exist on Denodo 9.5.1; the server answers "View 'get_server_info' not
+    found". What does work, confirmed against a live 9.5.1 server, is ``SELECT version()``
     (the Postgres-wire-protocol compatibility layer VDP exposes on the same channel used
     everywhere else in this file), which answers a single row like
     ``"Denodo Virtual DataPort 9.5.1"`` — the version is the *last* token, wrapped in a

@@ -30,7 +30,7 @@ naming and the safety rule are `/denodo:vql`; apply the file with `/denodo:execu
 ### Call a predefined procedure
 
 ```sql
--- verified: 9.5.1 (live, 2026-09-12)
+-- verified: 9.5.1 (live, 2026-09-17)
 SELECT view_name, depth FROM USED_BY()
  WHERE input_view_database_name = 'sales_analytics'
    AND input_view_name = 'customer';
@@ -54,7 +54,7 @@ procedures accept no positional arguments at all (`PING_DATA_SOURCE(…)` answer
 ### VQL procedure
 
 ```sql
--- verified: 9.5.1 (live, 2026-09-12)
+-- verified: 9.5.1 (live, 2026-09-17)
 CONNECT DATABASE sales_analytics;
 
 CREATE OR REPLACE VQL PROCEDURE order_size_band

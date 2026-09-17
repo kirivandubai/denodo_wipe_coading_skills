@@ -95,12 +95,12 @@ def build_parser() -> argparse.ArgumentParser:
     env.add_parser("init", help="create a profile interactively — run it yourself, e.g. `! scripts/denodo env init`")
 
     verify = top.add_parser("verify", parents=[env_opt],
-                            help="run the chain of skill templates against a stand and clean up")
+                            help="run the chain of skill templates against a live server and clean up")
     verify.add_argument("--chain", help="manifest path (default: verification/chain.toml in the repo)")
     verify.add_argument("--database", help="test database to create and drop (default: from the manifest)")
     verify.add_argument("--with-marketplace", action="store_true",
                         help="also run the Data Marketplace tail; it writes outside your own database")
-    verify.add_argument("--keep", action="store_true", help="leave the created objects on the stand")
+    verify.add_argument("--keep", action="store_true", help="leave the created objects on the server")
     verify.add_argument("--update-marks", action="store_true",
                         help="rewrite the verified: mark of every template step that passed")
     verify.add_argument("--allow-destructive", action="store_true",

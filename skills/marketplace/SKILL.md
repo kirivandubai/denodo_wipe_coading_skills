@@ -162,7 +162,7 @@ Needed before any assignment to a view, and before an external element can name 
 at the radius first — the whole point of `changes` is that it costs nothing:
 
 ```bash
-# verified: 9.5.1 (live, 2026-09-12)
+# verified: 9.5.1 (live, 2026-09-17)
 api get --env dev /public/api/element-management/DATABASES/changes
 api get --env dev /public/api/element-management/VIEWS/changes
 # → {"serverElements":[…new…], "modifiedElements":[…], "localElements":[…gone from VDP…]}
@@ -274,7 +274,7 @@ after the tool, as below; do not rename them to `iv_…` to match the table.
 
 
 ```sql
--- verified: 9.5.1 (live, 2026-09-12)
+-- verified: 9.5.1 (live, 2026-09-17)
 CONNECT DATABASE sales_analytics;
 
 -- the two types come from vql-metadata verbatim. The names are part of the contract
