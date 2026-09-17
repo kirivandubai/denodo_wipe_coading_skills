@@ -46,7 +46,7 @@ CREATE [ OR REPLACE ] TABLE [<database>.]<name> I18N <map>
 ## The minimum that works
 
 ```sql
--- verified: 9.5.1 (стенд, 2026-09-09)
+-- verified: 9.5.1 (live, 2026-09-09)
 CREATE OR REPLACE TABLE bv_crm_customers I18N us_pst (
         cust_id:text,
         created_dt:date
@@ -64,10 +64,10 @@ CREATE OR REPLACE TABLE bv_crm_customers I18N us_pst (
 |---|---|
 | `I18N <map>` after the name | **yes** — the parser needs it. `us_pst` unless the project says otherwise; `LIST MAPS I18N` lists all 76 |
 | `CACHE OFF` | no, but explicit is better than a server default that may differ per environment |
-| `TIMETOLIVEINCACHE DEFAULT` | **yes when `CACHE OFF` is followed by `ADD SEARCHMETHOD`** — otherwise `Syntax error … near 'ADD'`. *verified: 9.5.1 (стенд, 2026-09-09)* |
+| `TIMETOLIVEINCACHE DEFAULT` | **yes when `CACHE OFF` is followed by `ADD SEARCHMETHOD`** — otherwise `Syntax error … near 'ADD'`. *verified: 9.5.1 (live, 2026-09-09)* |
 | `ADD SEARCHMETHOD … WRAPPER (…)` | **yes** — without it the view has no source |
 | `I18N` *inside* the search method | no |
-| `CONSTRAINTS ( … )` | no — the server generates it in `DESC VQL` (`ADD <field> (any) OPT ANY` for DF/JDBC, `ADD <field> NOS ZERO ()` for JSON), and views created without it query normally. *verified: 9.5.1 (стенд, 2026-09-09)* |
+| `CONSTRAINTS ( … )` | no — the server generates it in `DESC VQL` (`ADD <field> (any) OPT ANY` for DF/JDBC, `ADD <field> NOS ZERO ()` for JSON), and views created without it query normally. *verified: 9.5.1 (live, 2026-09-09)* |
 | `OUTPUTLIST` | in practice yes — it is the list of fields the search method returns |
 | The wrapper type in `WRAPPER (…)` | **yes**, and it must match: `df`, `json`, `jdbc` |
 
@@ -89,10 +89,10 @@ plus every user-defined type (`CREATE TYPE … AS REGISTER OF (…)` / `ARRAY OF
 
 - The base view's declared type is what Denodo *parses the source value into*. Over a text
   file, `created_dt:date` on `2021-04-12` works; a type that does not match returns `NULL`
-  for that column, with **no error**. *verified: 9.5.1 (стенд, 2026-09-09)*
+  for that column, with **no error**. *verified: 9.5.1 (live, 2026-09-09)*
 - Over JDBC, introspection picks the type from the source: Oracle `NUMBER(10)` → `long`,
   `NVARCHAR2` → `text`, PostgreSQL `date` → `localdate`, SQL Server `bigint` → `long`.
-  *verified: 9.5.1 (стенд, 2026-09-09)*
+  *verified: 9.5.1 (live, 2026-09-09)*
 - `bigint` is not a VQL type — it is `long`. Field properties from introspection
   (`sourcetypename`, `sourcetypesize`, …) are informative and can be dropped.
 
@@ -133,10 +133,10 @@ happens when the source's schema drifts.
   not exist. The listing that shows them is
   `SELECT name, subtype, folder FROM GET_ELEMENTS() WHERE input_database_name = '<db>' AND
   type = 'view'` (`subtype` is `base` / `derived` / `interface`).
-  *verified: 9.5.1 (стенд, 2026-09-09)*
+  *verified: 9.5.1 (live, 2026-09-09)*
 - Replacing a base view whose column a derived view selects, with that column removed or
   retyped, breaks the dependent view. Check dependents first:
   `SELECT view_name, dependency_name, dependency_type, depth FROM
   GET_PUBLIC_VIEW_DEPENDENCIES() WHERE input_view_database_name = '<db>' AND
   input_view_name = '<bv>'` — the parameter is `input_view_database_name`, not
-  `input_database_name`. *verified: 9.5.1 (стенд, 2026-09-09)*
+  `input_database_name`. *verified: 9.5.1 (live, 2026-09-09)*

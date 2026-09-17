@@ -11,6 +11,13 @@ delimited-file and JSON data sources with their wrappers and base views; derived
 interface views and associations; and Data Marketplace tags, categories and external
 elements.
 
+The skills are general. They were written from the Denodo 9.5 documentation and checked
+against a live 9.5.1 server, and they assume nothing about how that server is deployed —
+a container, a VM, a managed instance, a cluster behind a load balancer: the only things
+the plugin needs are in the profile. The point is to make vibe-coding on the Denodo
+platform easier: you describe the objects, the agent produces reviewable VQL and applies
+it, and the templates it works from state how far each of them has been verified.
+
 ## How it works
 
 **The VQL goes into a file in your project, and the file is what gets applied.** That is
@@ -39,8 +46,9 @@ Naming follows Denodo's own *VDP Naming Conventions* out of the box (`ds_`, `bv_
 - **Claude Code** (the plugin is installed from its marketplace).
 - **Denodo 9.5.** Only 9.5. There are no version branches in the templates, and nothing
   here is tested against 8.x or earlier 9.x releases.
-- Network access to Virtual DataPort (port `9996` by default) with an account allowed to
-  create objects. Data Marketplace (port `9090`) only if you use `/denodo:marketplace`.
+- Network access to Virtual DataPort (port `9996` by default; the profile sets it) with an
+  account allowed to create objects. Data Marketplace (`9090` by default) only if you use
+  `/denodo:marketplace`.
 - **Python 3.11 or newer** on `PATH`. Nothing else: the plugin's own launcher builds its
   environment on first run — with `uv` if you have it, otherwise a venv under
   `~/.claude/plugins/data/denodo/`. Do not install database drivers by hand.
@@ -119,8 +127,8 @@ phrasing; `/denodo:vql` is the entry point when the request is ambiguous.
 | `/denodo:procedures` | calling the server's predefined procedures, writing your own in VQL, importing a Java one from a JAR | VQL |
 
 **A "tag" alone does not say which server you mean.** Virtual DataPort tags
-(`CREATE TAG`, VQL, port 9996) and Data Marketplace tags (REST, port 9090) are different
-objects; tags imported into the marketplace from VDP are read-only there. `catalog` and
+(`CREATE TAG`, VQL) and Data Marketplace tags (REST) are different objects on different
+servers; tags imported into the marketplace from VDP are read-only there. `catalog` and
 `marketplace` split along that line, not along the word.
 
 ## What v1 covers — and what it does not
@@ -136,8 +144,8 @@ privileges, row/column restrictions, REST/SOAP/GraphQL/OData services); Schedule
 Solution Manager and cross-environment deployment; Denodo versions other than 9.5.
 
 Every template carries its verification status in a comment on the line above it —
-`verified: 9.5.1 (стенд, <date>)` when it has been run against a live server, or
-`unverified: только по документации 9.5` when it comes from the documentation alone. An
+`verified: 9.5.1 (live, <date>)` when it has been run against a live 9.5.1 server, or
+`unverified: 9.5 documentation only` when it comes from the documentation alone. An
 unverified template is still given to you, marked, so the agent treats it with more care.
 
 ## Safety

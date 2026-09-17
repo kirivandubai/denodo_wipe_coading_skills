@@ -28,9 +28,9 @@ denodo_skills/
 ├── scripts/
 │   ├── denodo               launcher — standard library only
 │   └── denodo_cli/          the implementation behind it
-├── verification/chain.toml  the chain of templates run against a live stand
+├── verification/chain.toml  the chain of templates run against a live server
 ├── evals/                   phrase → expected skill
-├── tests/                   unit tests, plus integration/ against a stand
+├── tests/                   unit tests, plus integration/ against a server
 └── docs/                    design documents and the task tracker (Russian)
 ```
 
@@ -42,11 +42,12 @@ A skill directory's name becomes its command: the plugin adds its own namespace,
 
 A live **Denodo 9.5** server and a profile for it in `~/.denodo/profiles.toml` (see the
 README for the format, and run `scripts/denodo env init` yourself rather than through an
-agent). A local Denodo Express or a lab container is enough; templates that depend on an
-external database can be checked for syntax without one, because Denodo's parser accepts
+agent). Any 9.5 you are allowed to write to is enough — Denodo Express, a container image,
+a shared development server; templates that depend on an external database can be checked
+for syntax without one, because Denodo's parser accepts
 DDL pointing at a host it cannot reach.
 
-**On a shared stand, write only into your own database.** Create one for your checks and
+**On a shared server, write only into your own database.** Create one for your checks and
 send every statement that changes state — `CREATE`, `ALTER`, `DROP`, any DDL — there.
 Other databases are free to *read*: `SELECT`, `DESC`, `DESC VQL` and `GET_ELEMENTS()` are
 the best source of real syntax there is, better than the documentation. But not one
@@ -96,16 +97,16 @@ the eval suite; see below.
 whatever form the channel uses:
 
 ```sql
--- verified: 9.5.1 (стенд, 2026-09-09)
+-- verified: 9.5.1 (live, 2026-09-09)
 CREATE DATASOURCE JDBC ...
 
--- unverified: только по документации 9.5
+-- unverified: 9.5 documentation only
 CREATE DATASOURCE JDBC ... WITH SOME_EXOTIC_OPTION ...
 ```
 
-The wording of the mark is Russian, for historical reasons, and those two forms are the
-only ones in use — copy them verbatim and change the version and date to what you actually
-ran against. A template with no mark counts as unverified.
+Those two forms are the only ones in use — copy them verbatim and change the version and
+date to what you actually ran against; `live` stays as written, whatever the server was. A
+template with no mark counts as unverified.
 
 The comment character follows the channel: `--` in VQL, `#` above a `scripts/denodo api`
 call in the marketplace skill, and in prose a mark in italics at the end of the sentence
@@ -127,7 +128,7 @@ Four, each answering a different question.
 PYTHONPATH=scripts python3 -m unittest discover -s tests -t .
 ```
 
-**Integration tests** — the same layer against a real stand. Skipped unless
+**Integration tests** — the same layer against a real server. Skipped unless
 `DENODO_TEST_ENV` names a non-production profile; everything is created in
 `denodo_skills_test` and removed afterwards:
 
@@ -141,7 +142,7 @@ DENODO_TEST_ENV=dev PYTHONPATH=scripts uv run --with denodo-sqlalchemy \
 order, and cleans up after itself:
 
 ```
-scripts/denodo verify --env lab
+scripts/denodo verify --env dev
 ```
 
 `--with-marketplace` adds the REST tail (which writes to the shared marketplace catalog),
@@ -183,7 +184,7 @@ just makes something quietly wrong.
 Work goes on a branch off `main` — `<type>/<short-subject>`, e.g. `feat/execute-transport`,
 `fix/vql-quoting` — never directly on `main`. Open a PR when you are done, and write the
 description as an account of *what you did and why*: the decisions you made, what you
-verified against a live stand, and what you knowingly left open. The file list is already
+verified against a live server, and what you knowingly left open. The file list is already
 in the diff; it is the reasoning that is not.
 
 If the work is not finished, open it as a draft with an honest "what's left" section.

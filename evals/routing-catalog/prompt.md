@@ -1,6 +1,6 @@
 ---
 name: routing-catalog
-description: An unambiguous container request (virtual database plus folders) must reach /denodo:catalog.
+description: An unambiguous catalog-structure request (virtual database plus folders) must reach /denodo:catalog.
 tags: [routing]
 runs: 3
 max_turns: 8

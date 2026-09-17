@@ -21,7 +21,7 @@ CREATE [ OR REPLACE ] DATASOURCE JSON <name>
 ```
 
 - `ROUTE LOCAL 'LocalConnection' '<server-side path>' CHARSET = 'UTF-8'` is the file case.
-  *verified: 9.5.1 (стенд, 2026-09-09)*
+  *verified: 9.5.1 (live, 2026-09-09)*
 - `NDJSON` switches the parser to newline-delimited JSON (one document per line).
 - `FILENAMEPATTERN` is **not** available for JSON — that clause is DF-only. A directory of
   JSON files needs one source per file, or a DF-style ingestion.
@@ -29,7 +29,7 @@ CREATE [ OR REPLACE ] DATASOURCE JSON <name>
   `references/df.md`.
 - OpenAPI 3: Denodo reads the document and offers one base view per operation. The
   document route and the runtime route are configured separately.
-  *unverified: только по документации 9.5*
+  *unverified: 9.5 documentation only*
 
 `ALTER DATASOURCE JSON` takes `ROUTE`, `OPENAPI3`, `TRANSFER_RATE_FACTOR`, `DESCRIPTION`,
 `NDJSON`.
@@ -56,7 +56,7 @@ CREATE [ OR REPLACE ] WRAPPER JSON <name>
 ### The shape that works
 
 ```sql
--- verified: 9.5.1 (стенд, 2026-09-09)
+-- verified: 9.5.1 (live, 2026-09-09)
 TUPLEROOT '/JSONFile/JSONArray'
 OUTPUTSCHEMA (jsonfile = 'JSONFile' : REGISTER OF (
     order_id = 'JSONFile.JSONArray.order_id' : 'java.lang.String',
@@ -72,11 +72,11 @@ OUTPUTSCHEMA (jsonfile = 'JSONFile' : REGISTER OF (
 
 | Question | Answer |
 |---|---|
-| Is the outer `REGISTER OF` wrapper required? | In practice yes. A flat field list parses and creates, and then the base view returns **the wrong number of rows** — nested arrays multiply them, and with absolute mappings one row comes back all-`NULL`. *verified: 9.5.1 (стенд, 2026-09-09)* |
+| Is the outer `REGISTER OF` wrapper required? | In practice yes. A flat field list parses and creates, and then the base view returns **the wrong number of rows** — nested arrays multiply them, and with absolute mappings one row comes back all-`NULL`. *verified: 9.5.1 (live, 2026-09-09)* |
 | What is `/JSONFile/JSONArray`? | Denodo's own path for "the array at the top level of the document". A document whose root is an object uses `/JSONFile`, and the mappings lose the `JSONArray` segment |
 | Absolute or relative mappings? | Top-level fields carry the full path (`JSONFile.JSONArray.x`); fields **inside** a nested `REGISTER OF` or `ARRAY OF` are relative to it (`country`) |
-| Does the name inside `ARRAY OF ( … )` matter? | No. `ARRAY OF ( whatever = 'whatever' : REGISTER OF ( … ) )` works the same. *verified: 9.5.1 (стенд, 2026-09-09)* |
-| Can `OUTPUTSCHEMA` be omitted? | It creates, and then `SELECT` fails with `[JSON WRAPPER] [PROCESSING]`. The server does not introspect the document. *verified: 9.5.1 (стенд, 2026-09-09)* |
+| Does the name inside `ARRAY OF ( … )` matter? | No. `ARRAY OF ( whatever = 'whatever' : REGISTER OF ( … ) )` works the same. *verified: 9.5.1 (live, 2026-09-09)* |
+| Can `OUTPUTSCHEMA` be omitted? | It creates, and then `SELECT` fails with `[JSON WRAPPER] [PROCESSING]`. The server does not introspect the document. *verified: 9.5.1 (live, 2026-09-09)* |
 | Types | Java class names, as in JDBC wrappers: `java.lang.String`, `java.lang.Integer`, `java.lang.Double`, `java.lang.Boolean` |
 
 ### Wrapper-level route
@@ -84,7 +84,7 @@ OUTPUTSCHEMA (jsonfile = 'JSONFile' : REGISTER OF (
 A JSON **data source** can hold a base URI and each wrapper its own relative path:
 `ROUTE HTTP 'http.CommonsHttpClientConnection' GET '/books'` on the wrapper is
 concatenated to the source's URI. That is how one REST API becomes many base views.
-*unverified: только по документации 9.5*
+*unverified: 9.5 documentation only*
 
 ```sql
 ROUTE HTTP 'http.CommonsHttpClientConnection' { GET | POST } <uri>
@@ -113,7 +113,7 @@ Route filters on a wrapper: `DECRYPTAES256 PASSWORD = <literal> [ ENCRYPTED ]`,
 as catalog objects first:
 
 ```sql
--- verified: 9.5.1 (стенд, 2026-09-09)
+-- verified: 9.5.1 (live, 2026-09-09)
 CREATE OR REPLACE TYPE oms_shipping AS REGISTER OF (country:text, city:text, zip:text);
 CREATE OR REPLACE TYPE oms_order_line AS REGISTER OF (line_no:int, sku:text, qty:int, price:double);
 CREATE OR REPLACE TYPE oms_order_line_array AS ARRAY OF oms_order_line;
@@ -129,7 +129,7 @@ CREATE OR REPLACE TYPE oms_order_line_array AS ARRAY OF oms_order_line;
 
 - A register field is read with parentheses: `SELECT (shipping).country FROM bv_oms_orders`.
   Without them the parser reads `shipping.country` as *view.column* and answers
-  `Field not found 'shipping.country' in view 'shipping'`. *verified: 9.5.1 (стенд, 2026-09-09)*
+  `Field not found 'shipping.country' in view 'shipping'`. *verified: 9.5.1 (live, 2026-09-09)*
 - An array is expanded with `FLATTEN` in a derived view: `SELECT … FROM FLATTEN
   bv_oms_orders AS v (v.lines)` — that is `/denodo:views` territory, but the column names
   it produces are worth knowing here, because they decide what your derived view can
@@ -142,7 +142,7 @@ CREATE OR REPLACE TYPE oms_order_line_array AS ARRAY OF oms_order_line;
   → order_id, customer_id, order_dt, status, total_amount, shipping,
     line_no, sku, qty, price          -- 3 orders, 4 lines → 4 rows
   ```
-  *verified: 9.5.1 (стенд, 2026-09-09)*. Names collide if a subfield shares a name with a
+  *verified: 9.5.1 (live, 2026-09-09)*. Names collide if a subfield shares a name with a
   top-level column — alias them in the projection.
 - Base views over JSON keep the document's own types; converting `order_dt` from an ISO
   string to a timestamp belongs in the derived layer, not in the base view.

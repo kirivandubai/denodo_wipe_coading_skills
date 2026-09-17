@@ -1,17 +1,18 @@
 ---
 name: catalog
-description: Use when creating or changing the containers of a Denodo 9.5 catalog — a virtual database (CREATE DATABASE, description, CHARSET, authentication), a folder or a folder tree (CREATE FOLDER, ALTER FOLDER, rename or move, drop with CASCADE), or a VDP tag (CREATE TAG, ALTER TAG, assign a tag to views and columns, list where a tag is assigned, "mark this column as PII in VDP"). Not for Data Marketplace tags or categories — that is /denodo:marketplace; not for views themselves.
+description: Use when creating or changing the structure of a Denodo 9.5 catalog — a virtual database (CREATE DATABASE, description, CHARSET, authentication), a folder or a folder tree (CREATE FOLDER, ALTER FOLDER, rename or move, drop with CASCADE), or a VDP tag (CREATE TAG, ALTER TAG, assign a tag to views and columns, list where a tag is assigned, "mark this column as PII in VDP"). Not for Data Marketplace tags or categories — that is /denodo:marketplace; not for views themselves.
 ---
 
 # Databases, folders and VDP tags
 
-This skill is about the three container objects of Virtual DataPort: the **database**, the
-**folder** inside it and the **VDP tag** that is attached to views and columns. Everything
-here is VQL on port 9996. If you need a *marketplace* tag or category (REST, port 9090),
-go to `/denodo:marketplace` — a "tag" alone does not say which one the human means. Data
-sources, wrappers and base views live in `/denodo:datasources`; derived and interface
-views in `/denodo:views`. The working loop, the naming defaults and the safety rule are in
-`/denodo:vql`; apply files with `/denodo:execute`.
+This skill is about the three objects that give a Virtual DataPort catalog its structure:
+the **database**, the **folder** inside it and the **VDP tag** that is attached to views
+and columns. Everything here is VQL, sent to the Virtual DataPort port of the profile
+(9996 by default). If you need a *marketplace* tag or category (REST, the profile's
+`marketplace_url`), go to `/denodo:marketplace` — a "tag" alone does not say which one the
+human means. Data sources, wrappers and base views live in `/denodo:datasources`; derived
+and interface views in `/denodo:views`. The working loop, the naming defaults and the
+safety rule are in `/denodo:vql`; apply files with `/denodo:execute`.
 
 Build order: **database → folders (parent before child) → objects → tags**. A tag is
 attached to views that must already exist.
@@ -21,7 +22,7 @@ attached to views that must already exist.
 ### Database
 
 ```sql
--- verified: 9.5.1 (стенд, 2026-09-12)
+-- verified: 9.5.1 (live, 2026-09-12)
 CREATE OR REPLACE DATABASE sales_analytics 'Sales data products' CHARSET DEFAULT;
 ```
 
@@ -35,7 +36,7 @@ LDAP. `CREATE OR REPLACE DATABASE` keeps the objects inside.
 ### Folders
 
 ```sql
--- verified: 9.5.1 (стенд, 2026-09-12)
+-- verified: 9.5.1 (live, 2026-09-12)
 CONNECT DATABASE sales_analytics;
 
 CREATE OR REPLACE FOLDER '/01 - connectivity' DESCRIPTION 'data sources, wrappers, base views';
@@ -63,7 +64,7 @@ rewrites its description for every database that uses it — that is a change to
 existing object, show it and get a yes first.
 
 ```sql
--- verified: 9.5.1 (стенд, 2026-09-12)
+-- verified: 9.5.1 (live, 2026-09-12)
 CREATE OR REPLACE TAG pii
     DESCRIPTION = 'Personal data, GDPR scope'
     ADD_TO      ( VIEWS () COLUMNS ( sales_analytics.customer.email, sales_analytics.customer.phone ) )
@@ -134,7 +135,7 @@ Success of the statement is not success of the object. After applying, read back
 
 **Always read `GET_VIEW_TAGS()` after assigning.** An `ADD_TO` that names a view or a
 column that does not exist is accepted without an error and is silently not recorded —
-*verified: 9.5.1 (стенд, 2026-09-09)*. A typo in a column name looks exactly like
+*verified: 9.5.1 (live, 2026-09-09)*. A typo in a column name looks exactly like
 success until you read the assignments back.
 
 `DESC VQL TAG` shows the tag without its assignments, and `DESC VQL DATABASE` lists the

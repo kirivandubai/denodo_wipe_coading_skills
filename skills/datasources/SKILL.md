@@ -26,7 +26,7 @@ after a fix is safe — with one exception, the JDBC password, called out below.
 ### Delimited file (CSV) — DF
 
 ```sql
--- verified: 9.5.1 (стенд, 2026-09-12)
+-- verified: 9.5.1 (live, 2026-09-12)
 CONNECT DATABASE sales_analytics;
 
 CREATE OR REPLACE DATASOURCE DF ds_crm
@@ -91,11 +91,11 @@ CREATE OR REPLACE TABLE bv_crm_customers I18N us_pst (
 - `NULLVALUE ''` is for **text** columns only, and it is a decision, not boilerplate:
   without it an empty field stays an empty string, with it becomes `NULL`. Numeric and date
   columns need nothing — an empty field is already `NULL` there.
-  *verified: 9.5.1 (стенд, 2026-09-09)*
+  *verified: 9.5.1 (live, 2026-09-09)*
 - **The base view may list fewer columns than the wrapper** — that is where you narrow.
   The wrapper mirrors the file, the base view exposes what the human asked for (four of
   twenty-nine columns is fine, in the field list and in `OUTPUTLIST` together).
-  *verified: 9.5.1 (стенд, 2026-09-09)*
+  *verified: 9.5.1 (live, 2026-09-09)*
 - `TIMETOLIVEINCACHE DEFAULT` is required between `CACHE OFF` and `ADD SEARCHMETHOD`.
 - The `CONSTRAINTS ( … )` block that the server prints in `DESC VQL` is optional; so is
   `I18N` inside `ADD SEARCHMETHOD`. `I18N <map>` after the view name is not
@@ -110,7 +110,7 @@ CREATE OR REPLACE TABLE bv_crm_customers I18N us_pst (
 ### JSON file or endpoint
 
 ```sql
--- verified: 9.5.1 (стенд, 2026-09-12)
+-- verified: 9.5.1 (live, 2026-09-12)
 CONNECT DATABASE sales_analytics;
 
 CREATE OR REPLACE DATASOURCE JSON ds_oms
@@ -201,7 +201,7 @@ defaults already filled in, then assemble the string from the table below.
 | Databricks | `com.databricks.client.jdbc.Driver` | `jdbc:databricks://<host>:443/default;httpPath=<path>` | `databricks-3` | `databricks` |
 | Another Denodo server | `com.denodo.vdp.jdbc.Driver` | `jdbc:vdb://<host>:9999/<database>` | `vdp-9` | `denodo` |
 
-*verified: 9.5.1 (стенд, 2026-09-09) — PostgreSQL, Oracle (service name) and SQL Server;
+*verified: 9.5.1 (live, 2026-09-09) — PostgreSQL, Oracle (service name) and SQL Server;
 the rest of the rows come from the driver directories the server ships and are unverified.*
 `DATABASEVERSION` is the source's own version as a string (`'16'`, `'19c'`, `'2022'`) —
 ask for it, do not assume the newest. The full driver list is in `references/jdbc.md`.
@@ -211,7 +211,7 @@ self-signed certificate needs `;trustServerCertificate=true` appended, and that 
 question for the human, not a default you add silently.
 
 ```sql
--- verified: 9.5.1 (стенд, 2026-09-12) — created against an unreachable host, ciphertext included
+-- verified: 9.5.1 (live, 2026-09-12) — created against an unreachable host, ciphertext included
 CONNECT DATABASE sales_analytics;
 
 CREATE OR REPLACE DATASOURCE JDBC ds_orders_db
@@ -230,7 +230,7 @@ CREATE OR REPLACE DATASOURCE JDBC ds_orders_db
 the database for you — you never ask the human for column names or types:
 
 ```sql
--- verified: 9.5.1 (стенд, 2026-09-09) — against live Oracle, SQL Server and PostgreSQL
+-- verified: 9.5.1 (live, 2026-09-09) — against live Oracle, SQL Server and PostgreSQL
 SELECT status, down_cause FROM PING_DATA_SOURCE()
  WHERE database_name = 'sales_analytics' AND data_source_type = 'JDBC'
    AND data_source_name = 'ds_orders_db';
@@ -265,8 +265,9 @@ drop it, the object is the same.
   `LIST_JDBC_DATASOURCE_TABLES` takes only the data source and walks everything: fine on
   Oracle and PostgreSQL, but on SQL Server it fails outright — filtering it in `WHERE`
   does not help, because the walk happens first.
-- A demo or dev database is full of Denodo's own cache tables (`C_…`); the real tables sit
-  in the business schemas. Show the human the schema list before picking.
+- A database that doubles as Denodo's cache store is full of the server's own cache tables
+  (`C_…`); the real tables sit in the business schemas. Show the human the schema list
+  before picking.
 
 When the database is unreachable from here (a different network zone, credentials not
 issued yet), introspection is not available and you write the wrapper by hand from the
@@ -275,7 +276,7 @@ schema the human gives you — the DDL still parses and the objects still get cr
 columns** and works fine — that is the opposite of DF, where a subset returns zero rows:
 
 ```sql
--- verified: 9.5.1 (стенд, 2026-09-12) — created against an unreachable host
+-- verified: 9.5.1 (live, 2026-09-12) — created against an unreachable host
 CREATE OR REPLACE WRAPPER JDBC wr_orders_db_orders
     FOLDER = '/01 - connectivity'
     DATASOURCENAME = ds_orders_db
@@ -338,7 +339,7 @@ no shell. Three ways to get it, in order of preference:
    then ask the **base view** — not the source, not the wrapper — for its VQL, qualifying
    the name so you do not have to switch databases:
    ```bash
-   # verified: 9.5.1 (стенд, 2026-09-12)
+   # verified: 9.5.1 (live, 2026-09-12)
    ${CLAUDE_PLUGIN_ROOT}/scripts/denodo vql desc --env <env> "<other db>.<base view>" --vql
    ```
    One call returns the whole chain: the `ROUTE` with the server-side path, the parse clauses
@@ -354,12 +355,13 @@ no shell. Three ways to get it, in order of preference:
    the failure the template protects you from. And its mappings are written
    `hd_demo_sk = '"HD_DEMO_SK"'`, quoted and upper-case, where the template writes
    `hd_demo_sk = 'hd_demo_sk'`: both work, because the mapping is positional either way
-   (*verified: 9.5.1 (стенд, 2026-09-12)*). Do not conclude the template is stale.
+   (*verified: 9.5.1 (live, 2026-09-12)*). Do not conclude the template is stale.
 
    Mind the truncation: `GET_ELEMENTS()` on a populated server returns more rows than
-   `--max-rows` keeps (125 sources on one demo server against a default of 100). Narrow the
-   query, and **look at `truncated` in the answer** — a truncated read looks exactly like
-   "there is no such object", and that mistake sends you to way 3 for nothing.
+   `--max-rows` keeps (a well-populated server easily has more sources than the default of
+   100). Narrow the query, and **look at `truncated` in the answer** — a truncated read
+   looks exactly like "there is no such object", and that mistake sends you to way 3 for
+   nothing.
 2. **Ask the human for `head -1`** (or the first 20 lines of the JSON). Accurate, and they
    usually have access even when you do not — but it costs a round trip, so it comes second
    when the server already holds an object over the same file.
@@ -367,7 +369,7 @@ no shell. Three ways to get it, in order of preference:
    `TUPLEPATTERN` captures the whole line returns the raw text of the file — header
    included, and it works for JSON too:
    ```sql
-   -- verified: 9.5.1 (стенд, 2026-09-09)
+   -- verified: 9.5.1 (live, 2026-09-09)
    CREATE OR REPLACE DATASOURCE DF ds_crm
        FOLDER = '/01 - connectivity'
        ROUTE LOCAL 'LocalConnection' '/data/exports/crm/customers.csv'
@@ -395,7 +397,7 @@ Ask the human to run it **in their own terminal input** — the `!` prefix — s
 goes into a hidden prompt:
 
 ```bash
-# verified: 9.5.1 (стенд, 2026-09-12)
+# verified: 9.5.1 (live, 2026-09-12)
 ! ${CLAUDE_PLUGIN_ROOT}/scripts/denodo secret encrypt --env <env>
 ```
 
@@ -405,7 +407,7 @@ way the answer carries one field, `encrypted`, and the project file then reads
 
 The server accepts such a ciphertext as a real credential: the same source with the
 ciphertext of a wrong password answers `The username or password is incorrect`, which is
-proof the string was decrypted and used. *verified: 9.5.1 (стенд, 2026-09-12)*
+proof the string was decrypted and used. *verified: 9.5.1 (live, 2026-09-12)*
 
 **Never assemble `ENCRYPT_PASSWORD '<password>'` yourself** — neither with `-e` nor through
 a temp file written by `printf`: both put the plaintext into a Bash argument, and Bash
@@ -419,7 +421,7 @@ arguments are kept in the session transcript.
   data source. The donor may live in **any database on that server** — look for it with
   `SELECT database_name, name FROM GET_ELEMENTS() WHERE type = 'datasource' AND subtype = 'jdbc'`
   and compare `DATABASEURI`. Reading another database is allowed; changing it is not.
-  *verified: 9.5.1 (стенд, 2026-09-09)* — this is the first thing to try when the human
+  *verified: 9.5.1 (live, 2026-09-09)* — this is the first thing to try when the human
   says the password is not theirs to give.
 - **A plaintext password is accepted too** (the server stores it encrypted regardless), so
   a `.vql` with a plaintext password *works* — which is exactly why it is easy to commit
@@ -432,7 +434,7 @@ arguments are kept in the session transcript.
 **`CREATE OR REPLACE DATASOURCE` rewrites the credentials every time the file is applied,
 and omitting the clause erases them.** Re-applying the same data source without
 `USERPASSWORD` leaves it with no password at all — the next query fails with the source's
-`no password was provided`. *verified: 9.5.1 (стенд, 2026-09-09)* A placeholder does the
+`no password was provided`. *verified: 9.5.1 (live, 2026-09-09)* A placeholder does the
 same thing, more quietly. So: if you do not have the real value, do not run that statement
 — say so, and leave the data source alone rather than replacing a working one.
 
@@ -496,7 +498,7 @@ the data back, every time:
 | Schema is what you wrote | `vql desc --env dev --database <db> <bv>` | missing or extra columns |
 | A JDBC source can be reached | `SELECT status, down_cause FROM PING_DATA_SOURCE() WHERE database_name='<db>' AND data_source_type='JDBC' AND data_source_name='<ds>'` | `DOWN` with `UnknownHostException` (network/host), `ClassNotFoundException` (wrong `CLASSPATH`), authentication errors (credentials) |
 | The folder exists before you use it | `SELECT name, folder FROM GET_ELEMENTS() WHERE input_database_name = '<db>' AND type = 'folder'` — `LIST FOLDERS` does not exist |  `Syntax error … near 'FOLDERS'`; and a missing folder fails the `CREATE` itself |
-| The base view is in the catalog | `SELECT name, subtype, folder FROM GET_ELEMENTS() WHERE input_database_name = '<db>' AND type = 'view'` | **not** `LIST VIEWS`: it lists derived views only and answers an empty set for a database full of base views — *verified: 9.5.1 (стенд, 2026-09-09)*. `LIST TABLES` does not exist |
+| The base view is in the catalog | `SELECT name, subtype, folder FROM GET_ELEMENTS() WHERE input_database_name = '<db>' AND type = 'view'` | **not** `LIST VIEWS`: it lists derived views only and answers an empty set for a database full of base views — *verified: 9.5.1 (live, 2026-09-09)*. `LIST TABLES` does not exist |
 | What already exists | `LIST DATASOURCES DF` / `JSON` / `JDBC`, `LIST WRAPPERS DF`, `LIST TYPES` — the **type is mandatory** on `LIST DATASOURCES` | `Syntax error … near 'DATASOURCES'` when you leave it out |
 
 `GET_ELEMENTS()` takes its filters as `input_database_name` / `input_type` and returns

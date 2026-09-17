@@ -24,7 +24,7 @@ intent in words
   → the file stays in git
 ```
 
-**When there is no project** — an empty directory, a stand and nothing else — the file is
+**When there is no project** — an empty directory, a server and nothing else — the file is
 still written: put it in the working directory and say in the summary where it is and that
 it is outside version control. What the rule protects is the artifact, not the repository:
 an object living only on a server is the failure mode whether or not there is a git to
@@ -90,12 +90,12 @@ default. If the project has one, it wins — do not "improve" its naming with th
 of v1 support it, including `DATABASE`.
 
 - `IF NOT EXISTS` does not exist in Denodo. The server answers
-  `Syntax error: Exception parsing query near 'IF'` — *verified: 9.5.1 (стенд, 2026-09-09)*.
+  `Syntax error: Exception parsing query near 'IF'` — *verified: 9.5.1 (live, 2026-09-09)*.
 - `CREATE OR REPLACE DATABASE` **keeps the objects inside the database** — *verified: 9.5.1
-  (стенд, 2026-09-09)*. Do not split the database into a separate "bootstrap" file to
+  (live, 2026-09-09)*. Do not split the database into a separate "bootstrap" file to
   protect it; that guess is wrong and it costs you a re-appliable file.
 - `CREATE OR REPLACE VIEW` over a view that others depend on is fine when the change is
-  additive — *verified: 9.5.1 (стенд, 2026-09-09)*. Removing or retyping a column that a
+  additive — *verified: 9.5.1 (live, 2026-09-09)*. Removing or retyping a column that a
   dependent view selects is a breaking change: check dependents first.
 - Assigning a tag needs both blocks — `ADD_TO ( ... ) REMOVE_FROM ( VIEWS () COLUMNS () )`
   — or it is a syntax error.
@@ -104,8 +104,8 @@ of v1 support it, including `DATABASE`.
   then `POST` to create or `PUT` to update. The status of a repeated `DELETE` differs per
   object type (`500`, `200`, `404`) — never rely on it, rely on the lookup.
 
-Templates in the domain skills carry `-- verified: 9.5 (стенд, date)` or
-`-- unverified: только по документации 9.5`. An unverified template is still worth using;
+Templates in the domain skills carry `-- verified: 9.5 (live, date)` or
+`-- unverified: 9.5 documentation only`. An unverified template is still worth using;
 it just means the verification is yours to do, with `DESC` and a `SELECT`.
 
 ## Safety: you create, the human confirms destruction
@@ -175,7 +175,7 @@ data rather than merely surprising you live where they bite — aggregate result
 what survives a `GROUP BY` in `/denodo:views`, the server's own error texts in
 `/denodo:execute`.
 
-VDP tags (`CREATE TAG`, VQL, port 9996) and Data Marketplace tags
+VDP tags (`CREATE TAG`, VQL, Virtual DataPort) and Data Marketplace tags
 (`POST /public/api/tags`, REST) are different objects on different servers. "Tag" alone
 does not tell you which — ask which one the human means, or look at where the object has
 to be visible.

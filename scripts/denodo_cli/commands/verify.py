@@ -456,7 +456,7 @@ def run_chain(
 
 
 def _encrypt_throwaways(profile: Profile, values: dict[str, str], *, vql_factory: Callable) -> dict | None:
-    """Replace every ``@encrypt-throwaway`` value with a ciphertext this stand just made.
+    """Replace every ``@encrypt-throwaway`` value with a ciphertext this server just made.
 
     The JDBC data source template carries ``USERPASSWORD '<...>' ENCRYPTED``, and the
     server validates the ciphertext when the source is created: any other string is

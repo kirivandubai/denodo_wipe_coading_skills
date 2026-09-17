@@ -32,7 +32,7 @@ so every call in a file looks the same.
 | Browse one | `GET /public/api/browse/categories/{id}` | | the category itself, **without** its elements — those come from `…/browse/categories/{id}/elements/type/{elementType}` |
 
 Creation, the child, duplicate `409`, assignment, cascade and repeated delete are
-*verified: 9.5.1 (стенд, 2026-09-10)*; the rest is *unverified: OpenAPI of the 9.5.1 server*.
+*verified: 9.5.1 (live, 2026-09-10)*; the rest is *unverified: OpenAPI of the 9.5.1 server*.
 
 ## What differs from tags
 

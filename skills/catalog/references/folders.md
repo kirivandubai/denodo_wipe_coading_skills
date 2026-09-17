@@ -11,7 +11,7 @@ contain spaces, digits and dashes, and match case-insensitively.
 ## CREATE FOLDER
 
 ```sql
--- verified: 9.5.1 (стенд, 2026-09-09)
+-- verified: 9.5.1 (live, 2026-09-09)
 CREATE [ OR REPLACE ] FOLDER '/<path>' [ DESCRIPTION '<description>' ]
 ```
 
@@ -28,14 +28,14 @@ CREATE [ OR REPLACE ] FOLDER '/<path>' [ DESCRIPTION '<description>' ]
 ## ALTER FOLDER
 
 ```sql
--- verified: 9.5.1 (стенд, 2026-09-09) — DESCRIPTION, RENAME (same parent and across parents, with DESCRIPTION), MOVE VIEW
+-- verified: 9.5.1 (live, 2026-09-09) — DESCRIPTION, RENAME (same parent and across parents, with DESCRIPTION), MOVE VIEW
 ALTER FOLDER '/<path>' DESCRIPTION '<description>';
 ALTER FOLDER '/<path>' RENAME '/<new path>' [ DESCRIPTION '<description>' ];
 ALTER FOLDER '/<target path>' MOVE VIEW <view>;
 ```
 
 ```sql
--- unverified: только по документации 9.5
+-- unverified: 9.5 documentation only
 ALTER FOLDER '/<target path>' MOVE <element> <name>;
 ALTER FOLDER '/<target path>' COPY <element> <old name> AS <new name>;
 
@@ -56,7 +56,7 @@ ALTER FOLDER '/<target path>' COPY <element> <old name> AS <new name>;
 ## DROP FOLDER
 
 ```sql
--- verified: 9.5.1 (стенд, 2026-09-09)
+-- verified: 9.5.1 (live, 2026-09-09)
 DROP FOLDER [ IF EXISTS ] '/<path>' [ CASCADE ]
 ```
 
@@ -71,7 +71,7 @@ DROP FOLDER [ IF EXISTS ] '/<path>' [ CASCADE ]
 ## Reading folders back
 
 ```sql
--- verified: 9.5.1 (стенд, 2026-09-09)
+-- verified: 9.5.1 (live, 2026-09-09)
 DESC FOLDER '/<path>';                            -- name, path, description
 DESC VQL FOLDER '/<path>';                        -- CREATE OR REPLACE FOLDER … as the server writes it
 

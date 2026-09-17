@@ -3,20 +3,20 @@
 Source: Virtual DataPort VQL Guide 9.5, "Creating and Modifying Virtual DataPort
 Databases". Only administrators can run `CREATE`, `ALTER` and `DROP DATABASE`.
 
-Each clause carries its own status. Verified means it ran on the 9.5.1 stand; unverified
+Each clause carries its own status. Verified means it ran on a 9.5.1 server; unverified
 means the syntax is taken from the documentation and has not been exercised.
 
 ## CREATE DATABASE
 
 ```sql
--- verified: 9.5.1 (стенд, 2026-09-09) — name, description, CHARSET, AUTHENTICATION LOCAL
+-- verified: 9.5.1 (live, 2026-09-09) — name, description, CHARSET, AUTHENTICATION LOCAL
 CREATE [ OR REPLACE ] DATABASE <name> [ '<description>' ]
     [ CHARSET { UNICODE | RESTRICTED | DEFAULT } ]
     [ AUTHENTICATION LOCAL ]
 ```
 
 ```sql
--- unverified: только по документации 9.5
+-- unverified: 9.5 documentation only
 CREATE [ OR REPLACE ] DATABASE <name> [ '<description>' ]
     [ VCS { OFF | ON ( [ REMOTEDB = <id> ] [ ENVIRONMENT = <id> ] [ PROPERTIES ( '<k>' = '<v>' [, …] ) ] )
                | ON ( URL = '<url>' SYSTEM = 'git' REMOTEDB = <id> [ USER = '<u>' ] [ PASSWORD = '<p>' [ ENCRYPTED ] ]
@@ -45,7 +45,7 @@ after it. With `CHARSET` before the description the parser stops at the quote.
 | Clause | Meaning | Default |
 |---|---|---|
 | `'<description>'` | free text, shown by `DESC DATABASE` and `GET_DATABASES()` | none |
-| `CHARSET` | which characters Design Studio lets users put in identifiers. `UNICODE` any; `RESTRICTED` a limited set; `DEFAULT` the server setting. Does not change the server's behaviour | `DEFAULT` (the stand reports `restricted`) |
+| `CHARSET` | which characters Design Studio lets users put in identifiers. `UNICODE` any; `RESTRICTED` a limited set; `DEFAULT` the server setting. Does not change the server's behaviour | `DEFAULT` (the server used for verification reported `restricted`) |
 | `AUTHENTICATION LOCAL` | users are VDP users. This is "Global authentication settings" in Design Studio | this, when the clause is absent |
 | `AUTHENTICATION LDAP …` | authentication and roles delegated to an LDAP server through an LDAP data source that already exists in `<db>`. Needs the six DN/pattern values — get them from the human or the Administration Guide setup, never guess | — |
 | `VCS` | per-database version-control integration | server setting |
@@ -56,20 +56,20 @@ after it. With `CHARSET` before the description the parser stops at the quote.
 | `<grant>` | privileges — out of scope for v1 | — |
 
 `CREATE OR REPLACE DATABASE` on an existing database updates the description and settings
-and **keeps every object inside** — *verified: 9.5.1 (стенд, 2026-09-09)*. `CREATE
+and **keeps every object inside** — *verified: 9.5.1 (live, 2026-09-09)*. `CREATE
 DATABASE` without `OR REPLACE` on an existing one: `error creating database: Database
 already exists`.
 
 ## ALTER DATABASE
 
 ```sql
--- verified: 9.5.1 (стенд, 2026-09-09) — description, CHARSET
+-- verified: 9.5.1 (live, 2026-09-09) — description, CHARSET
 ALTER DATABASE <name> [ '<description>' ]
     [ CHARSET { UNICODE | RESTRICTED | DEFAULT } ]
 ```
 
 ```sql
--- unverified: только по документации 9.5
+-- unverified: 9.5 documentation only
 ALTER DATABASE <name> [ '<description>' ]
     [ CHARSET { UNICODE | RESTRICTED | DEFAULT } ]
     [ COST OPTIMIZATION { ON | OFF | DEFAULT } ]
@@ -96,7 +96,7 @@ DATABASE` — same effect, contents kept, not marked destructive.
 ## DROP DATABASE
 
 ```sql
--- verified: 9.5.1 (стенд, 2026-09-09)
+-- verified: 9.5.1 (live, 2026-09-09)
 DROP DATABASE [ IF EXISTS ] <name>
 ```
 
@@ -109,7 +109,7 @@ before `DROP DATABASE x;` in the same file, and do not run it with `--database x
 ## Reading databases back
 
 ```sql
--- verified: 9.5.1 (стенд, 2026-09-09)
+-- verified: 9.5.1 (live, 2026-09-09)
 LIST DATABASES;                                   -- name
 DESC DATABASE <name>;                             -- name, description
 SELECT db_name, description, charset, authentication, odbc_authentication,

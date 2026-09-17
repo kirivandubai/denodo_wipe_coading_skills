@@ -193,14 +193,14 @@ class RenderTest(unittest.TestCase):
 SKILL_TEXT = """### Database
 
 ```sql
--- verified: 9.5.1 (стенд, 2026-09-01)
+-- verified: 9.5.1 (live, 2026-09-01)
 CREATE OR REPLACE DATABASE sales_analytics 'x';
 ```
 
 ### Boom
 
 ```sql
--- verified: 9.5.1 (стенд, 2026-09-01)
+-- verified: 9.5.1 (live, 2026-09-01)
 CONNECT DATABASE sales_analytics;
 BOOM;
 ```
@@ -507,7 +507,7 @@ vql = "CONNECT DATABASE {database};"
             '"DROP TAG IF EXISTS {tag_prefix}pii",', '"DROP TAG BOOM", "DROP TAG IF EXISTS x",'),
             encoding="utf-8")
         doc, code = run_chain(profile(), load_chain(self.manifest), root=self.root, vql_factory=FakeVql)
-        self.assertEqual(code, 1)                       # уборка не убралась — это провал прогона
+        self.assertEqual(code, 1)                       # a cleanup that failed to clean up fails the run
         self.assertTrue(doc["cleanup"]["ran"])
         kinds = [s["ok"] for s in doc["cleanup"]["statements"]]
         self.assertEqual(kinds, [True, False, True])
@@ -654,7 +654,7 @@ vql = "CONNECT DATABASE {database};"
     def test_a_passed_template_step_gets_todays_mark(self):
         doc, _ = run_chain(profile(), self.chain, root=self.root, vql_factory=FakeVql,
                            update_marks=True, today=dt.date(2026, 9, 10))
-        self.assertIn("-- verified: 9.5.1 (стенд, 2026-09-10)", self.skill.read_text(encoding="utf-8"))
+        self.assertIn("-- verified: 9.5.1 (live, 2026-09-10)", self.skill.read_text(encoding="utf-8"))
         self.assertTrue(doc["steps"][0]["mark"]["updated"])
 
     def test_a_fixture_step_has_no_mark_in_the_report(self):
@@ -756,7 +756,7 @@ check = "SELECT 1 FROM DUAL()"
         self.assertNotIn("check expected", doc["steps"][0]["error"]["message"])
 
 
-BASH_BLOCK = """# verified: 9.5.1 (стенд, 2026-09-10)
+BASH_BLOCK = """# verified: 9.5.1 (live, 2026-09-10)
 
 # 1. does it exist?
 api get --env lab /public/api/tag-management/tags --param serverId=306 \\
@@ -910,7 +910,7 @@ substitute = { "\\"pii\\"" = "\\"verify_pii\\"" }
         self.assertEqual(doc["values"]["tag_id"], "4242")
 
 
-DESTRUCTIVE_BASH_BLOCK = """# verified: 9.5.1 (стенд, 2026-09-10)
+DESTRUCTIVE_BASH_BLOCK = """# verified: 9.5.1 (live, 2026-09-10)
 api delete --env lab /public/api/tags/999 --param serverId=306
 """
 
@@ -1259,7 +1259,7 @@ vql = "SELECT 1"
         self.assertEqual(CleanupHttpBodyTest.FakeRest.calls, [])
 
 
-THREE_CALL_BLOCK = """# verified: 9.5.1 (стенд, 2026-09-01)
+THREE_CALL_BLOCK = """# verified: 9.5.1 (live, 2026-09-01)
 api get --env lab /public/api/tag-management/tags --param serverId=306 --param nameFilter=pii
 api post --env lab /public/api/tags --param serverId=306 --json '{"name":"pii"}'
 api put --env lab /public/api/tags/4242 --param serverId=306 --json '{"name":"pii"}'
@@ -1411,7 +1411,7 @@ class FakeVqlEncrypting(FakeVql):
 
     The stand answers ``ENCRYPT_PASSWORD '<plaintext>'`` with one row holding the
     ciphertext; a data source refuses any other string with ``Invalid encrypted value``
-    (verified on the lab stand, 9.5.1), which is why the chain cannot simply carry a
+    (verified on a live 9.5.1 server), which is why the chain cannot simply carry a
     literal one in the manifest.
     """
 
@@ -1434,7 +1434,7 @@ class FakeVqlEncryptionFails(FakeVql):
 ENCRYPTED_SKILL = """### Source
 
 ```sql
--- verified: 9.5.1 (стенд, 2026-09-01)
+-- verified: 9.5.1 (live, 2026-09-01)
 CREATE OR REPLACE DATASOURCE JDBC ds_orders_db
     USERPASSWORD = '<ciphertext — fill it in before applying>' ENCRYPTED;
 ```

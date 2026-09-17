@@ -12,19 +12,19 @@ SAMPLE = """# Skill
 ### Database
 
 ```sql
--- verified: 9.5.1 (стенд, 2026-09-09)
+-- verified: 9.5.1 (live, 2026-09-09)
 CREATE OR REPLACE DATABASE sales_analytics 'Sales data products' CHARSET DEFAULT;
 ```
 
 ### Folders
 
 ```sql
--- unverified: только по документации 9.5
+-- unverified: 9.5 documentation only
 CREATE OR REPLACE FOLDER '/01 - connectivity';
 ```
 
 ```sql
--- verified: 9.5.1 (стенд, 2026-09-09)
+-- verified: 9.5.1 (live, 2026-09-09)
 CREATE OR REPLACE FOLDER '/02 - integration';
 ```
 
@@ -44,7 +44,7 @@ INDENTED_SAMPLE = (
     "\n"
     "1. Step one:\n"
     "   ```sql\n"
-    "   -- verified: 9.5.1 (стенд, 2026-09-09)\n"
+    "   -- verified: 9.5.1 (live, 2026-09-09)\n"
     "   SELECT 1 FROM DUAL();\n"
     "```\n"  # closing fence at a different indent (column 0) than the opening one
     "2. Step two.\n"
@@ -57,14 +57,14 @@ DUPLICATE_SAMPLE = """# Skill
 ### Database
 
 ```sql
--- verified: 9.5.1 (стенд, 2026-09-09)
+-- verified: 9.5.1 (live, 2026-09-09)
 SELECT 1 FROM DUAL();
 ```
 
 ### Database
 
 ```sql
--- verified: 9.5.1 (стенд, 2026-09-09)
+-- verified: 9.5.1 (live, 2026-09-09)
 SELECT 2 FROM DUAL();
 ```
 """
@@ -93,7 +93,7 @@ class LoadBlockTest(unittest.TestCase):
     def test_body_and_mark_of_the_first_block_in_a_section(self):
         block = load_block(self.root, "skills/catalog/SKILL.md#Database")
         self.assertIn("CREATE OR REPLACE DATABASE sales_analytics", block.body)
-        self.assertEqual(block.mark, "verified: 9.5.1 (стенд, 2026-09-09)")
+        self.assertEqual(block.mark, "verified: 9.5.1 (live, 2026-09-09)")
         self.assertEqual(block.section, "Database")
 
     def test_second_block_of_a_section_is_addressable(self):
@@ -102,7 +102,7 @@ class LoadBlockTest(unittest.TestCase):
 
     def test_unverified_mark_is_reported_as_is(self):
         block = load_block(self.root, "skills/catalog/SKILL.md#Folders")
-        self.assertEqual(block.mark, "unverified: только по документации 9.5")
+        self.assertEqual(block.mark, "unverified: 9.5 documentation only")
 
     def test_mark_line_points_at_the_mark_in_the_file(self):
         block = load_block(self.root, "skills/catalog/SKILL.md#Database")
@@ -139,12 +139,12 @@ class IndentedFenceTest(unittest.TestCase):
 
     def test_fence_indented_inside_a_list_item_is_found_and_dedented(self):
         block = load_block(self.root, "skills/listy/SKILL.md#Wrapped")
-        self.assertEqual(block.mark, "verified: 9.5.1 (стенд, 2026-09-09)")
+        self.assertEqual(block.mark, "verified: 9.5.1 (live, 2026-09-09)")
         # dedented: no leading spaces left, even though the closing fence was
         # unindented while the opening one (and its body) were indented by three spaces
         self.assertEqual(
             block.body,
-            "-- verified: 9.5.1 (стенд, 2026-09-09)\nSELECT 1 FROM DUAL();",
+            "-- verified: 9.5.1 (live, 2026-09-09)\nSELECT 1 FROM DUAL();",
         )
 
 
@@ -174,11 +174,11 @@ class RealSkillFileTest(unittest.TestCase):
 
         # the donor read-back: a bash fence, so its mark is a `#` comment
         second = load_block(root, "skills/datasources/SKILL.md#When you cannot see the file[1]")
-        self.assertEqual(second.mark, "verified: 9.5.1 (стенд, 2026-09-12)")
+        self.assertEqual(second.mark, "verified: 9.5.1 (live, 2026-09-12)")
         self.assertIn("vql desc", second.body)
 
         third = load_block(root, "skills/datasources/SKILL.md#When you cannot see the file[2]")
-        self.assertEqual(third.mark, "verified: 9.5.1 (стенд, 2026-09-09)")
+        self.assertEqual(third.mark, "verified: 9.5.1 (live, 2026-09-09)")
         self.assertIn("CREATE OR REPLACE DATASOURCE DF ds_crm", third.body)
         # dedented: the raw file indents this fence by three spaces (it lives inside a
         # numbered list), so an un-dedented body would still carry that indentation here
@@ -193,28 +193,28 @@ class UpdateMarkTest(unittest.TestCase):
         self.file.write_text(SAMPLE, encoding="utf-8")
 
     def test_format(self):
-        self.assertEqual(format_mark("9.5.1", dt.date(2026, 9, 10)), "verified: 9.5.1 (стенд, 2026-09-10)")
+        self.assertEqual(format_mark("9.5.1", dt.date(2026, 9, 10)), "verified: 9.5.1 (live, 2026-09-10)")
 
     def test_verified_mark_gets_the_new_version_and_date(self):
         block = load_block(self.root, "skills/catalog/SKILL.md#Database")
         self.assertTrue(update_mark(block, version="9.5.1", day=dt.date(2026, 9, 10)))
         text = self.file.read_text(encoding="utf-8")
-        self.assertIn("-- verified: 9.5.1 (стенд, 2026-09-10)", text)
+        self.assertIn("-- verified: 9.5.1 (live, 2026-09-10)", text)
         self.assertNotIn("2026-09-09", text.split("### Folders")[0])
 
     def test_unverified_mark_becomes_verified(self):
         block = load_block(self.root, "skills/catalog/SKILL.md#Folders")
         update_mark(block, version="9.5.1", day=dt.date(2026, 9, 10))
-        self.assertIn("-- verified: 9.5.1 (стенд, 2026-09-10)", self.file.read_text(encoding="utf-8"))
+        self.assertIn("-- verified: 9.5.1 (live, 2026-09-10)", self.file.read_text(encoding="utf-8"))
 
     def test_comment_prefix_of_the_channel_is_kept(self):
         bash = self.root / "skills" / "marketplace"
         bash.mkdir(parents=True)
         (bash / "SKILL.md").write_text(
-            "### Tag\n\n```bash\n# verified: 9.5.1 (стенд, 2026-09-01)\napi get /x\n```\n", encoding="utf-8")
+            "### Tag\n\n```bash\n# verified: 9.5.1 (live, 2026-09-01)\napi get /x\n```\n", encoding="utf-8")
         block = load_block(self.root, "skills/marketplace/SKILL.md#Tag")
         update_mark(block, version="9.5.1", day=dt.date(2026, 9, 10))
-        self.assertIn("# verified: 9.5.1 (стенд, 2026-09-10)", (bash / "SKILL.md").read_text(encoding="utf-8"))
+        self.assertIn("# verified: 9.5.1 (live, 2026-09-10)", (bash / "SKILL.md").read_text(encoding="utf-8"))
 
     def test_block_without_a_mark_is_left_alone(self):
         plain = self.root / "skills" / "views"
@@ -228,11 +228,11 @@ class UpdateMarkTest(unittest.TestCase):
         noted = self.root / "skills" / "ds"
         noted.mkdir(parents=True)
         (noted / "SKILL.md").write_text(
-            "### D\n\n```sql\n-- verified: 9.5.1 (стенд, 2026-09-09) — against live Oracle\nSELECT 1;\n```\n",
+            "### D\n\n```sql\n-- verified: 9.5.1 (live, 2026-09-09) — against live Oracle\nSELECT 1;\n```\n",
             encoding="utf-8")
         block = load_block(self.root, "skills/ds/SKILL.md#D")
         update_mark(block, version="9.5.1", day=dt.date(2026, 9, 10))
-        self.assertIn("-- verified: 9.5.1 (стенд, 2026-09-10) — against live Oracle",
+        self.assertIn("-- verified: 9.5.1 (live, 2026-09-10) — against live Oracle",
                       (noted / "SKILL.md").read_text(encoding="utf-8"))
 
     def test_already_up_to_date_mark_returns_false_and_does_not_change_file(self):
