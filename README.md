@@ -159,7 +159,9 @@ default:
   Underneath it, the execution layer adds a hard stop that does not depend on the agent
   reading its instructions: on a `production = true` profile a destructive statement is
   refused outright unless `--allow-destructive` is passed, and `env.production` comes back
-  on every single response, so the agent always knows where it is connected.
+  on every single response, so the agent always knows where it is connected. The stop
+  goes by the leading keyword and by the name of the procedure called: `SELECT * FROM
+  DROP_REMOTE_TABLE(…)` is spelled like a read and is refused like a `DROP`.
 - The same applies over REST, stated by method and path rather than by verb: several
   marketplace `POST` calls are destructive — synchronisation endpoints remove entries that
   vanished from the snapshot, and the tag- and category-assignment calls *replace* a

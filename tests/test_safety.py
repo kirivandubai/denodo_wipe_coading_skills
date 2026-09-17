@@ -1,6 +1,10 @@
+import re
 import unittest
+from pathlib import Path
 
-from denodo_cli.safety import classify_http, classify_vql
+from denodo_cli.safety import STATE_CHANGING_PROCEDURES, classify_http, classify_vql
+
+PREDEFINED_MD = Path(__file__).resolve().parents[1] / "skills" / "procedures" / "references" / "predefined.md"
 
 
 class ClassifyVqlTest(unittest.TestCase):
@@ -35,6 +39,66 @@ class ClassifyVqlTest(unittest.TestCase):
     def test_delete_and_truncate_are_destructive(self):
         self.assertEqual(classify_vql("DELETE FROM cache_table"), "delete")
         self.assertEqual(classify_vql("TRUNCATE TABLE t"), "delete")
+
+
+class StateChangingProcedureTest(unittest.TestCase):
+    """Predefined procedures that change state are invoked with SELECT or CALL, so the
+    leading keyword says nothing; the name does (T20)."""
+
+    def test_select_from_state_changing_procedure(self):
+        self.assertEqual(
+            classify_vql("SELECT * FROM DROP_REMOTE_TABLE() WHERE input_base_view_database_name = 'd' AND input_base_view_name = 'v'"),
+            "procedure",
+        )
+
+    def test_call_form(self):
+        self.assertEqual(classify_vql("CALL CLEAN_CACHE_DATABASE('sales_analytics')"), "procedure")
+
+    def test_name_is_matched_case_insensitively(self):
+        self.assertEqual(classify_vql("select 1 from generate_stats() where input_database_name = 'd'"), "procedure")
+
+    def test_database_qualified_name(self):
+        self.assertEqual(classify_vql("SELECT * FROM admin.DROP_NONACTIVE_CACHE_TABLES()"), "procedure")
+
+    def test_every_listed_procedure_is_caught_in_both_forms(self):
+        for name in STATE_CHANGING_PROCEDURES:
+            self.assertEqual(classify_vql(f"SELECT * FROM {name}()"), "procedure", name)
+            self.assertEqual(classify_vql(f"CALL {name}(null)"), "procedure", name)
+
+    def test_reading_procedures_are_not_flagged(self):
+        self.assertIsNone(classify_vql("SELECT name FROM GET_ELEMENTS() WHERE input_database_name = 'd'"))
+        self.assertIsNone(classify_vql("SELECT 1 AS a FROM DUAL()"))
+        self.assertIsNone(classify_vql("CALL USED_BY('d', 'v', null)"))
+        self.assertIsNone(classify_vql("SELECT * FROM GET_CACHE_TABLE() WHERE input_database_name = 'd'"))
+
+    def test_prefix_of_a_listed_name_is_not_flagged(self):
+        # GENERATE_STATS is listed; a view or procedure merely starting with it is not
+        self.assertIsNone(classify_vql("SELECT * FROM GENERATE_STATS_REPORT()"))
+
+    def test_plain_view_named_like_a_procedure_is_not_flagged(self):
+        # no parenthesis, no call: a view called drop_remote_table is just a view
+        self.assertIsNone(classify_vql("SELECT * FROM drop_remote_table"))
+
+    def test_view_defined_over_a_state_changing_procedure_is_flagged(self):
+        # every query of such a view would run the procedure again
+        self.assertEqual(
+            classify_vql("CREATE OR REPLACE VIEW v AS SELECT * FROM CLEAN_CACHE_DATABASE('d')"),
+            "procedure",
+        )
+
+    def test_drop_keyword_wins_over_procedure_name(self):
+        self.assertEqual(classify_vql("DROP VIEW generate_stats_wrapper"), "drop")
+
+    def test_list_matches_the_procedures_skill_reference(self):
+        """The list is kept twice on purpose — in code (the tool must not read skill files
+        at run time) and in the skill (which must stay self-contained) — and this test is
+        what keeps the two copies from drifting apart silently."""
+        text = PREDEFINED_MD.read_text(encoding="utf-8")
+        section = re.search(r"^## A call that looks like a read and is not\n(.*?)^## ", text, re.S | re.M)
+        self.assertIsNotNone(section, "section heading changed in predefined.md")
+        rows = [line for line in section.group(1).splitlines() if line.startswith("| `")]
+        listed = {re.match(r"\| `([A-Z0-9_]+)`", line).group(1) for line in rows}
+        self.assertEqual(listed, set(STATE_CHANGING_PROCEDURES))
 
 
 class ClassifyHttpTest(unittest.TestCase):

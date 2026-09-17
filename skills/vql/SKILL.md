@@ -114,6 +114,7 @@ it just means the verification is yours to do, with `DESC` and a `SELECT`.
 |---|---|
 | `CREATE` / `CREATE OR REPLACE` of an object | `DROP`, `TRUNCATE`, `DELETE` |
 | Read-only `SELECT`, `DESC`, `GET_*`, `env check` — on any profile, production included | `ALTER` of an object that already exists |
+| — | a predefined procedure that changes state, however it is spelled: `SELECT * FROM DROP_REMOTE_TABLE(…)`, `CALL CLEAN_CACHE_DATABASE(…)`, `GENERATE_STATS(…)` — the list is in `/denodo:procedures` |
 | `GET` calls to the marketplace | every destructive marketplace call (below) |
 | — | **any change at all on a profile with `production: true`, `CREATE` included** |
 

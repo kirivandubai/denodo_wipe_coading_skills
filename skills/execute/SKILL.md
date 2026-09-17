@@ -133,13 +133,21 @@ encrypt --env dev` — which keeps the plaintext out of the terminal as well.
 
 ### Destructive operations
 
-`DROP`, `ALTER`, `DELETE`, `TRUNCATE`, HTTP `DELETE`, and the marketplace `POST`s that
-replace a whole set or delete what is missing from the payload — `tags/vdp/synchronize`,
+`DROP`, `ALTER`, `DELETE`, `TRUNCATE`; a `SELECT … FROM name(…)` or `CALL name(…)` of a
+predefined procedure that changes state — `GENERATE_STATS`, `CREATE_REMOTE_TABLE`,
+`DROP_REMOTE_TABLE`, `CLEAN_CACHE_DATABASE`, `DROP_NONACTIVE_CACHE_TABLES`,
+`CREATE_SCHEMA_ON_SOURCE`, `DROP_SCHEMA_ON_SOURCE`, `REMOVE_ICEBERG_VIEW_SNAPSHOTS`,
+`ROLLBACK_ICEBERG_VIEW_TO_SNAPSHOT` (the list, with what each
+one destroys, is in `/denodo:procedures`, `references/predefined.md`); HTTP `DELETE`, and
+the marketplace `POST`s that replace a whole set or delete what is missing from the payload
+— `tags/vdp/synchronize`,
 `element-management/{all,DATABASES,VIEWS,WEBSERVICES,EXTERNAL_ELEMENTS}/synchronize`, the
 `external-tool-servers/synchronize` family, `views/{id}/tags` and
 `category-management/views/{id}/categories`. Every result carries a `destructive` field: the
-kind (`drop`, `alter`, `delete`, `replace`) when it is one of these, and `null` — not
-`false` — when it is not. On a profile with `production: true` the tool refuses them with
+kind (`drop`, `alter`, `delete`, `procedure`, `replace`) when it is one of these, and
+`null` — not `false` — when it is not. The procedure check goes by name and catches only
+those nine: a VQL procedure of your own that runs `DROP` through `EXECUTE` inside its body
+comes back `null`, and reading what a procedure does before calling it stays your job. On a profile with `production: true` the tool refuses them with
 `error.kind = "refused"` and executes **nothing**.
 
 `--allow-destructive` is set only after the human has read the list of destructive
@@ -163,7 +171,8 @@ When refused:
 
 **Red flags — stop and ask the human:** you are typing `--allow-destructive`; the
 previous result had `error.kind: "refused"`; `env.production` is `true` and the VQL
-contains `DROP` or `ALTER`.
+contains `DROP` or `ALTER`, or calls a procedure whose name starts with `DROP_`, `CLEAN_`,
+`REMOVE_`, `ROLLBACK_`.
 
 ### Error in the middle of a file
 
