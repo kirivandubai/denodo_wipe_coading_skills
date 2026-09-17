@@ -12,7 +12,7 @@ read without downloading a JAR.
 ## The statements
 
 ```sql
--- unverified: только по документации 9.5
+-- unverified: 9.5 documentation only
 CREATE [OR REPLACE] PROCEDURE <name>
     CLASSNAME '<fully qualified class>'
     [ CLASSPATH '<path to jars>' ]
@@ -42,8 +42,9 @@ statement fails on creation:
 error storing procedure: Unable to find class 'com.acme.denodo.OrderEnrichment'
 ```
 
-*verified: 9.5.1 (стенд, 2026-09-12) — the failure, not the success: importing a JAR is
-outside what this repository can do on the stand, so the working form stays unverified.*
+*verified: 9.5.1 (live, 2026-09-12) — the failure, not the success: importing a JAR needs
+the file on the server's own disk, which this repository cannot place, so the working form
+stays unverified.*
 
 `CLASSPATH` points at JAR files on the machine instead, and the documentation recommends
 against it: the procedure then depends on a path existing on that particular server.

@@ -11,7 +11,7 @@ global tag, and `LIST TAGS` shows all of them. The assignments carry the databas
 ## CREATE TAG / CREATE TAGS
 
 ```sql
--- verified: 9.5.1 (стенд, 2026-09-09)
+-- verified: 9.5.1 (live, 2026-09-09)
 CREATE [ OR REPLACE ] TAG <name>
     [ DESCRIPTION = '<description>' ]
     [ ADD_TO      ( VIEWS ( <db>.<view> [, …] ) COLUMNS ( <db>.<view>.<column> [, …] ) )
@@ -40,7 +40,7 @@ CREATE [ OR REPLACE ] TAGS ( <tag definition> [, <tag definition> ]* )
 ## ALTER TAG
 
 ```sql
--- verified: 9.5.1 (стенд, 2026-09-09)
+-- verified: 9.5.1 (live, 2026-09-09)
 ALTER TAG <name>
     [ DESCRIPTION = '<description>' ]
     [ ADD_TO ( VIEWS ( … ) COLUMNS ( … ) ) REMOVE_FROM ( VIEWS ( … ) COLUMNS ( … ) ) ]
@@ -56,7 +56,7 @@ the view side is `TAGS ( <tag> [, …] )` inside `CREATE OR REPLACE VIEW`.
 ## DROP TAG / DROP TAGS
 
 ```sql
--- verified: 9.5.1 (стенд, 2026-09-09)
+-- verified: 9.5.1 (live, 2026-09-09)
 DROP TAG  [ IF EXISTS ] <name> [ CASCADE ]
 DROP TAGS [ IF EXISTS ] ( <name> [, <name> ]* ) [ CASCADE ]
 ```
@@ -71,7 +71,7 @@ DROP TAGS [ IF EXISTS ] ( <name> [, <name> ]* ) [ CASCADE ]
 ## Reading tags back
 
 ```sql
--- verified: 9.5.1 (стенд, 2026-09-09)
+-- verified: 9.5.1 (live, 2026-09-09)
 LIST TAGS;                                        -- name, all tags on the server
 DESC TAG <name>;                                  -- one cell: name='pii' description=…
 DESC VQL TAG <name>;                              -- CREATE OR REPLACE TAG … without assignments

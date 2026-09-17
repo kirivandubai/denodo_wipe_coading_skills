@@ -26,7 +26,7 @@ tool reads host, user and password from `~/.denodo/profiles.toml` itself.
 | Read stdin | `vql run --env dev -` |
 | Another database | add `--database <db>` (or put `CONNECT DATABASE <db>;` first in the file) |
 | Schema of an object | `vql desc --env dev bv_orders` (`--type view` is the default and covers base views too — there is no `DESC TABLE`) |
-| Server-generated VQL | `vql desc --env dev bv_orders --vql` — read it, do not apply it: it opens with `DROP … CASCADE` and rebuilds the object **together with what it depends on**, never with what depends on it. Which object you ask therefore decides what you get: a base view returns source, wrapper and `CREATE TABLE` in one answer; the source alone returns only itself, without the column list. A name can be qualified — `vql desc --env dev "other_db.bv_orders" --vql` reads another database without switching yours — *verified: 9.5.1 (стенд, 2026-09-12)* |
+| Server-generated VQL | `vql desc --env dev bv_orders --vql` — read it, do not apply it: it opens with `DROP … CASCADE` and rebuilds the object **together with what it depends on**, never with what depends on it. Which object you ask therefore decides what you get: a base view returns source, wrapper and `CREATE TABLE` in one answer; the source alone returns only itself, without the column list. A name can be qualified — `vql desc --env dev "other_db.bv_orders" --vql` reads another database without switching yours — *verified: 9.5.1 (live, 2026-09-12)* |
 | Other types | `--type database`, `--type "datasource df"`, `--type "wrapper df"`, `--type tag`, `--type association`, `--type "interface view"`; folders take a quoted path: `vql desc --env dev "'/sales'" --type folder --vql` |
 | Marketplace call | `api get --env dev /public/api/tags` |
 | … with a body | `api post --env dev /public/api/tags --json '{"name":"pii","description":"…","descriptionType":"TEXT"}'` |
@@ -129,7 +129,7 @@ encrypt --env dev` — which keeps the plaintext out of the terminal as well.
 - **The ciphertext belongs to the server that produced it** — `--env` therefore names the
   environment the `.vql` will be applied to. Another environment means encrypting again there.
 - A wrong password encrypts just as happily; the mistake surfaces later as the source's own
-  `The username or password is incorrect`. *verified: 9.5.1 (стенд, 2026-09-12)*
+  `The username or password is incorrect`. *verified: 9.5.1 (live, 2026-09-12)*
 
 ### Destructive operations
 

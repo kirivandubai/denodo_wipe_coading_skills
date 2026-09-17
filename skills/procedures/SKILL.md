@@ -18,19 +18,19 @@ which one the request is about:
 objects**. Drop the word `VQL` from a procedure that has a body and the parser stops at the
 parameter list: `Syntax error: Exception parsing query near '('`.
 
-Everything here is VQL on port 9996. Introspecting a JDBC source into base views also runs
-through predefined procedures (`PING_DATA_SOURCE`, `GET_JDBC_DATASOURCE_TABLES`,
-`GENERATE_VQL_TO_CREATE_JDBC_BASE_VIEW`), but that is a step of a different job and lives in
-`/denodo:datasources`. Databases, folders and VDP tags are `/denodo:catalog`; derived views
-are `/denodo:views`; the working loop, naming and the safety rule are `/denodo:vql`; apply
-the file with `/denodo:execute`.
+Everything here is VQL against Virtual DataPort (the profile's port, 9996 by default).
+Introspecting a JDBC source into base views also runs through predefined procedures
+(`PING_DATA_SOURCE`, `GET_JDBC_DATASOURCE_TABLES`, `GENERATE_VQL_TO_CREATE_JDBC_BASE_VIEW`),
+but that is a step of a different job and lives in `/denodo:datasources`. Databases, folders
+and VDP tags are `/denodo:catalog`; derived views are `/denodo:views`; the working loop,
+naming and the safety rule are `/denodo:vql`; apply the file with `/denodo:execute`.
 
 ## Templates
 
 ### Call a predefined procedure
 
 ```sql
--- verified: 9.5.1 (стенд, 2026-09-12)
+-- verified: 9.5.1 (live, 2026-09-17)
 SELECT view_name, depth FROM USED_BY()
  WHERE input_view_database_name = 'sales_analytics'
    AND input_view_name = 'customer';
@@ -54,7 +54,7 @@ procedures accept no positional arguments at all (`PING_DATA_SOURCE(…)` answer
 ### VQL procedure
 
 ```sql
--- verified: 9.5.1 (стенд, 2026-09-12)
+-- verified: 9.5.1 (live, 2026-09-17)
 CONNECT DATABASE sales_analytics;
 
 CREATE OR REPLACE VQL PROCEDURE order_size_band
@@ -97,7 +97,7 @@ END;
 ### Java procedure from a JAR
 
 ```sql
--- unverified: только по документации 9.5
+-- unverified: 9.5 documentation only
 CREATE OR REPLACE PROCEDURE order_enrichment
     CLASSNAME 'com.acme.denodo.OrderEnrichment'
     JARS 'acme-denodo-extensions'

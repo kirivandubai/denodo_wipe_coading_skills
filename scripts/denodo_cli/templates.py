@@ -34,7 +34,7 @@ class TemplateBlock:
     index: int
     body: str               # block content, mark line included, dedented
     mark_line: int | None   # 1-based line of the mark in the file, None when the block carries none
-    mark: str | None        # "verified: 9.5.1 (стенд, 2026-09-09)" or None
+    mark: str | None        # "verified: 9.5.1 (live, 2026-09-09)" or None
 
 
 def parse_address(address: str) -> tuple[str, str, int]:
@@ -124,8 +124,8 @@ def _blocks_of_section(lines: list[str], section: str, relative: str) -> list[tu
 
 
 def format_mark(version: str, day: dt.date) -> str:
-    """Format a verification mark string with version and date."""
-    return f"verified: {version} (стенд, {day.isoformat()})"
+    """Format a verification mark: the version and the date a live server ran the template."""
+    return f"verified: {version} (live, {day.isoformat()})"
 
 
 def update_mark(block: TemplateBlock, *, version: str, day: dt.date) -> bool:

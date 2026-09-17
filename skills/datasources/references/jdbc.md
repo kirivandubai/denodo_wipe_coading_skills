@@ -50,7 +50,7 @@ CREATE [ OR REPLACE ] DATASOURCE JDBC <name> [ EMBEDDED_MPP ]
 `TIMEBETWEENEVICTION`, `NUMTESTPEREVICTION`, `MINEVICTABLETIME`, `POOLPREPAREDSTATEMENTS`,
 `MAXOPENPREPAREDSTATEMENTS` are all printed by `DESC VQL` because the server fills them in;
 a data source created without them behaves identically. Put them in a file only when the
-human asked for a specific pool. *verified: 9.5.1 (стенд, 2026-09-09)*
+human asked for a specific pool. *verified: 9.5.1 (live, 2026-09-09)*
 
 ## Credentials
 
@@ -62,13 +62,13 @@ human asked for a specific pool. *verified: 9.5.1 (стенд, 2026-09-09)*
 
 | Mechanism | Syntax | Status |
 |---|---|---|
-| Password, encrypted | `USERPASSWORD = '<string>' ENCRYPTED`, string from `ENCRYPT_PASSWORD '<password>'` | *verified: 9.5.1 (стенд, 2026-09-09)* — and the encrypted string can be copied between data sources **on the same server**, which is how you reuse an existing source's credentials without ever seeing the password |
+| Password, encrypted | `USERPASSWORD = '<string>' ENCRYPTED`, string from `ENCRYPT_PASSWORD '<password>'` | *verified: 9.5.1 (live, 2026-09-09)* — and the encrypted string can be copied between data sources **on the same server**, which is how you reuse an existing source's credentials without ever seeing the password |
 | Password, plain | `USERPASSWORD = '<password>'` | works, and the server stores it encrypted anyway — but the file keeps the clear text, so never in git |
-| Credentials vault | `VAULT_SECRET = '<secret>'` at the top, `FROM_VAULT` instead of the password, `CREDENTIALS_VAULT ( STATUS ON … )` | *unverified: только по документации 9.5* — the vault must be configured on the server first |
-| Kerberos | `USE_KERBEROS ( KRB_USERNAME = … { KRB_USERPASSWORD = … [ ENCRYPTED ] \| KRB_KEYTAB = … } )`, or `USE_KERBEROS_AT_RUNTIME` / `USE_KERBEROS_AT_INTROSPECTION` next to `<credentials>` | *unverified: только по документации 9.5* |
-| OAuth | `USE_OAUTH ( TOKEN_ENDPOINTURL … CLIENT_IDENTIFIER … CLIENT_SECRET … [ ENCRYPTED ] OAUTH_USER … OAUTH_PASSWORD … SCOPE … )` | *unverified: только по документации 9.5* |
-| AWS IAM | `USE_AWS_IAM_CREDENTIALS ( AWS_ACCESS_KEY_ID … AWS_SECRET_ACCESS_KEY … [ ENCRYPTED ] [ AWS_IAM_ROLE_ARN … ] [ AWS_REGION … ] )` | *unverified: только по документации 9.5* |
-| GCP | `GCP ( OAUTH_TYPE … PRIVATE_KEY … [ ENCRYPTED ] PROJECT_ID … SERVICE_ACCOUNT_EMAIL … )` | *unverified: только по документации 9.5* |
+| Credentials vault | `VAULT_SECRET = '<secret>'` at the top, `FROM_VAULT` instead of the password, `CREDENTIALS_VAULT ( STATUS ON … )` | *unverified: 9.5 documentation only* — the vault must be configured on the server first |
+| Kerberos | `USE_KERBEROS ( KRB_USERNAME = … { KRB_USERPASSWORD = … [ ENCRYPTED ] \| KRB_KEYTAB = … } )`, or `USE_KERBEROS_AT_RUNTIME` / `USE_KERBEROS_AT_INTROSPECTION` next to `<credentials>` | *unverified: 9.5 documentation only* |
+| OAuth | `USE_OAUTH ( TOKEN_ENDPOINTURL … CLIENT_IDENTIFIER … CLIENT_SECRET … [ ENCRYPTED ] OAUTH_USER … OAUTH_PASSWORD … SCOPE … )` | *unverified: 9.5 documentation only* |
+| AWS IAM | `USE_AWS_IAM_CREDENTIALS ( AWS_ACCESS_KEY_ID … AWS_SECRET_ACCESS_KEY … [ ENCRYPTED ] [ AWS_IAM_ROLE_ARN … ] [ AWS_REGION … ] )` | *unverified: 9.5 documentation only* |
+| GCP | `GCP ( OAUTH_TYPE … PRIVATE_KEY … [ ENCRYPTED ] PROJECT_ID … SERVICE_ACCOUNT_EMAIL … )` | *unverified: 9.5 documentation only* |
 | Pass-through session credentials | `WITH PASS-THROUGH SESSION CREDENTIALS ( <options> )` — the querying user's own credentials go to the source | *unverified*: the empty form `( )` is a syntax error on 9.5.1, so the options are not optional in practice |
 
 The ciphertext comes from `scripts/denodo secret encrypt --env <env>` — never write the
@@ -78,18 +78,18 @@ source"). Encrypt on the server the data source will live on: the ciphertext is
 server-specific, and it is salted, so the same password encrypts to a different string
 every time. A ciphertext produced this way is accepted as a real credential — with a
 deliberately wrong password the source answers `The username or password is incorrect`,
-not a format error. *verified: 9.5.1 (стенд, 2026-09-12)*
+not a format error. *verified: 9.5.1 (live, 2026-09-12)*
 
 Credentials are **replaced, never merged**: re-applying `CREATE OR REPLACE DATASOURCE`
 without the `USERPASSWORD` clause leaves the source with no password, and the next query
-answers `no password was provided`. *verified: 9.5.1 (стенд, 2026-09-09)*
+answers `no password was provided`. *verified: 9.5.1 (live, 2026-09-09)*
 
 ## Driver directories (`CLASSPATH`)
 
 `CLASSPATH` names a directory under `<DENODO_HOME>/lib/extensions/jdbc-drivers`, not a jar
 path. `DATABASENAME` + `DATABASEVERSION` without `CLASSPATH` fail with
 `error creating new data source: Cannot invoke "java.util.List.size()"`.
-*verified: 9.5.1 (стенд, 2026-09-09)*
+*verified: 9.5.1 (live, 2026-09-09)*
 
 What a 9.5.1 server ships with:
 
@@ -111,7 +111,7 @@ The current list on any server: `ls <DENODO_HOME>/lib/extensions/jdbc-drivers`.
 `DATABASENAME` / `DATABASEVERSION` select the **adapter**: the dialect, the delegation
 rules and the ping query. The value is not validated — `DATABASEVERSION = '99'` is created
 without a word — and a wrong adapter silently changes what Denodo pushes down.
-*verified: 9.5.1 (стенд, 2026-09-09)*
+*verified: 9.5.1 (live, 2026-09-09)*
 
 ## CREATE WRAPPER JDBC
 
@@ -149,20 +149,20 @@ CREATE [ OR REPLACE ] WRAPPER JDBC <name>
 
 - Field types are **Java class names**: `java.lang.Long`, `java.lang.Integer`,
   `java.lang.String`, `java.lang.Double`, `java.math.BigDecimal`, `java.sql.Timestamp`,
-  `java.sql.Date`, `java.lang.Boolean`. *verified: 9.5.1 (стенд, 2026-09-09)*
+  `java.sql.Date`, `java.lang.Boolean`. *verified: 9.5.1 (live, 2026-09-09)*
 - The `sourcetype*` properties record what the column is in the source (`'NUMBER'`,
   `'bigint'`, sizes, decimals). Introspection writes them; a hand-written wrapper without
-  them queries fine. *verified: 9.5.1 (стенд, 2026-09-09)*
+  them queries fine. *verified: 9.5.1 (live, 2026-09-09)*
 - **A subset of the table's columns is fine** — unlike DF, a JDBC wrapper that lists three
-  of eighteen columns returns rows normally. *verified: 9.5.1 (стенд, 2026-09-09)*
+  of eighteen columns returns rows normally. *verified: 9.5.1 (live, 2026-09-09)*
 - `SQLSENTENCE = 'SELECT …'` builds a wrapper over a query instead of a table — the query
   runs **in the source's own dialect**, so an aggregate pushed down this way is computed
   there. The output schema is written by hand or generated
   (`GENERATE_VQL_TO_CREATE_JDBC_BASE_VIEW_FROM_QUERY`); the mapping names must match the
   column labels the query returns, uppercased where the source uppercases them.
-  *verified: 9.5.1 (стенд, 2026-09-09) — a `GROUP BY` over Oracle returned its 20 rows*
+  *verified: 9.5.1 (live, 2026-09-09) — a `GROUP BY` over Oracle returned its 20 rows*
 - `PROCEDURENAME` wraps a stored procedure; parameters are the fields marked `ISPARAMETER`
-  with `PARAMINDEX`. *unverified: только по документации 9.5*
+  with `PARAMINDEX`. *unverified: 9.5 documentation only*
 - `SOURCECONFIGURATION` here controls delegation and write support:
   `ALLOWDELETE`, `ALLOWINSERT`, `ALLOWUPDATE`, `DELEGATESQLSELECTION`,
   `DELEGATESQLSENTENCEASSUBQUERY`, `DATAINORDERFIELDSLIST`,
@@ -171,7 +171,7 @@ CREATE [ OR REPLACE ] WRAPPER JDBC <name>
 ## Introspection procedures
 
 All of them need the source to be reachable. Verified against live Oracle, SQL Server and
-PostgreSQL on 9.5.1 (стенд, 2026-09-09).
+PostgreSQL on 9.5.1 (live, 2026-09-09).
 
 | Procedure | Call | Notes |
 |---|---|---|
@@ -179,7 +179,7 @@ PostgreSQL on 9.5.1 (стенд, 2026-09-09).
 | `GET_JDBC_DATASOURCE_TABLES` | `… WHERE input_datasource_name='<ds>' [ AND input_catalog_name='<cat>' ] [ AND input_schema_name='<schema>' ] [ AND input_table_name='<t>' ] [ AND input_type='TABLE' ]` | the reliable one: the filters are input parameters, so the server asks the source only about what you want |
 | `LIST_JDBC_DATASOURCE_TABLES` | `… WHERE data_source_name='<ds>'` | walks every catalog and schema. Fine on Oracle and PostgreSQL; **fails on SQL Server**, and filtering in `WHERE` does not help — the walk happens first |
 | `GENERATE_VQL_TO_CREATE_JDBC_BASE_VIEW` | `SELECT creation_vql FROM …() WHERE data_source_name='<ds>' [ AND catalog_name='<cat>' ] AND schema_name='<s>' AND table_name='<t>' AND base_view_name='<bv>' AND folder='<path>'` | returns **two rows**: the wrapper and the `CREATE TABLE`. `catalog_name` is required where the product has catalogs (SQL Server), omitted for Oracle |
-| `GENERATE_VQL_TO_CREATE_JDBC_BASE_VIEW_FROM_QUERY` | same, with the query instead of the table | *unverified: только по документации 9.5* |
+| `GENERATE_VQL_TO_CREATE_JDBC_BASE_VIEW_FROM_QUERY` | same, with the query instead of the table | *unverified: 9.5 documentation only* |
 | `GET_SOURCE_TABLE`, `GET_SOURCE_COLUMNS` | `… WHERE input_database_name='<db>' AND input_view_name='<view>'` | the other direction: which source table and columns an existing base view sits on — the way to answer "where does this column come from" |
 
 What generated VQL looks like, and what to change in it:

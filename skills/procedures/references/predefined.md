@@ -1,7 +1,7 @@
 # Predefined stored procedures
 
 The server ships them; you never create them. `LIST PROCEDURES` returned **128** on a 9.5.1
-stand (2026-09-12) against 101 pages in the VQL Guide — the list on your server is the
+server (2026-09-12) against 101 pages in the VQL Guide — the list on your server is the
 authority, not this file and not the documentation.
 
 This page answers two questions: how to call any of them, and which family to look in.
@@ -9,7 +9,7 @@ This page answers two questions: how to call any of them, and which family to lo
 ## Calling one
 
 ```sql
--- verified: 9.5.1 (стенд, 2026-09-12)
+-- verified: 9.5.1 (live, 2026-09-12)
 SELECT column_name, column_vdp_type, column_type
   FROM GET_PROCEDURE_COLUMNS()
  WHERE input_procedure_name = 'GENERATE_STATS';
@@ -27,7 +27,7 @@ SELECT column_name, column_vdp_type, column_type
 Two ways to read a signature, both on the server:
 
 ```sql
--- verified: 9.5.1 (стенд, 2026-09-12)
+-- verified: 9.5.1 (live, 2026-09-12)
 DESC PROCEDURE USED_BY;                               -- name, type, direction (IN/OUT)
 SELECT column_name, column_type, column_is_nullable   -- the same, filterable, plus nullable
   FROM GET_PROCEDURE_COLUMNS() WHERE input_procedure_name = 'USED_BY';

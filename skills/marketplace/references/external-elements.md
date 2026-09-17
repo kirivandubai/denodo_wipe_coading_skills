@@ -20,7 +20,7 @@ Built-in element types on 9.5.1, from `GET /public/api/external-elements-types`:
 `AI_AGENT, AI_LLM, AI_SKILL, APPLICATION, CATALOG, DASHBOARD, DATA_CONTRACT, DATA_PRODUCT,
 DOCUMENT, ETL_JOB, GLOSSARY, KNOWLEDGE_BASE, NOTEBOOK, PIPELINE, POLICY, PROMPT, QUALITY_RULE,
 REPORT, RULE, SCHEDULER_JOB, SQL_SCRIPT, STORED_PROCEDURE, STREAM, WORKFLOW` —
-*verified: 9.5.1 (стенд, 2026-09-10)*. Reuse one; a new type is a marketplace-wide object.
+*verified: 9.5.1 (live, 2026-09-10)*. Reuse one; a new type is a marketplace-wide object.
 
 ### Element type
 
@@ -40,7 +40,7 @@ while the documentation calls `description` optional; send all six. Duplicate `n
 `JENKINS_PROVIDER`, `JUPYTER_PROVIDER`, `N8N_PROVIDER`, `MCP_PROVIDER`, `SERVICENOW_PROVIDER`,
 `ATLAN_PROVIDER`, `AWS_GLUE_PROVIDER`, `FABRIC_PROVIDER`, `CONFLUENT_PROVIDER`,
 `ABINITIO_PROVIDER`, `T24_TEMENOS_PROVIDER`, `SCHEDULER_PROVIDER`, `DENODO_DQ_PROVIDER`,
-`DATA_PRODUCT_PROVIDER`, `GLOSSARY_PROVIDER` — *verified: 9.5.1 (стенд, 2026-09-10)*. They
+`DATA_PRODUCT_PROVIDER`, `GLOSSARY_PROVIDER` — *verified: 9.5.1 (live, 2026-09-10)*. They
 arrive with the vendor's icon; a new one is a marketplace-wide object that everybody sees,
 and one created without an icon stands in that shared list logo-less next to the rest. The
 listing embeds those icons as base64 and is ~290 KB on 9.5.1: save it and project
@@ -51,14 +51,14 @@ consumer sees as the origin of the asset, so reusing `TABLEAU` for a dashboard t
 Tableau's puts another vendor's name and logo on it — a false statement about provenance,
 and cheaper only in calls. A own type without an icon is the better trade; it stands
 logo-less, which is honest. `name` is not validated against a shape: every built-in one is
-`UPPER_SNAKE`, and a lowercase name is accepted just the same — *verified: 9.5.1 (стенд,
+`UPPER_SNAKE`, and a lowercase name is accepted just the same — *verified: 9.5.1 (live,
 2026-09-12)*.
 
 Creating one is multipart: a part named `request` of type `application/json` carrying
 `{name, visualName}`,
 and optionally a part `icon` with an `.svg` or `.png`. **The icon is optional** — the call
-returns `201` with `iconImage: null` without it, though both the documentation and spike T11
-call it mandatory — *verified: 9.5.1 (стенд, 2026-09-10)*. Through the tool:
+returns `201` with `iconImage: null` without it, though the documentation
+calls it mandatory — *verified: 9.5.1 (live, 2026-09-10)*. Through the tool:
 
 ```bash
 --part 'request=json:{"name":"ACME_BI","visualName":"Acme BI"}'  --part 'icon=@./acme.svg'
@@ -111,19 +111,19 @@ Association record: `associated_element_id`, `external_tool_server_name`,
   NULL. **The view must already be in the marketplace catalog** — otherwise the whole import
   fails with `400 INVALID_VDP_EXTERNAL_ELEMENT_METADATA "The view '…' does not exist"`, a
   message that means "not in the marketplace copy", not "not in VDP" —
-  *verified: 9.5.1 (стенд, 2026-09-10)*.
+  *verified: 9.5.1 (live, 2026-09-10)*.
 - For `EXTERNAL_ELEMENT`, `associated_element_id` is the other element's **`id` from its
   interface view** — the string you wrote there, never the numeric marketplace id, which does
   not exist until that element has been imported — and `external_tool_server_name` names the
   tool server it lives on. That is how a pipeline links to the contract it implements —
-  *verified: 9.5.1 (стенд, 2026-09-10)*. Two consequences: elements from two different tools
+  *verified: 9.5.1 (live, 2026-09-10)*. Two consequences: elements from two different tools
   need two provider types and therefore **two tool servers**, and the server holding the
   target must be imported **first**, or the association has nothing to resolve to.
 - `direction` is `IN` or `OUT` — *documentation 9.5*. It reads from the external element
-  outwards and is not the direction of the data: in the demo content of the 9.5.1 stand a
+  outwards and is not the direction of the data: in the sample content that ships with 9.5.1, a
   dashboard that *reads* a view carries `OUT` with role `consumes`, and a pipeline that
   *writes* one carries `OUT` with role `feeds`. Every association there, and every one
-  created while verifying this skill, is `OUT`; no `IN` example exists on the stand, so what
+  created while verifying this skill, is `OUT`; no `IN` example was available, so what
   the marketplace does differently with it is *unverified*. `role` is free text and is the
   label drawn on the edge.
 
@@ -141,7 +141,7 @@ NULLs and the import rejects the element
 (`400 … Required field 'associated_element_id' is null … association index 0`):
 
 ```sql
--- verified: 9.5.1 (стенд, 2026-09-10)
+-- verified: 9.5.1 (live, 2026-09-10)
     SELECT … CAST('external_element_association_array_type',
                   NEST(a.associated_element_id, a.external_tool_server_name,
                        a.associated_element_type, a.direction, a.role)) AS associations
@@ -158,7 +158,7 @@ NULLs and the import rejects the element
 
 The response is per server: `externalElementsAdded`, `externalElementsUpdated`,
 `externalElementsDeleted`, each naming elements by both ids. All of the following are
-*verified: 9.5.1 (стенд, 2026-09-10)*:
+*verified: 9.5.1 (live, 2026-09-10)*:
 
 - **Added** — an `id` the marketplace has not seen on this server.
 - **Updated** — an existing `id` whose `updated_at` moved forward. Tags, categories and
@@ -175,7 +175,7 @@ The response is per server: `externalElementsAdded`, `externalElementsUpdated`,
 
 ## Reading an element back
 
-All five below are *verified: 9.5.1 (стенд, 2026-09-10)* except the `PUT` row, which is
+All five below are *verified: 9.5.1 (live, 2026-09-10)* except the `PUT` row, which is
 *unverified: OpenAPI of the 9.5.1 server*.
 
 | Call | Gives |

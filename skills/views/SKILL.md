@@ -29,7 +29,7 @@ after a fix is safe.
 ### Derived view
 
 ```sql
--- verified: 9.5.1 (стенд, 2026-09-12)
+-- verified: 9.5.1 (live, 2026-09-17)
 CONNECT DATABASE sales_analytics;
 
 CREATE OR REPLACE VIEW iv_household_income
@@ -75,14 +75,14 @@ without one lands at the root of the database.
 - **Count the dimension before you join it.** `SELECT COUNT(*), COUNT(DISTINCT <business
   key>) FROM <dimension>` — a dimension that keeps history has several rows per business
   key, and joining on that key multiplies every figure in the mart with no error anywhere.
-  The demo `store` dimension is 12 rows for 6 stores, the demo `call_center` 6 rows for 3
-  centres; the fact carries the surrogate key, so join on that and project the business key
-  as a column, so the consumer can still roll up. **The tell is a pair of validity columns**
-  — `rec_start_date` / `rec_end_date` and a business key repeating under them — so a
-  `DESC VIEW` answers the question before the `COUNT` does.
+  In the sample data behind the templates the `store` dimension is 12 rows for 6 stores and
+  `call_center` 6 rows for 3 centres; the fact carries the surrogate key, so join on that
+  and project the business key as a column, so the consumer can still roll up. **The tell
+  is a pair of validity columns** — `rec_start_date` / `rec_end_date` and a business key
+  repeating under them — so a `DESC VIEW` answers the question before the `COUNT` does.
 - **`INNER` drops facts, and nobody is told.** The template joins `INNER` because its two
-  demo files match completely; real files do not — 10 062 of the 287 514 demo store returns
-  carry no store key at all, and 3 212 of the 71 763 web returns name no reason. Decide
+  sample files match completely; real files do not — 10 062 of the 287 514 sample store
+  returns carry no store key at all, and 3 212 of the 71 763 web returns name no reason. Decide
   which you want and record the decision in the `DESCRIPTION`:
   - the unmatched rows matter → `LEFT OUTER JOIN` from the fact, with a label for the
     group: `COALESCE(TRIM(r.reason_desc), '(reason not specified)')`. Two different things
@@ -98,8 +98,8 @@ without one lands at the root of the database.
   bare business name.
 - **Types an aggregate produces**, which you need the moment an interface view is declared
   over the mart: `COUNT` gives `long` (`DESC` prints it as `BIGINT`) and `AVG` over an
-  integer gives `double` — *verified: 9.5.1 (стенд, 2026-09-10)*; and **`SUM` over an `int`
-  column stays `int`** — *verified: 9.5.1 (стенд, 2026-09-12)*. The last one costs data,
+  integer gives `double` — *verified: 9.5.1 (live, 2026-09-10)*; and **`SUM` over an `int`
+  column stays `int`** — *verified: 9.5.1 (live, 2026-09-12)*. The last one costs data,
   not just a type: the sum accumulates in 32 bits,
   and past `2147483647` the server returns a **wrong number with no error and no warning**
   — stable across runs, so it reads like a real figure. Measured on a 68 636-row fact
@@ -109,25 +109,25 @@ without one lands at the root of the database.
   column — and only over an `int` one: `SUM(CAST('long', x))`.** Over a `decimal` measure
   the very same cast *is* the data loss: it truncates every row before the sum, and on a
   144 067-row money column it answered `183734747` against a true `183801994.51` — again
-  with no error and no warning — *verified: 9.5.1 (стенд, 2026-09-12)*. `DESC VIEW` names
+  with no error and no warning — *verified: 9.5.1 (live, 2026-09-12)*. `DESC VIEW` names
   the type; `decimal` and `double` measures need no cast at all.
   This is the one aggregate where casting the input is the fix —
   it is not one for `AVG`, and `AVG(TO_DECIMAL(x))` under a `GROUP BY` is rejected outright
   (see Common mistakes).
 - **What does work under `GROUP BY`**, so you do not route around it: `COUNT(DISTINCT x)`,
   and expressions over the grouped columns in the projection — `COALESCE(reason_sk, -1)`,
-  `TRIM(reason_desc)` — *verified: 9.5.1 (стенд, 2026-09-12)*. Only the aggregate-over-cast
+  `TRIM(reason_desc)` — *verified: 9.5.1 (live, 2026-09-12)*. Only the aggregate-over-cast
   form above is refused, and a mart that needs "returns" as well as "return lines" wants
   both `COUNT(DISTINCT ticket_number)` and `COUNT(*)`.
 - Attaching tags: `TAGS ( pii )` before the field properties for the whole view,
   `( email ( description = '…' ) TAGS ( pii ) )` for one column — both
-  *verified: 9.5.1 (стенд, 2026-09-10)*. The tag itself is `/denodo:catalog` and must
+  *verified: 9.5.1 (live, 2026-09-10)*. The tag itself is `/denodo:catalog` and must
   exist first.
 
 ### Interface view — a contract you can re-implement
 
 ```sql
--- verified: 9.5.1 (стенд, 2026-09-12)
+-- verified: 9.5.1 (live, 2026-09-17)
 CREATE OR REPLACE INTERFACE VIEW household_income (
         household_sk:int,
         income_band_sk:int,
@@ -144,7 +144,7 @@ CREATE OR REPLACE INTERFACE VIEW household_income (
 
 **Clause order is fixed and unforgiving: `( fields )` → `SET IMPLEMENTATION` → `FOLDER` →
 `DESCRIPTION`.** `SET IMPLEMENTATION` after `FOLDER` is
-`Syntax error: Exception parsing query near 'SET'` — *verified: 9.5.1 (стенд, 2026-09-10)*.
+`Syntax error: Exception parsing query near 'SET'` — *verified: 9.5.1 (live, 2026-09-10)*.
 
 Use an interface view when the *name and schema* have to survive a change of the thing
 underneath: a published data product, a consumer outside the team, a top-down design where
@@ -162,7 +162,7 @@ the rest of the machinery. Everything the consumer does not name belongs in `/02
 its columns differently, map them — the field list stays as it was:
 
 ```sql
--- verified: 9.5.1 (стенд, 2026-09-10)
+-- verified: 9.5.1 (live, 2026-09-10)
     SET IMPLEMENTATION iv_household_income_v2 (
         household_sk       = household_key,
         income_band_sk     = band_key,
@@ -195,7 +195,7 @@ not.
 ### Association — the relationship, recorded
 
 ```sql
--- verified: 9.5.1 (стенд, 2026-09-12)
+-- verified: 9.5.1 (live, 2026-09-17)
 CREATE OR REPLACE ASSOCIATION a_income_band_household REFERENTIAL CONSTRAINT
     FOLDER = '/06 - associations'
     ENDPOINT income_band bv_household_demographics (0,*)
@@ -223,7 +223,7 @@ household has exactly one band `(1)`.
 
 - **`REFERENTIAL CONSTRAINT` is what makes it a foreign key.** Without it, `PRINCIPAL` is
   accepted and silently ignored, and JDBC/ODBC clients never see the relationship —
-  *verified: 9.5.1 (стенд, 2026-09-10)*. Leave it out only for a link that is genuinely
+  *verified: 9.5.1 (live, 2026-09-10)*. Leave it out only for a link that is genuinely
   not a foreign key.
 - The `PRINCIPAL` endpoint must be `(1)` or `(0,1)`. Two `PRINCIPAL`s is
   `In a 1:N association, the principal endpoint must have multiplicity 1 or 0..1`.
@@ -235,7 +235,7 @@ household has exactly one band `(1)`.
   view is `The association endpoint role name 'x' already exists for the selected view`.
   Name roles after the other view and the clash tells you something real.
 - Endpoints may be interface views, base views, derived views, and may live in different
-  databases (`ENDPOINT band other_db.bv_income_band …`) — *verified: 9.5.1 (стенд,
+  databases (`ENDPOINT band other_db.bv_income_band …`) — *verified: 9.5.1 (live,
   2026-09-10)*. An association does not make joins implicit: a query still writes its own
   `ON`. What it changes is the catalog, and — for a `REFERENTIAL CONSTRAINT` — the foreign
   keys the JDBC and ODBC drivers report to clients.
@@ -247,7 +247,7 @@ household has exactly one band `(1)`.
 ### Types: the names invert between a declaration and a `CAST`
 
 The one thing here that costs attempts. A column *declaration* takes VQL type names; a
-`CAST` inside the SELECT takes SQL names — *verified: 9.5.1 (стенд, 2026-09-10)*:
+`CAST` inside the SELECT takes SQL names — *verified: 9.5.1 (live, 2026-09-10)*:
 
 | | declaring a column | `CAST(x AS …)` |
 |---|---|---|
@@ -266,7 +266,7 @@ can then be written in VQL names. Unchanged either way: `decimal`, `float`, `boo
 
 | Slot | Where it comes from |
 |---|---|
-| The views underneath | read them, do not assume: `vql desc --env lab --database <db> <view>` gives the exact column names and types. A misremembered column is the most common failure of the whole skill |
+| The views underneath | read them, do not assume: `vql desc --env dev --database <db> <view>` gives the exact column names and types. A misremembered column is the most common failure of the whole skill |
 | Grain of the result | the human — "per customer" or "per band" decides whether there is a `GROUP BY` and what the primary key is |
 | Which columns the consumer needs | the human. When the answer is "everything", say what everything is at the moment and let them cut |
 | Folder | `/02 - integration` for the joining and transforming layer, `/03 - business entities` for what consumers read, `/06 - associations` for associations — or `.denodo/conventions.md` if the project has one |
@@ -291,7 +291,7 @@ answers a different question and says nothing about the substitution.
 1. **Establish it, do not assume it.** Read every column of both sides — `vql desc`, or
    `SELECT column_name FROM GET_VIEW_COLUMNS() WHERE input_view_name = '<view>'` — then look
    for the attribute in the neighbouring objects, and check they can be joined to the same
-   key at all. In the demo data each returns file *is* a channel, but only the store one
+   key at all. In the sample data each returns file *is* a channel, but only the store one
    carries a store key, so "returns per store per channel" exists for one channel only, and
    no expression changes that.
 2. **Then choose, and write the choice into the `DESCRIPTION`:**
@@ -330,11 +330,11 @@ the reason this skill exists.** After applying, always:
 | **Is anything broken now** | `SELECT name, view_type, view_status FROM GET_VIEWS() WHERE input_database_name = '<db>' AND input_retrieve_invalid_views_only = true` — **empty is the only good answer.** `view_type` here is the same fact as `subtype` above in numbers: `0` base, `1` derived, `2` interface |
 | Does it carry rows | `SELECT * FROM <view> LIMIT 10`, and a count that can be checked against the input |
 | **Did the join keep every fact** | add the mart's row counters back up and compare with the fact it was built from: `SUM(<row count column>)` over the mart equals `COUNT(*)` of the input, minus exactly the rows you decided to drop. A join that quietly dropped the unmatched facts, or doubled them on a duplicated dimension key, passes every other check in this table |
-| Schema of the contract | `vql desc --env lab --database <db> <interface view>` — the columns the consumer sees |
+| Schema of the contract | `vql desc --env dev --database <db> <interface view>` — the columns the consumer sees |
 | **Which implementation is actually behind a contract** | `vql desc … <interface view> --vql` — plain `DESC` can never tell you: it shows the declared schema whatever is underneath. This is also how you prove a swap happened |
 | Nothing changed for the consumer | take the schema and a `SELECT … LIMIT n` through the contract **before** the change, keep them, and diff against the same two afterwards. That is the only claim the consumer cares about, and it is cheap to make checkable |
 | Are the associations still whole | `SELECT association_name, mappings, valid FROM GET_ASSOCIATIONS() WHERE input_database_name = '<db>' AND input_type = 'views'` — **`valid` must be `true`** |
-| One association in full | `vql desc --env lab --database <db> <name> --type association` — roles, multiplicities, mappings, principal side |
+| One association in full | `vql desc --env dev --database <db> <name> --type association` — roles, multiplicities, mappings, principal side |
 | Who depends on this view | `SELECT view_name, used_by_name, depth FROM USED_BY() WHERE input_view_database_name = '<db>' AND input_view_name = '<view>'` — run it **before** a change, not after |
 
 **Silent failure 1: a replaced view invalidates everything above it, without an error.**
@@ -342,7 +342,7 @@ the reason this skill exists.** After applying, always:
 interface view that used that column goes to `view_status = 'INVALID'` and every
 association that mapped it goes to `valid = false`. Nothing is reported at DDL time, the
 replaced view itself still selects fine, and the failure lands on whoever queries the
-dependant next — *verified: 9.5.1 (стенд, 2026-09-10)*. Adding a column is safe;
+dependant next — *verified: 9.5.1 (live, 2026-09-10)*. Adding a column is safe;
 restoring the column repairs the dependants automatically.
 
 **Silent failure 2: `SET IMPLEMENTATION` does not check the schema.** An implementation
@@ -350,7 +350,7 @@ whose column names do not match the interface's field list, or that is missing a
 entirely, is accepted by `CREATE OR REPLACE INTERFACE VIEW` without a word. `DESC` keeps
 showing the declared schema. Only `SELECT` fails, with a message that names nothing:
 `Error executing query. Total time 0.0 seconds. HOUSEHOLD_INCOME [INTERFACE] [ERROR]` —
-*verified: 9.5.1 (стенд, 2026-09-10)*. **A `SELECT` through the contract is part of
+*verified: 9.5.1 (live, 2026-09-10)*. **A `SELECT` through the contract is part of
 applying it**, every time, including a swap of the implementation.
 
 So the read-back after any change to something that already existed is: `USED_BY()`

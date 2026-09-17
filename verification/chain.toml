@@ -8,7 +8,7 @@
 # reachable. Design spec, section 11.1.
 #
 # The three file/database source steps share one predicate: the source they name does not
-# exist and is not meant to. A CSV path that is not on the stand, a JSON file that is not
+# exist and is not meant to. A CSV path that is not on the server, a JSON file that is not
 # either, a JDBC host that does not resolve — the parser accepts all three, and only a
 # SELECT would fail (spec 11.1). What the chain proves about them is that the DDL is
 # right; that data reads through them is what the fixture below and the derived views
@@ -37,7 +37,7 @@ tag_prefix = "verify_"
 # and the server validates the ciphertext at creation time ("error creating new data source:
 # Invalid encrypted value" for anything it did not encrypt itself). A real ciphertext is a
 # credential, and it only works on the server that made it — so the run makes its own, on the
-# stand it is about to write to, and throws it away with the run (commands/verify.py,
+# server it is about to write to, and throws it away with the run (commands/verify.py,
 # _encrypt_throwaways). The alternative — rewriting the template to a plaintext password and
 # dropping ENCRYPTED — needs no code and verifies less than the block claims.
 jdbc_password = "@encrypt-throwaway"
@@ -103,7 +103,7 @@ channel = "vql"
 address = "skills/datasources/SKILL.md#Delimited file (CSV) — DF"
 substitute = { sales_analytics = "{database}" }
 database = "{database}"
-# no check on rows: the file this template names does not exist on the stand, and that is
+# no check on rows: the file this template names does not exist on the server, and that is
 # the point — the parser accepts the DDL, only SELECT would fail (spec 11.1)
 check = "SELECT name FROM GET_ELEMENTS() WHERE input_database_name = '{database}' AND name = 'bv_crm_customers'"
 
@@ -115,7 +115,7 @@ address = "skills/datasources/SKILL.md#JSON file or endpoint"
 substitute = { sales_analytics = "{database}" }
 database = "{database}"
 # Same shape as df-source above and for the same reason: the file this block names does not
-# exist on the stand, so the check asks whether the objects were created, never whether they
+# exist on the server, so the check asks whether the objects were created, never whether they
 # read. The three CREATE TYPE statements are part of the predicate, not scaffolding — a
 # compound column cannot be declared inline, so a template that got them wrong would fail
 # here and nowhere else.
@@ -128,7 +128,7 @@ channel = "vql"
 address = "skills/datasources/SKILL.md#Relational database over JDBC[0]"
 substitute = { sales_analytics = "{database}", "<ciphertext — see Passwords below; fill it in before applying>" = "{jdbc_password}" }
 database = "{database}"
-# The host oracle-edw.internal is unreachable from the stand on purpose (design spec 11.1:
+# The host oracle-edw.internal is unreachable from the server on purpose (design spec 11.1:
 # the DDL parses without the source existing). The password is the one part that cannot be
 # faked — see jdbc_password above.
 check = "SELECT name FROM GET_ELEMENTS() WHERE input_database_name = '{database}' AND name = 'ds_orders_db'"

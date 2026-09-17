@@ -5,12 +5,12 @@ no Java and no JAR. **Requires the Denodo Enterprise or Enterprise Plus bundle**
 *Developing VQL Stored Procedures*) — the syntax is not the thing that fails on a server
 without it.
 
-Everything marked `verified` below was created and called on a 9.5.1 stand on 2026-09-12.
+Everything marked `verified` below was created and called on a 9.5.1 server on 2026-09-12.
 
 ## The statement
 
 ```sql
--- verified: 9.5.1 (стенд, 2026-09-12)
+-- verified: 9.5.1 (live, 2026-09-12)
 CREATE [OR REPLACE] VQL PROCEDURE <name>
     [ FOLDER = '<path>' ]
     ( <param> [IN|OUT|IN OUT] <type> [NULLABLE] [, <param> …] )
@@ -33,7 +33,7 @@ Java form, where `FOLDER` sits with the other clauses.
 
 The procedure has no `DESCRIPTION` clause. It belongs to the database it was created in;
 move it between folders with `ALTER FOLDER '/<target>' MOVE PROCEDURE <name>`
-(*verified: 9.5.1 (стенд, 2026-09-12)*), and drop it with `DROP PROCEDURE [IF EXISTS] <name>
+(*verified: 9.5.1 (live, 2026-09-12)*), and drop it with `DROP PROCEDURE [IF EXISTS] <name>
 [CASCADE]`.
 
 ## Parameters and types
@@ -42,7 +42,7 @@ move it between folders with `ALTER FOLDER '/<target>' MOVE PROCEDURE <name>`
 |---|---|
 | `IN` | passed in. **Mandatory unless `NULLABLE`** — without a value the call fails with `View without search methods: The following obligatory fields cannot be removed: <param>` |
 | `OUT` | returned through `RETURN ROW` |
-| `IN OUT` | both (*unverified: только по документации 9.5*) |
+| `IN OUT` | both (*unverified: 9.5 documentation only*) |
 
 Types: `BIGINT`, `DECIMAL`, `DOUBLE PRECISION`, `FLOAT`, `INT`, `INTEGER`, `NUMBER`,
 `NUMERIC`, `REAL`, `SMALLINT`; `CHAR`, `NCHAR`, `NVARCHAR`, `VARCHAR`; `DATE`, `TIMESTAMP`,
@@ -68,7 +68,7 @@ block with something in it.
 | DDL | `EXECUTE '<statement>' [PARAMETERS ( p ) VALUES ( v )] [ON DATABASE <name>];` |
 
 Three things about loops that the documentation does not say and Oracle habits get wrong —
-all three *verified: 9.5.1 (стенд, 2026-09-12)*:
+all three *verified: 9.5.1 (live, 2026-09-12)*:
 
 - **`FOR` bounds must be literals.** `FOR i IN 1 .. upto LOOP` with a parameter, or even a
   local variable, is `Syntax error: Exception parsing query near 'upto'`.
@@ -85,7 +85,7 @@ cursor below). A procedure without `RETURN ROW` is legal and returns zero rows.
 ## EXECUTE: DDL from inside a procedure
 
 ```sql
--- verified: 9.5.1 (стенд, 2026-09-12)
+-- verified: 9.5.1 (live, 2026-09-12)
 CREATE OR REPLACE VQL PROCEDURE p_params (n IN INTEGER, made OUT VARCHAR)
 AS (
     tmp VARCHAR;
@@ -109,7 +109,7 @@ stored happily and fails only when called — and the failure the client sees is
 ## Cursors: walking rows
 
 ```sql
--- verified: 9.5.1 (стенд, 2026-09-12)
+-- verified: 9.5.1 (live, 2026-09-12)
 CREATE OR REPLACE VQL PROCEDURE p_cursor (n OUT INTEGER, label OUT VARCHAR)
 AS (
     CURSOR rows_of_v IS 'SELECT n, label FROM v_rows';
@@ -129,7 +129,7 @@ END;
 - The query is a literal and **only `SELECT` is allowed** — no DDL, no `DESC`.
 - A parameterised cursor takes `:name` in the query and values at `OPEN`:
   `CURSOR c IS 'SELECT … WHERE x = :p'` … `OPEN c PARAMETERS (p) VALUES ('v')`
-  (*unverified: только по документации 9.5*).
+  (*unverified: 9.5 documentation only*).
 - `<cursor>%ROWTYPE` declares a row variable; fields are read as `row_of.<column>`.
 - `%NOTFOUND` is true once the cursor is exhausted, which is what ends the loop — and
   `EXIT WHEN` has to be the last command in it, so the row fetched last is returned before
@@ -139,7 +139,7 @@ END;
 ## Exceptions
 
 ```sql
--- verified: 9.5.1 (стенд, 2026-09-12)
+-- verified: 9.5.1 (live, 2026-09-12)
 CREATE OR REPLACE VQL PROCEDURE p_others (msg OUT VARCHAR)
 AS (
     tmp VARCHAR;
@@ -161,14 +161,14 @@ body in `WHEN OTHERS (e)` and returning `e.error_message` is the fastest way to 
 what actually broke.
 
 Own exceptions: declare `<name> EXCEPTION;` in `AS ( … )`, `RAISE <name>;` in the body,
-handle it in `WHEN <name> THEN` (*verified: 9.5.1 (стенд, 2026-09-12)* — both the raised
+handle it in `WHEN <name> THEN` (*verified: 9.5.1 (live, 2026-09-12)* — both the raised
 and the unraised path). `THROW <name>;` inside a handler rethrows it
-(*unverified: только по документации 9.5*).
+(*unverified: 9.5 documentation only*).
 
 ## Transactions
 
 `BEGIN_TRANSACTION;`, `COMMIT;`, `ROLLBACK;` inside the body
-(*unverified: только по документации 9.5*). The documented pattern is a transaction around
+(*unverified: 9.5 documentation only*). The documented pattern is a transaction around
 the writes with `EXCEPTION WHEN OTHERS THEN ROLLBACK;`.
 
 ## Comments and debugging
@@ -177,13 +177,13 @@ Inside a procedure, `--`, `#` and `//` start a line comment and `/** … **/` a 
 but only inside the declaration block or the body, never before the parameter list. They go
 to the server with the rest of the body and **the server does not keep them**:
 `DESC VQL PROCEDURE` prints the body normalised, without comments
-(*verified: 9.5.1 (стенд, 2026-09-12)*). Comment for the human reading the `.vql` file in
+(*verified: 9.5.1 (live, 2026-09-12)*). Comment for the human reading the `.vql` file in
 the repository, and do not expect the comment back from the server.
 
 Step-by-step logging, for a procedure that misbehaves in the middle:
 
 ```sql
--- unverified: только по документации 9.5
+-- unverified: 9.5 documentation only
 CALL LOGCONTROLLER('com.denodo.vdb.engine.storedprocedure.CommandExecutorVisitorImpl', 'DEBUG');
 ```
 

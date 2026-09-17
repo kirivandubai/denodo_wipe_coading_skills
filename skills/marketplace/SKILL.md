@@ -10,12 +10,12 @@ marketplace **tag**, the **category**, and the **external element** that represe
 from another tool. The channel is REST — `scripts/denodo api` — and the server is the one
 in `marketplace_url`, not the VDP port.
 
-A "tag" alone does not say which object the human means. A **VDP tag** is `CREATE TAG` on
-port 9996 and belongs to `/denodo:catalog`; a **marketplace tag** is `POST /public/api/tags`
-here. They are different objects on different servers, and a request sent to the wrong one
-succeeds — on the wrong side. When the request does not say, ask. Views themselves are
-`/denodo:views` and `/denodo:datasources`; applying anything is `/denodo:execute`; the safety
-rule and the working loop are `/denodo:vql`.
+A "tag" alone does not say which object the human means. A **VDP tag** is `CREATE TAG` in
+Virtual DataPort and belongs to `/denodo:catalog`; a **marketplace tag** is
+`POST /public/api/tags` here. They are different objects on different servers, and a request
+sent to the wrong one succeeds — on the wrong side. When the request does not say, ask.
+Views themselves are `/denodo:views` and `/denodo:datasources`; applying anything is
+`/denodo:execute`; the safety rule and the working loop are `/denodo:vql`.
 
 ## Two rules that govern everything below
 
@@ -27,13 +27,13 @@ missing or `PUT` if it is there. Two calls, every time, and the lookup is not op
 **2. Nothing can be attached to a view the marketplace has not synchronised.** The
 marketplace keeps its own copy of the VDP catalog. A view that exists in VDP but is not in
 that copy has no id, and `view-details` says so:
-`{"id": null, "inLocal": false, "inVDP": true}` — *verified: 9.5.1 (стенд, 2026-09-10)*.
+`{"id": null, "inLocal": false, "inVDP": true}` — *verified: 9.5.1 (live, 2026-09-10)*.
 Synchronise first (see the template), then assign.
 
 **But that answer has two causes, and they look identical.** A view queried against the
 *wrong* `serverId` returns exactly the same body — `id: null`, `inLocal: false`, and
 `inVDP: true` even from a server that never saw the database — and nothing in the response
-names the server it means — *verified: 9.5.1 (стенд, 2026-09-10)*. So before concluding
+names the server it means — *verified: 9.5.1 (live, 2026-09-10)*. So before concluding
 "needs synchronising", repeat the `view-details` call against the other registered servers:
 if one of them answers `inLocal: true`, you had the wrong id and nothing needs
 synchronising. Getting this backwards means changing a shared catalog to fix a query
@@ -52,12 +52,12 @@ else entirely:
 | `/public/api/external-tool-servers` | `403`, empty body |
 | `/public/api/category-management/…` | works — categories are not server-scoped |
 
-*verified: 9.5.1 (стенд, 2026-09-10).* Read the ids once:
+*verified: 9.5.1 (live, 2026-09-10).* Read the ids once:
 
 ```bash
-# verified: 9.5.1 (стенд, 2026-09-10)
-api get --env lab /public/api/configuration/servers
-# → [{"id":306,"name":"Demo Standard Default","url":"//localhost:9999/admin"}, …]
+# verified: 9.5.1 (live, 2026-09-10)
+api get --env dev /public/api/configuration/servers
+# → [{"id":306,"name":"<VDP server as registered>","url":"//<vdp-host>:9999/admin"}, …]
 ```
 
 **The id belongs in the profile, as `marketplace_server_id` — a human puts it there, not
@@ -82,30 +82,30 @@ that "does not exist".
 ### Tag, with an assignment
 
 ```bash
-# verified: 9.5.1 (стенд, 2026-09-10)
+# verified: 9.5.1 (live, 2026-09-10)
 
 # 1. does it exist? — the lookup that replaces CREATE OR REPLACE
-api get --env lab /public/api/tag-management/tags \
+api get --env dev /public/api/tag-management/tags \
     --param offset=0 --param limit=50 --param nameFilter=pii
 # → {"count":1,"elements":[{"id":627,"name":"pii_data", …}]}   ← NOT your tag
 
 # 2a. missing → create it
-api post --env lab /public/api/tags \
+api post --env dev /public/api/tags \
     --json '{"name":"pii","description":"Personal data, GDPR scope","descriptionType":"TEXT"}'
 # → {"id":627,"name":"pii","vdpTag":false, …}
 
 # 2b. present → update it, id and all four fields in the body
-api put --env lab /public/api/tags \
+api put --env dev /public/api/tags \
     --json '{"id":627,"name":"pii","description":"Personal data, GDPR scope","descriptionType":"TEXT"}'
 
 # 3. hang it on views, by marketplace view id
-api post --env lab /public/api/tags/627/views --json '[7484]'
+api post --env dev /public/api/tags/627/views --json '[7484]'
 # → []   ← empty list IS the success
 ```
 
 - **`nameFilter` is a case-insensitive *substring* match, so the lookup needs a second step:
   compare `name` yourself, exactly.** `nameFilter=pii` returns `pii_data`, and
-  `nameFilter=sensitive` returns a tag called `Sensitive` — *verified: 9.5.1 (стенд,
+  `nameFilter=sensitive` returns a tag called `Sensitive` — *verified: 9.5.1 (live,
   2026-09-10)*. Taking the first element and calling it yours is how a script ends up
   `PUT`-ing over somebody else's tag. A namesake differing only in case is a collision, not a
   match: creating the second one is `409`, so that case is a question for the human, not
@@ -121,7 +121,7 @@ api post --env lab /public/api/tags/627/views --json '[7484]'
   set. Use the first unless you mean to wipe what other people put there.
 - The response is the list of ids that were **not** assigned. `[]` is success; `[7484]`
   means "already assigned" **or** "no such view" — the two are indistinguishable, both come
-  back `200` — *verified: 9.5.1 (стенд, 2026-09-10)*. Read the assignment back.
+  back `200` — *verified: 9.5.1 (live, 2026-09-10)*. Read the assignment back.
 - **Anything that runs twice must read before it writes.** A second run of the same script
   hits an assignment that is already there and gets `[7484]` — which is neither the success
   the first run saw nor a failure worth stopping on. So check
@@ -135,21 +135,21 @@ api post --env lab /public/api/tags/627/views --json '[7484]'
 ### Category tree
 
 ```bash
-# verified: 9.5.1 (стенд, 2026-09-10)
-api post --env lab /public/api/category-management/categories \
+# verified: 9.5.1 (live, 2026-09-10)
+api post --env dev /public/api/category-management/categories \
     --json '{"name":"Consumer marts","description":"What analysts read","descriptionType":"TEXT"}'
 # → {"id":352,"parentId":null, …}
 
-api post --env lab /public/api/category-management/categories \
+api post --env dev /public/api/category-management/categories \
     --json '{"name":"Retail","description":"Retail marts","descriptionType":"TEXT","parentId":352}'
 
-api post --env lab /public/api/category-management/categories/352/views \
+api post --env dev /public/api/category-management/categories/352/views \
     --json '[7484,7485]'
 # → []
 ```
 
 Same lookup-first rule (`GET …/categories/tree`), same empty-list-is-success rule. Two
-differences from tags, both verified on 9.5.1 (стенд, 2026-09-10):
+differences from tags, both verified on 9.5.1 (live, 2026-09-10):
 
 - **Deleting a parent deletes its children.** No warning, no mention of them in the
   response, and the assignments go with them. Read the tree before you offer a delete.
@@ -162,20 +162,20 @@ Needed before any assignment to a view, and before an external element can name 
 at the radius first — the whole point of `changes` is that it costs nothing:
 
 ```bash
-# verified: 9.5.1 (стенд, 2026-09-12)
-api get --env lab /public/api/element-management/DATABASES/changes
-api get --env lab /public/api/element-management/VIEWS/changes
+# verified: 9.5.1 (live, 2026-09-17)
+api get --env dev /public/api/element-management/DATABASES/changes
+api get --env dev /public/api/element-management/VIEWS/changes
 # → {"serverElements":[…new…], "modifiedElements":[…], "localElements":[…gone from VDP…]}
 
-api post --env lab /public/api/element-management/DATABASES/synchronize \
+api post --env dev /public/api/element-management/DATABASES/synchronize \
     --json '{"proceedWithConflicts":"SERVER_WITH_LOCAL_CHANGES"}'
-api post --env lab /public/api/element-management/VIEWS/synchronize \
+api post --env dev /public/api/element-management/VIEWS/synchronize \
     --json '{"proceedWithConflicts":"SERVER_WITH_LOCAL_CHANGES"}'
 # → {"inserted":[…],"modified":[…],"removed":[…]}
 ```
 
 - **Both steps.** A new database registers with the first call and its views still have no
-  ids; only `VIEWS/synchronize` gives them ids — *verified: 9.5.1 (стенд, 2026-09-10)*.
+  ids; only `VIEWS/synchronize` gives them ids — *verified: 9.5.1 (live, 2026-09-10)*.
 - `proceedWithConflicts` decides what happens to descriptions that differ:
   `SERVER_WITH_LOCAL_CHANGES` takes VDP's but keeps edits made in the marketplace,
   `LOCAL` keeps the marketplace's, `SERVER` overwrites them. **Use the first**; `SERVER`
@@ -184,11 +184,11 @@ api post --env lab /public/api/element-management/VIEWS/synchronize \
   marketplace because VDP no longer has them. Non-empty means show the human before running.
 - **The radius is a reading, not a promise, and there is no scope.** `changes` describes the
   moment you asked; anything created between then and the call comes along too, and the call
-  cannot be narrowed to one database — it synchronises the whole server. On a shared stand
+  cannot be narrowed to one database — it synchronises the whole server. On a shared server
   that means other people's new views land in the catalog with yours. Re-read the response:
   `inserted` says what actually happened.
 - Cost on a catalog of ~600 views: `changes` about 1 s, `VIEWS/synchronize` about 1.4 s when
-  it inserts 10 and modifies none — *verified: 9.5.1 (стенд, 2026-09-10)*. It is not a
+  it inserts 10 and modifies none — *verified: 9.5.1 (live, 2026-09-10)*. It is not a
   long-running job at that size, but it is a change to a catalog everybody shares.
 - The user running it needs `METADATA` on the whole VDP catalog. Under a narrower account
   the marketplace treats what it cannot see as deleted and **removes it** —
@@ -201,21 +201,21 @@ reads an interface view in VDP and creates, updates and deletes elements to matc
 chain runs VQL and REST alternately, and the whole block below carries one verification mark.
 
 ```bash
-# verified: 9.5.1 (стенд, 2026-09-10) — the chain as a whole
+# verified: 9.5.1 (live, 2026-09-10) — the chain as a whole
 
 # 0. the views this element will link to must already be in the marketplace catalog
 #    (previous template) — otherwise step 4 fails and nothing is created
 
 # 1. provider type: the tool the metadata comes from. Multipart, but the icon is optional
-api post --env lab /public/api/external-providers-types \
+api post --env dev /public/api/external-providers-types \
     --part 'request=json:{"name":"ACME_BI","visualName":"Acme BI"}'
 # → 201 {"externalProviderTypeId":30,"iconImage":null, …}
 #   with a logo:  --part 'icon=@./acme.svg'
 #   the next call answers 200, this one 201 — check 2xx, never a particular code
-#   — verified: 9.5.1 (стенд, 2026-09-12)
+#   — verified: 9.5.1 (live, 2026-09-12)
 
 # 2. the server that will read the contract. The interface view need not exist yet
-api post --env lab /public/api/external-tool-servers \
+api post --env dev /public/api/external-tool-servers \
     --json '{"type":"CUSTOM","name":"acme_bi_server","description":"Acme BI dashboards",
              "externalProviderTypeId":30,
              "databaseName":"sales_analytics","viewName":"i_acme_bi_elements"}'
@@ -224,11 +224,11 @@ api post --env lab /public/api/external-tool-servers \
 # 3. ask the marketplace for the contract it expects. NOT a file to apply as it stands:
 #    the two CREATE TYPE come back usable verbatim, the interface view comes back
 #    without SET IMPLEMENTATION and without FOLDER — you write the implementation
-api get --env lab /public/api/external-tool-servers/217/vql-metadata
+api get --env dev /public/api/external-tool-servers/217/vql-metadata
 # → a JSON string: CONNECT DATABASE …; two CREATE TYPE; CREATE INTERFACE VIEW (columns only)
 
 # 4. import
-api post --env lab /public/api/external-tool-servers/synchronize \
+api post --env dev /public/api/external-tool-servers/synchronize \
     --json '{"externalToolServerIds":[217]}'
 # → externalElementsAdded / Updated / Deleted, per server
 ```
@@ -242,7 +242,7 @@ view is the whole picture and a row that stopped being selected is an element th
 removed with its tags and categories. Read the current set first and show the human what is
 about to disappear — the server's own elements are
 `POST /public/api/search/external-elements/metadata` with `externalToolServerIds: [<id>]`
-and the nine other mandatory fields — *verified: 9.5.1 (стенд, 2026-09-12)*.
+and the nine other mandatory fields — *verified: 9.5.1 (live, 2026-09-12)*.
 There is no `GET …/external-tool-servers/{id}/external-elements`: that path is `404`.
 None of this changes the tool: the call is stamped
 `destructive: replace` either way, and on a `production` profile it is refused without
@@ -256,7 +256,7 @@ up before creating it — a new type is a marketplace-wide object that everyone 
 | **Element type** — what the asset *is* | 24 | `GET /public/api/external-elements-types` | `DASHBOARD`, `REPORT`, `PIPELINE`, `DATA_CONTRACT`, `AI_AGENT`, `NOTEBOOK`, `ETL_JOB`, `QUALITY_RULE` |
 | **Provider type** — the tool it *comes from* | 28 | `GET /public/api/external-providers-types` | `AIRFLOW_PROVIDER`, `GITHUB_PROVIDER`, `TABLEAU`, `POWERBI`, `COLLIBRA_PROVIDER`, `DATABRICKS_PROVIDER`, `SNOWFLAKE_PROVIDER`, `JUPYTER_PROVIDER` |
 
-*verified: 9.5.1 (стенд, 2026-09-10).* **The provider listing carries every icon as base64
+*verified: 9.5.1 (live, 2026-09-10).* **The provider listing carries every icon as base64
 and weighs about 290 KB** — read it into a file and project
 `{externalProviderTypeId, name, visualName}` rather than letting it into the conversation.
 Step 1 of the chain above only applies when no built-in provider type fits; the same goes for the element type
@@ -274,7 +274,7 @@ after the tool, as below; do not rename them to `iv_…` to match the table.
 
 
 ```sql
--- verified: 9.5.1 (стенд, 2026-09-12)
+-- verified: 9.5.1 (live, 2026-09-17)
 CONNECT DATABASE sales_analytics;
 
 -- the two types come from vql-metadata verbatim. The names are part of the contract
@@ -322,7 +322,7 @@ CREATE OR REPLACE INTERFACE VIEW i_acme_bi_elements (
     FOLDER = '/02 - integration';
 ```
 
-Four things here are load-bearing, each verified on 9.5.1 (стенд, 2026-09-10):
+Four things here are load-bearing, each verified on 9.5.1 (live, 2026-09-10):
 
 - **`external_element_association_array_type` is the name the marketplace checks**, literally.
   Rename it and synchronisation refuses the whole server:
@@ -373,7 +373,7 @@ marketplace features with their own screens, not part of creating these objects.
   record in detail, element-to-element associations, what synchronisation adds, updates and
   deletes, and how to read `/details`.
 
-The stand is also its own reference: `GET /v3/api-docs` on the marketplace returns the whole
+The server is also its own reference: `GET /v3/api-docs` on the marketplace returns the whole
 OpenAPI document (375 paths on 9.5.1), which settles any path or body this skill does not
 cover.
 
@@ -394,8 +394,8 @@ other side where there is one.
 | Did the import create what you meant | the `synchronize` response names each element: `externalElementsAdded/Updated/Deleted` with `originalExternalElementId` |
 | Is the element visible to a consumer | `GET /public/api/external-elements/{id}/details` — type, server, url, and its lineage |
 | **Does the view show the element** | `GET /public/api/views/tree/external-elements/lineage?databaseName=…&viewName=…` — the question a human actually asked ("what consumes this?"), answered from the other end. The view node must resolve to `databaseName`/`viewName`, not stay a bare string |
-| Is it really gone | `GET` it: `404` is the answer you want. The tool reports that as `ok:false` and exit `1`, so a verification script must treat `404` as success here rather than stopping — *verified: 9.5.1 (стенд, 2026-09-10)* |
-| Which VDP tags are imported | `GET /public/api/tags/vdp/local` — a plain list of names. **Not** `inLocal` in `/tags/vdp/changes`: that flag means "a marketplace tag of this name exists", which is also true for an unrelated local tag — *verified: 9.5.1 (стенд, 2026-09-10)* |
+| Is it really gone | `GET` it: `404` is the answer you want. The tool reports that as `ok:false` and exit `1`, so a verification script must treat `404` as success here rather than stopping — *verified: 9.5.1 (live, 2026-09-10)* |
+| Which VDP tags are imported | `GET /public/api/tags/vdp/local` — a plain list of names. **Not** `inLocal` in `/tags/vdp/changes`: that flag means "a marketplace tag of this name exists", which is also true for an unrelated local tag — *verified: 9.5.1 (live, 2026-09-10)* |
 
 ## Common mistakes
 
@@ -416,7 +416,7 @@ other side where there is one.
 | rename the association array type | `400 INVALID_EXTERNAL_ELEMENT_INTERFACE_VIEW … expected type external_element_association_array_type` | keep the contract's names |
 | `LEFT OUTER JOIN` for elements without associations | `400 … Required field 'associated_element_id' is null` | `INNER JOIN` plus a `UNION ALL` branch with a NULL array |
 | drop an element from a non-empty snapshot | `200`, and the element is **deleted** with its tags and categories | that is the contract: the interface view is the full picture, not a delta |
-| empty the snapshot entirely to clear elements | `200`, nothing deleted | an empty result is treated as "no data", not "delete everything" — *verified: 9.5.1 (стенд, 2026-09-10)* |
+| empty the snapshot entirely to clear elements | `200`, nothing deleted | an empty result is treated as "no data", not "delete everything" — *verified: 9.5.1 (live, 2026-09-10)* |
 | `DELETE` an external tool server to tidy up | `200` | every element it imported disappeared with it, tags and categories included |
 
 Destructive here is decided by method and path, not by the word in it: `DELETE` of a

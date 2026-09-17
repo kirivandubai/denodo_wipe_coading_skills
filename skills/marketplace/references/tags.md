@@ -25,9 +25,9 @@ Everything here is REST against `marketplace_url`, and every call takes `serverI
 | Web services | `POST`/`DELETE /public/api/tags/{id}/webservices` | `[webserviceId]` | |
 | Tags a view may still get | `GET /public/api/elements/{viewId}/view/available-tags` | | |
 
-`descriptionType` is `TEXT` or `RICH_TEXT`; `RICH_TEXT` renders HTML in the marketplace UI,
-which is how the demo content carries formatted descriptions. All of the above is
-*verified: 9.5.1 (стенд, 2026-09-10)* except `delete-multiple`, the webservice endpoints and
+`descriptionType` is `TEXT` or `RICH_TEXT`; `RICH_TEXT` renders HTML in the marketplace UI.
+All of the above is
+*verified: 9.5.1 (live, 2026-09-10)* except `delete-multiple`, the webservice endpoints and
 `available-tags`, which are *unverified: OpenAPI of the 9.5.1 server*.
 
 ## Importing VDP tags — the most destructive call in this skill
@@ -46,24 +46,24 @@ VDP tags can be copied into the marketplace, where they become read-only mirrors
 **The body is the complete set of imported tags, not an addition.** Every imported tag whose
 name is absent from that list is deleted, together with what it carried. The UI hides this by
 ticking the previously imported tags for you; the API has no such default —
-*unverified here: the destruction itself was verified during spike T11 on the 9.5.1 stand of
-2026-09-08, and this stand's demo content was not spent re-proving it.* The safe form:
+*verified: 9.5.1 (live, 2026-09-08) — the deletion was observed once and is
+deliberately not re-proven on every run, because it costs existing tags.* The safe form:
 
 ```bash
-# verified: 9.5.1 (стенд, 2026-09-10) — reading the list; the POST is the human's call
-api get --env lab /public/api/tags/vdp/local --param serverId=306
+# verified: 9.5.1 (live, 2026-09-10) — reading the list; the POST is the human's call
+api get --env dev /public/api/tags/vdp/local
 # → ["business_views","customers", …]     ← send these back plus the new one
 ```
 
-Two traps around it, both *verified: 9.5.1 (стенд, 2026-09-10)*:
+Two traps around it, both *verified: 9.5.1 (live, 2026-09-10)*:
 
 - **`inLocal` in `/changes` does not mean "imported".** It means a marketplace tag of that
-  name exists — including an unrelated local one. On this stand `sensitive` reports
-  `inLocal: true, nameConflict: true` while `/tags/vdp/local` does not list it, because a
-  separate marketplace tag `Sensitive` exists. Names collide case-insensitively. **What the
-  import then does with the local namesake — refuse it, replace it, merge into it — is
-  *unverified*:** finding out costs someone else's tag, so ask the human whether to rename
-  one of the two first.
+  name exists — including an unrelated local one. On the server used for verification,
+  `sensitive` reported `inLocal: true, nameConflict: true` while `/tags/vdp/local` did not
+  list it, because a separate marketplace tag `Sensitive` existed. Names collide
+  case-insensitively. **What the import then does with the local namesake — refuse it,
+  replace it, merge into it — is *unverified*:** finding out costs someone else's tag, so
+  ask the human whether to rename one of the two first.
 - **An imported tag brings its VDP assignments, and no more.** A VDP tag assigned to nothing
   arrives in the marketplace empty, which usually is not what the request meant. Check
   `GET_VIEW_TAGS()` in VDP (`/denodo:catalog`) before importing, and if the tag is bare, the
@@ -80,4 +80,4 @@ call: this one you cannot check, only re-read afterwards.
 
 An imported tag rejects every change with `403` and an empty body: `PUT`, assignment,
 unassignment. `DELETE` answers `500 "Incorrect number of deleted tuples"` and the tag stays.
-Change it in VDP instead (`/denodo:catalog`) — *T11 report, 9.5.1 stand of 2026-09-08*.
+Change it in VDP instead (`/denodo:catalog`) — *verified: 9.5.1 (live, 2026-09-08)*.
