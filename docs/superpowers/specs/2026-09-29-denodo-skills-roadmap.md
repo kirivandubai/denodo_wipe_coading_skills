@@ -50,6 +50,22 @@ set of statements the agent emits, so these should be closed first.
 
 ### 2.1 The safety classifier misses state-changing statements
 
+**Owner review: P1, narrowed (see section 11).** The refusal acts only on a profile with
+`production = true`; on a development profile `destructive` is informational. A text
+classifier can never be complete — a wrapper with side effects is invisible in the statement —
+and most of the list below is emitted only after a skill teaches it. So:
+
+- **Now:** the server-wide `SET '<property>' = …` (quoted form only; the unquoted session form
+  stays harmless) and `INSERT` / `UPDATE` / `MERGE` — what an agent writes from memory without
+  any skill.
+- **Rule for everything else:** a skill that teaches a state-changing statement or procedure
+  extends the classifier in the same PR.
+- **Criterion for "destructive"** (closes the open question in `docs/TASKS.md`): the statement
+  changes state outside the agent's own project — server settings, data in sources, objects
+  of other databases, global objects. `CREATE` in the agent's own database is not destructive.
+
+The original finding follows.
+
 `scripts/denodo_cli/safety.py` classifies VQL by its leading keyword (`DROP`, `ALTER`,
 `DELETE`, `TRUNCATE`) and by nine procedure names (T20). The documentation describes many more
 operations that change state while looking harmless:
@@ -86,6 +102,8 @@ operations that change state while looking harmless:
 
 ### 2.2 `DESC VQL` without options emits destructive VQL
 
+**Owner review: dropped (see section 11).** The skills already say "read it, do not apply it" (`execute/SKILL.md`, `views/references/derived.md`), and agents use `DESC VQL` as a syntax reference, which relies on the default `includeDependencies`. Safe export options matter only when the output is applied elsewhere — that belongs to `deploy` (item 10), if it stays. The original finding follows.
+
 `vql desc --vql` sends `DESC VQL <KIND> <name>` without options
 (`scripts/denodo_cli/commands/vql.py`). The documented defaults are
 `'dropElements' = 'yes'` (a `DROP … CASCADE` before every `CREATE`),
@@ -99,6 +117,8 @@ Source: `vdp/vql/describing_catalog_elements/describing_catalog_elements`,
 
 ### 2.3 Transactions are ignored on the transport
 
+**Owner review: dropped (see section 11).** The transport runs in autocommit, and `execute/SKILL.md` already states that statements before `failed_at` stay applied and nothing is rolled back. The original finding follows.
+
 Port 9996 is the ODBC interface of Virtual DataPort. By default it ignores `BEGIN`, `COMMIT`,
 `ROLLBACK`, `SAVEPOINT` and `RELEASE`, so a batch of DDL applied through psycopg2 is not atomic
 and a rollback undoes nothing. Enabling transactions is a server-wide `SET` that affects every
@@ -106,6 +126,8 @@ ODBC client. This belongs in the core skill as a stated fact.
 Source: `vdp/developer/access_through_odbc/integration_with_third-party_applications/disabling_transactions`.
 
 ### 2.4 Secrets appear in more statements than data sources
+
+**Owner review: no separate item (see section 11).** Every statement listed below arrives with a skill that does not exist yet (HTTP sources, `security`, `publish`). The first skill that teaches a secret without an `ENCRYPTED` form brings the `@{secret:<name>}` substitution in the same scope — the same rule as for the classifier in 2.1. Substitution protects git, not the transcript: the tool echoes executed statements and `DESC VQL` prints headers back, so output redaction is part of that scope. The original finding follows.
 
 Passwords and keys also appear in `CREATE/ALTER USER`, `CONNECT USER … PASSWORD`,
 `DEPLOY WEBSERVICE … PASSWORD`, `AUTHENTICATION BASIC`, `CREATE DATABASE … VCS … PASSWORD`,
@@ -117,6 +139,8 @@ optional. Credentials vault clauses (`VAULT_SECRET`, `FROM_VAULT`, `CREDENTIALS_
 the platform-native alternative where a vault is configured.
 
 ### 2.5 Smaller core additions
+
+**Owner review (see section 11):** `HELP` — kept if a live check shows it answers over the transport, then one line in `vql` next to the `DESC VQL` rule; the admin flag in `env check` — decided together with `security` (item 13); identifier conventions — dropped, rows go to `execute/references/errors.md` when an agent actually trips on them; feature renames — a convention in `CONTRIBUTING.md` (done), not a task. The original list follows.
 
 - `HELP <command>` returns the server's own syntax for a statement — a better source than memory
   when a template is missing.
@@ -651,3 +675,22 @@ Assistant, Solution Manager environment modelling.
 Each new skill or description change goes through the eval suite (`evals/`): at least `dialect`
 versus `views`, `connectors` versus `datasources`, and `semantics` versus `marketplace` will
 compete for the same phrases.
+
+---
+
+## 11. Owner review log
+
+The owner went through this roadmap item by item, starting 2026-09-29. One line per decision;
+the sections above are edited to match. Section 10 (build order) is rebuilt once the review is
+complete.
+
+| Item | Decision | Reason |
+|---|---|---|
+| 2.1 safety classifier | P0 → P1, narrowed | The guard refuses only on production profiles, and a text classifier is never complete. Now only what an agent writes without any skill (server `SET '…'`, `INSERT`/`UPDATE`/`MERGE`); every later skill extends the classifier with what it teaches |
+| 2.2 `DESC VQL` options | dropped | Already covered by "read it, do not apply it" in `execute` and `views`; changing the defaults would break `DESC VQL` as a syntax reference. Safe export options go with `deploy`, if it stays |
+| 2.3 transactions | dropped | `execute` already says nothing is rolled back after `failed_at`; the transport is autocommit anyway |
+| 2.4 secrets | no separate item | Each case comes with a skill not yet written; the first skill that needs a secret without `ENCRYPTED` brings the substitution (and output redaction) with it |
+| 2.5 `HELP` | pending a live check | Useful only if it answers over ODBC; then one line in `vql`. Not checked yet: the server was not reachable |
+| 2.5 admin flag in `env check` | moved to `security` | Matters only for admin-only procedures and security restrictions |
+| 2.5 identifier conventions | dropped | Mostly covered by `vql` naming and `errors.md`; the rest is a loud error the agent fixes itself |
+| 2.5 feature renames | convention, done | One sentence in `CONTRIBUTING.md` on descriptions |
