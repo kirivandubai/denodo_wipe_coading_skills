@@ -160,10 +160,10 @@ the platform-native alternative where a vault is configured.
 
 | # | Skill | Kind | Priority | Frequency | Necessity | Channel |
 |---|---|---|---|---|---|---|
-| 1 | `dialect` | new | P1 | daily | blocker (silent wrong data) | VQL |
-| 2 | `views` | extension | P1 | daily | important | VQL |
-| 3 | `lineage` | new | P1 | daily–weekly | important | VQL, read only |
-| 4 | `datasources` (HTTP, JDBC depth, drift) | extension | P1 | weekly | blocker for REST sources | VQL |
+| 1 | `dialect` → `vql/references/dialect.md` | reference, not a skill | P1 | daily | blocker (silent wrong data) | VQL |
+| 2 | `views` (unions, partitioned unions, `FLATTEN`/`NEST`) | extension | P1 | daily | important | VQL |
+| 3 | `lineage` → additions to `views` | extension, not a skill | P2 | daily–weekly | important | VQL, read only |
+| 4 | `datasources`: route non-v1 sources to Design Studio | change of an existing skill | P1 | weekly | important | none — UI for the human |
 | 5 | `performance` | new | P1 | weekly | important | VQL |
 | 6 | `cache` | new | P1 | weekly | important | VQL |
 | 7 | `semantics` | new | P1 | weekly | important (AI consumers) | VQL + Marketplace REST |
@@ -175,8 +175,8 @@ the platform-native alternative where a vault is configured.
 | 13 | `security` | new | P2 | episodic | important for production | VQL |
 | 14 | `metrics` | new | P2 | episodic, growing | nice → important | VQL |
 | 15 | `materialize` | new | P2 | episodic | important | VQL |
-| 16 | `connectors` | new | P2 | episodic | important per project | VQL (+ JAR upload) |
-| 17 | `datasources` (files) | extension | P2 | episodic | important per project | VQL |
+| 16 | ~~`connectors`~~ — dropped, Design Studio (item 4) | — | — | — | — | — |
+| 17 | ~~`datasources` (files)~~ — dropped, Design Studio (item 4) | — | — | — | — | — |
 | 18 | `lakehouse` | new | P2 | episodic | important on Enterprise Plus | VQL |
 | 19 | `dbt` | new | P2 | daily for dbt teams, else never | important for dbt teams | local `dbt` over the same port |
 | 20 | `deploy` (Solution Manager) | extension | P2 | per release | important where SM is used | new Solution Manager REST profile |
@@ -184,7 +184,7 @@ the platform-native alternative where a vault is configured.
 | 22 | `dml` | new | P3 | episodic | nice | VQL |
 | 23 | `marketplace` (governance) | extension | P3 | episodic | nice | Marketplace REST |
 | 24 | `listeners` | new | P3 | rare | nice | VQL + broker |
-| 25 | `sap` | new | P3 | rare | important for SAP shops | VQL + host install |
+| 25 | ~~`sap`~~ — dropped, Design Studio (item 4) | — | — | — | — | — |
 | 26 | `extensions` | new | P3 | rare | nice | local Java build + JAR |
 | 27 | `clients` | new | P3 | episodic | nice | client code only |
 | 28 | `vcs` | fork inside `deploy` | P3 | weekly where used | nice | VQL, discouraged by Denodo |
@@ -194,6 +194,8 @@ the platform-native alternative where a vault is configured.
 ## 4. P1 skills
 
 ### 4.1 `dialect` (new) — VQL expressions versus standard SQL
+
+**Owner review: P1, a reference, not a skill (see section 11).** A skill triggers on the user's phrase, and nobody says "mind the VQL dialect": the user asks for a mart, `views` fires, and a separate `dialect` would load only through a cross-reference — which makes it a reference file anyway, while its description would compete with `views`. Shape: `vql/references/dialect.md` with every delta verified by `SELECT … FROM Dual()`, plus a short table of the 8–10 most dangerous silent deltas in the body of `vql` or `views` (dates, substrings, NULL in aggregates, `CAST`, the `SUM` overflow); the two rows now in `views/SKILL.md` move there. The original proposal follows; its "Shape" paragraph is superseded.
 
 **Scope.** Functions and operators where VQL differs from what a model guesses from PostgreSQL
 or Oracle: text, dates and intervals, NULL handling, aggregates and window functions, compound
@@ -247,6 +249,8 @@ database — no external source needed. Only the delegation-dependent ones need 
 
 ### 4.2 `views` (extension)
 
+**Owner review: P1, kept whole except `INTERSECT`/`MINUS` (see section 11).** Scope to add: both union semantics, partitioned unions with branch pruning, `FLATTEN` and `NEST` (a real gap inside v1: `datasources` already builds a JSON base view with an `ARRAY OF` field and nothing shows how to turn it into rows), `CONTEXT('formatted' = 'yes')`. Already in `views` and not to be redone: primary key and description on every view, `USING PARAMETERS`, and the dependants check (`USED_BY()` before, `GET_VIEWS(… invalid only)` after — "Silent failure 1"). The original proposal follows.
+
 **Scope added:** the two union semantics (SQL `UNION` versus Denodo's extended union that
 matches by name and pads with NULL), partitioned unions and branch pruning, flatten and `NEST`,
 `INTERSECT`/`MINUS` (by name; there is no `EXCEPT`), view parameters, primary keys and
@@ -264,6 +268,8 @@ does not — the agent has to find and update dependents itself (see `lineage`).
 
 ### 4.3 `lineage` (new) — impact analysis before a change
 
+**Owner review: P2, no skill — additions to `views` (see section 11).** `views` already runs `USED_BY()` before a change and `GET_VIEWS(… invalid only)` after, and `procedures` documents the whole dependency family; a separate skill would compete with both for the same phrases. To add to `views`: column level (`COLUMN_DEPENDENCIES`) next to `USED_BY`, the privilege and `LIKE` pitfalls after a live check, and the phrases "what uses this view / can I drop this column / where does this field come from" in its description (eval suite). Web service and cache dependants are added by the skill that introduces them. The original proposal follows.
+
 **Scope.** Read-only: `USED_BY`, `VIEW_DEPENDENCIES`, `COLUMN_DEPENDENCIES`,
 `GET_PUBLIC_VIEW_DEPENDENCIES`, which web services publish a view, which cache loads depend on
 it. Triggered by "what uses this view", "can I drop this column", and implicitly before any
@@ -280,6 +286,14 @@ dependency propagation gap in `views`.
 **Docs.** `vdp/vql/stored_procedures/predefined_stored_procedures/{used_by,view_dependencies,column_dependencies,get_public_view_dependencies,get_cache_load_view_dependencies}`.
 
 ### 4.4 `datasources` (extension) — HTTP sources, JDBC depth, schema drift
+
+**Owner review: none of the extensions; the skill routes to Design Studio instead (see section 11).** The rule for `datasources`:
+
+1. The verified v1 templates — delimited file, JSON file, JDBC table — stay: the agent creates those over VQL.
+2. Everything beyond them — REST APIs, a base view from a SQL query or a database procedure, schema drift, Excel, XML, Salesforce, custom wrappers and every other source type — the skill recommends creating in Design Studio; the agent then reads what was created (`DESC VQL`) and continues from there.
+3. Base views: the agent creates them where it works; when creation does not succeed straight away, it stops iterating and sends the human to Design Studio.
+
+What becomes of the `unverified` HTTP, `SQLSENTENCE` and credential sections already in `references/json.md` and `references/jdbc.md` is decided in the task that adds the routing. The same decision drops items 16 (`connectors`), 17 (`datasources` files) and 25 (`sap`). The original proposal follows.
 
 **Scope added:**
 
@@ -518,6 +532,8 @@ All of it writes to an external database.
 
 ### 5.4 `connectors` (new)
 
+**Owner review: dropped — created in Design Studio (item 4, section 11).**
+
 Non-JDBC, non-file sources in one skill with a reference per type:
 
 - **Native:** Salesforce (OAuth only; Bulk API only through VQL), MongoDB/DocumentDB, SOAP
@@ -541,6 +557,8 @@ table) are different objects.
 the Denodo Connects custom wrapper manuals.
 
 ### 5.5 `datasources` (extension) — files
+
+**Owner review: dropped — created in Design Studio (item 4, section 11).**
 
 XML (XPath `TUPLEROOT`), Excel (a custom source internally; no grammar in the documentation —
 take the template from `DESC VQL` of a sample), compressed and encrypted files, SFTP, fixed width,
@@ -649,8 +667,8 @@ Assistant, Solution Manager environment modelling.
 
 ## 9. Decisions needed from the owner
 
-1. **Bring the dialect skill back.** This reverses the T13 conclusion that `query` is not needed
-   (section 4.1 gives the reasons). Name to choose: `dialect`, `sql` or the original `query`.
+1. ~~**Bring the dialect skill back.**~~ **Decided:** no skill; a verified reference in `vql`
+   plus a short table of silent deltas (section 4.1, section 11).
 2. **Extend the "write only to your own database" invariant.** It does not cover global objects
    (users, roles, global security policies, VDP tags, JARs, maps, server `SET`) or writes to
    external databases (cache, remote tables, summaries, data movement). Without an extension,
@@ -694,3 +712,8 @@ complete.
 | 2.5 admin flag in `env check` | moved to `security` | Matters only for admin-only procedures and security restrictions |
 | 2.5 identifier conventions | dropped | Mostly covered by `vql` naming and `errors.md`; the rest is a loud error the agent fixes itself |
 | 2.5 feature renames | convention, done | One sentence in `CONTRIBUTING.md` on descriptions |
+| 1 `dialect` (and decision 9.1) | P1, reference in `vql` instead of a skill | Nobody triggers a dialect skill by phrase; it would load only by cross-reference and compete with `views`. The silent deltas are real (T13 `SUM` overflow, T19 `decimal`), so they are kept — verified on `Dual()` |
+| 2 `views` extension | P1, whole scope minus `INTERSECT`/`MINUS` | Union semantics, partitioned unions and `FLATTEN`/`NEST` are wanted; set operations are not. PK, descriptions, parameters and the dependants check are already in `views` |
+| 3 `lineage` | P2, additions to `views` instead of a skill | View-level impact is already in `views` and the procedure family in `procedures`; only column level and two pitfalls are missing |
+| 4 `datasources` extension | dropped; the skill routes non-v1 sources to Design Studio | The verified v1 templates stay with the agent; everything beyond them is faster and safer in the Design Studio wizard. Base views: the agent where it works, Design Studio when it does not work straight away |
+| 16 `connectors`, 17 files, 25 `sap` | dropped | Consequence of item 4: every data source type beyond v1 goes to Design Studio |
