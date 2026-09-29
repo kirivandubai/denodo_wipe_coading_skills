@@ -164,12 +164,12 @@ the platform-native alternative where a vault is configured.
 | 2 | `views` (unions, partitioned unions, `FLATTEN`/`NEST`) | extension | P1 | daily | important | VQL |
 | 3 | `lineage` → additions to `views` | extension, not a skill | P2 | daily–weekly | important | VQL, read only |
 | 4 | `datasources`: route non-v1 sources to Design Studio | change of an existing skill | P1 | weekly | important | none — UI for the human |
-| 5 | `performance` | new | P1 | weekly | important | VQL |
-| 6 | `cache` | new | P1 | weekly | important | VQL |
-| 7 | `semantics` | new | P1 | weekly | important (AI consumers) | VQL + Marketplace REST |
+| 5 | `performance` → delegation check in `views` | extension, not a skill | P1 | weekly | important | VQL |
+| 6 | `cache` (FULL only for now) | new | P1 | weekly | important | VQL |
+| 7 | `semantics` (VDP half: audit and fill) | new | P1 | weekly | important (AI consumers) | VQL |
 | 8 | `marketplace` (safe sync) | extension | P1 | weekly | important | Marketplace REST |
-| 9 | `testing` | new | P1 | weekly | important | VQL (new `scripts/denodo test`) |
-| 10 | `deploy` | new | P1 | weekly / per release | important | VQL |
+| 9 | `testing` (`.denodotest` + Testing Tool) | new | P2 | weekly | important | local Testing Tool over JDBC |
+| 10 | ~~`deploy`~~ — dropped | — | — | — | — | — |
 | 11 | `publish` | new | P1 | weekly–episodic | blocker for serving apps | VQL + new HTTP profile |
 | 12 | `scheduler` | new | P1 | weekly | blocker for scheduled work | new Scheduler REST profile |
 | 13 | `security` | new | P2 | episodic | important for production | VQL |
@@ -179,7 +179,7 @@ the platform-native alternative where a vault is configured.
 | 17 | ~~`datasources` (files)~~ — dropped, Design Studio (item 4) | — | — | — | — | — |
 | 18 | `lakehouse` | new | P2 | episodic | important on Enterprise Plus | VQL |
 | 19 | `dbt` | new | P2 | daily for dbt teams, else never | important for dbt teams | local `dbt` over the same port |
-| 20 | `deploy` (Solution Manager) | extension | P2 | per release | important where SM is used | new Solution Manager REST profile |
+| 20 | ~~`deploy` (Solution Manager)~~ — dropped with item 10 | — | — | — | — | — |
 | 21 | `ai` | new | P3 | episodic | nice | VQL |
 | 22 | `dml` | new | P3 | episodic | nice | VQL |
 | 23 | `marketplace` (governance) | extension | P3 | episodic | nice | Marketplace REST |
@@ -187,7 +187,7 @@ the platform-native alternative where a vault is configured.
 | 25 | ~~`sap`~~ — dropped, Design Studio (item 4) | — | — | — | — | — |
 | 26 | `extensions` | new | P3 | rare | nice | local Java build + JAR |
 | 27 | `clients` | new | P3 | episodic | nice | client code only |
-| 28 | `vcs` | fork inside `deploy` | P3 | weekly where used | nice | VQL, discouraged by Denodo |
+| 28 | ~~`vcs`~~ — dropped with item 10 | — | — | — | — | — |
 
 ---
 
@@ -328,6 +328,8 @@ authentication and can serve as a fixture for HTTP sources without internet acce
 
 ### 4.5 `performance` (new) — why is this query slow
 
+**Owner review: P1, narrowed to a delegation check in `views` (see section 11).** The vibe-coding risk is a mart over a JDBC source that silently stops being delegated because of one function the source cannot run: correct rows, minutes instead of seconds in production. Today neither `views` nor `datasources` checks delegation. To add: one row in the `views` verification table — for a view over JDBC read `GET_DELEGATED_SQLSENTENCE` or `DESC QUERYPLAN`, confirm the join and the aggregate reached the source whole, and name the blocking function to the human when they did not; first confirm live that both answer over the transport. Tuning — statistics, the cost-based optimizer, join hints, data movement — is dropped: expert work with an execution trace in Design Studio, partly server-wide `SET`, and a wrong flag returns wrong data. The original proposal follows.
+
 **Scope.** `DESC QUERYPLAN`, `GET_DELEGATED_SQLSENTENCE`, reasons for non-delegation, join
 methods and hints, statistics and the cost-based optimizer, partitioned-union pruning, data
 movement, the Lakehouse Accelerator as an execution engine for what the source cannot run.
@@ -346,6 +348,8 @@ the transport.
 `vdp/vql/defining_the_statistics_of_a_view/defining_the_statistics_of_a_view`.
 
 ### 4.6 `cache` (new)
+
+**Owner review: P1, a separate skill from the start, FULL cache only (see section 11).** The skill exists now so that it can grow later without moving text between skills. First scope: turn a FULL cache on and off for a view, fill it with what the human says (the whole view or a filter they chose — the `WHERE` of a preload is a decision, not a default), and clear the cache tables. PARTIAL, time to live, incremental loads, indexes and scheduled refresh are out for now. The silent pitfalls below that apply to FULL are the core of the skill; `cache_invalidate` goes into the classifier in the same PR (rule from 2.1). Working assumption for verification: the cache of the agent's own views counts as its own objects (section 9, decision 2). The original proposal follows.
 
 **Scope.** `ALTER VIEW | TABLE … CACHE PARTIAL [EXACT] [PRELOAD] | FULL | OFF`, time to live,
 preload and invalidation through `CONTEXT`, incremental loads (`@LAST_REFRESH_DATE`), cache
@@ -369,6 +373,8 @@ configured cache. Cache writes go to an external database — see section 9, dec
 `vdp/vql/advanced_characteristics/using_the_cache/*`.
 
 ### 4.7 `semantics` (new) — make views understandable to people and AI
+
+**Owner review: P1, a separate skill, VDP half only (see section 11).** New views already get a description and a primary key from `views`; the gap is an audit of what already exists. Scope: walk a database, find views without a description, field descriptions, primary key, associations or the MCP visibility tag, and fill them in. Descriptions are derived from the data (a profile of the values), never invented from a column name, and the human approves them before they are written. Triggers: "describe these views", "prepare for AI / MCP", "why does the agent not see this view". The marketplace half (logical names, property groups, sync pitfalls) comes later as a `marketplace` extension. The original proposal follows.
 
 **Scope.** View and field descriptions, primary keys, associations, the VDP tag that controls
 MCP Server visibility, Data Marketplace logical names and property groups with the
@@ -398,6 +404,8 @@ and "Denodo AI SDK" manuals.
 
 ### 4.8 `marketplace` (extension) — safe synchronisation
 
+**Owner review: P1, as proposed (see section 11).** The agent carries the metadata of a renamed or recreated view over to its new element through REST. Starts with a spike on the server's OpenAPI: find how elements are matched during synchronisation. If the API has no such call, fall back to a warning in `views` before the rename and a pointer to the synchronisation dialog of the marketplace UI — and bring that back to the owner. Today `marketplace` already stops on a non-empty `localElements`, so the loss is not silent, but the human is not told that the "removed" element is the same view under its old name. The original proposal follows.
+
 **Scope.** Renaming or recreating a view that already exists in the marketplace. Synchronisation
 sees a rename as a deletion plus a new element; tags, categories, descriptions, custom properties
 and endorsements of the old element are lost unless the elements are matched (in the UI this is a
@@ -410,6 +418,8 @@ marketplace" to `marketplace` first.
 **Docs.** `vdp/data_catalog/administration/synchronize/synchronize`.
 
 ### 4.9 `testing` (new) — regression tests for data products
+
+**Owner review: P2, Denodo's format run by the real Testing Tool (see section 11).** The skill writes `.denodotest` files next to the project's `.vql` and runs them with the Denodo Testing Tool itself; no runner of our own in `scripts/`. The checks `views` already makes at creation time are the natural first tests. `configuration.properties` holds credentials, so it is generated outside the repository — how exactly (from the environment profile, without the password entering a command line) is part of the task. The original proposal follows; its lightweight-runner option is not taken.
 
 **Scope.** Tests in the Denodo Testing Tool format (`.denodotest`: `%EXECUTION[query]`,
 `%RESULTS[data|csv|query|exception]`, `%CONTEXT`, `%SETUP`/`%TEARDOWN`), kept in the project next
@@ -429,6 +439,8 @@ model does not know the format at all.
 **Docs.** Denodo Connects "Denodo Testing Tool" manual.
 
 ### 4.10 `deploy` (new) — move a data product between environments
+
+**Owner review: dropped entirely (see section 11).** Not taken in any form — neither promotion between environments nor exporting objects made in Design Studio into the project. The same decision drops item 20 (Solution Manager branch) and item 28 (`vcs`), and with them the safe export options left over from 2.2. The original proposal follows.
 
 **Scope.** Export with safe options (section 2.2) and `'includeProperties' = 'yes'`,
 environment properties files (`databases.<db>.datasources.jdbc.<ds>.DATABASEURI` and similar),
@@ -588,6 +600,8 @@ with `@LAST_REFRESH_DATE`; `insert_overwrite`, `delete_insert` and `microbatch` 
 
 ### 5.8 `deploy` — Solution Manager branch
 
+**Owner review: dropped with item 10 (section 11).**
+
 Solution Manager REST (port 10090, stateless, Basic): `POST /revisions/loadFromVQL` →
 `POST /revisions/{id}/validate` → `POST /deployments` → poll `GET /deployments/{id}/progress`,
 with `vdpProperties`/`schProperties`. Revisions "from selected elements" (with Scheduler jobs)
@@ -717,3 +731,9 @@ complete.
 | 3 `lineage` | P2, additions to `views` instead of a skill | View-level impact is already in `views` and the procedure family in `procedures`; only column level and two pitfalls are missing |
 | 4 `datasources` extension | dropped; the skill routes non-v1 sources to Design Studio | The verified v1 templates stay with the agent; everything beyond them is faster and safer in the Design Studio wizard. Base views: the agent where it works, Design Studio when it does not work straight away |
 | 16 `connectors`, 17 files, 25 `sap` | dropped | Consequence of item 4: every data source type beyond v1 goes to Design Studio |
+| 5 `performance` | P1, delegation check in `views` only | Silent loss of push-down is the real risk of a generated mart; tuning is expert work for Design Studio and the administrator |
+| 6 `cache` | P1, separate skill now, FULL cache only | A skill of its own so it can grow; first scope is on/off, fill with what the human names, clear the cache tables. Other cache settings wait |
+| 7 `semantics` | P1, separate skill, VDP half only | Existing databases need an audit the per-view rules in `views` never run; descriptions come from the data and are approved by the human. Marketplace half later |
+| 8 `marketplace` safe sync | P1, as proposed | Carry tags, categories and descriptions of a renamed view over through REST; spike on the OpenAPI first, fallback to a warning plus the UI dialog only if the API cannot do it |
+| 9 `testing` | P2, Denodo format run by the real Testing Tool | Tests stay compatible with the tool teams run in CI; no runner of our own to maintain |
+| 10 `deploy`, 20 Solution Manager, 28 `vcs` | dropped | Moving between environments and bringing objects into git are not part of the plugin |
