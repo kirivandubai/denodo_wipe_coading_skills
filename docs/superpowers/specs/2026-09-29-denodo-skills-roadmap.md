@@ -170,9 +170,9 @@ the platform-native alternative where a vault is configured.
 | 8 | `marketplace` (safe sync) | extension | P1 | weekly | important | Marketplace REST |
 | 9 | `testing` (`.denodotest` + Testing Tool) | new | P2 | weekly | important | local Testing Tool over JDBC |
 | 10 | ~~`deploy`~~ — dropped | — | — | — | — | — |
-| 11 | `publish` | new | P1 | weekly–episodic | blocker for serving apps | VQL + new HTTP profile |
-| 12 | `scheduler` | new | P1 | weekly | blocker for scheduled work | new Scheduler REST profile |
-| 13 | `security` | new | P2 | episodic | important for production | VQL |
+| 11 | ~~`publish`~~ — dropped | — | — | — | — | — |
+| 12 | `scheduler` — later, separate skill | new | later | weekly | — | new Scheduler REST profile |
+| 13 | `security` (basic actions) | new | P2, this round | episodic | important for production | VQL |
 | 14 | `metrics` | new | P2 | episodic, growing | nice → important | VQL |
 | 15 | `materialize` | new | P2 | episodic | important | VQL |
 | 16 | ~~`connectors`~~ — dropped, Design Studio (item 4) | — | — | — | — | — |
@@ -461,6 +461,8 @@ export with properties is possible — worth stating in `vql` and `datasources` 
 
 ### 4.11 `publish` (new) — serve data to applications
 
+**Owner review: dropped (see section 11).** Neither custom web services nor pointing consumers at the always-on RESTful, OData and GraphQL services. The original proposal follows.
+
 **Scope.** `CREATE REST WEBSERVICE` (and SOAP as a second path), authentication, CORS,
 `DEPLOY`/`REDEPLOY`/`UNDEPLOY`, `WEBCONTAINER_ELEMENT_STATUS`; readiness of views for the
 always-on OData 4, GraphQL and RESTful services (primary keys, associations, names, privileges);
@@ -478,6 +480,8 @@ and XML; RESTful URLs are case-sensitive.
 `vdp/administration/publication_of_web_services/*`, `vdp/administration/restful_architecture/*`.
 
 ### 4.12 `scheduler` (new) — scheduled work
+
+**Owner review: not now; a separate skill later (see section 11).** Nothing is taken in this round — no spike, no transport, no pointer from `cache`. When it comes back it is a skill of its own, and the notes below are its starting point.
 
 **Scope.** Jobs: Simple and DAG Cache Management ("refresh the cache every night"), Data Loader,
 Individual Query with CSV, Excel or JDBC exporters ("export this mart"), time-based triggers,
@@ -507,6 +511,8 @@ or database reloads other teams' caches. 9.5 has no ARN or JDBC job types.
 
 ### 5.1 `security` (new)
 
+**Owner review: a basic skill in this round, details later (see section 11).** Not much more than the basic actions to start with: put a tag on an element, assign a role, create a global security policy. The exact scope is set when the task is taken. It brings forward two decisions from section 9 — global objects under the "own objects only" rule, and a second, non-admin profile to verify that a policy actually restricts — and the admin flag in `env check` from 2.5. A precedent for the first already exists: the verification chain creates server-level objects under the `verify_` prefix and removes them by id. The original proposal follows.
+
 Roles and users, privileges, row and column restrictions with masking, global security policies
 by tag, `CHOWN`, verification through `CONNECT USER`.
 **Pitfalls:** there is no standalone `GRANT … TO` statement — privileges are clauses of
@@ -524,6 +530,8 @@ second, non-admin profile. It rises to P1 if the audience includes data-product 
 `vdp/administration/databases_users_and_access_rights_in_virtual_dataport/*`.
 
 ### 5.2 `metrics` (new)
+
+**Owner review: P2, a separate skill (see section 11).** Not a reference inside `views` and not part of `semantics`. Its description must go through the eval suite against `views` and `semantics`, which will compete for "define a metric" and "semantic layer".
 
 Metric views, new in 9.5: `CREATE METRIC VIEW`, `EVALUATE_METRIC`, dimensions and metrics,
 associations and cardinalities as prerequisites. At least one dimension is required; conditions
@@ -737,3 +745,7 @@ complete.
 | 8 `marketplace` safe sync | P1, as proposed | Carry tags, categories and descriptions of a renamed view over through REST; spike on the OpenAPI first, fallback to a warning plus the UI dialog only if the API cannot do it |
 | 9 `testing` | P2, Denodo format run by the real Testing Tool | Tests stay compatible with the tool teams run in CI; no runner of our own to maintain |
 | 10 `deploy`, 20 Solution Manager, 28 `vcs` | dropped | Moving between environments and bringing objects into git are not part of the plugin |
+| 11 `publish` | dropped | Serving data to applications is not part of the plugin, in either form |
+| 12 `scheduler` | later, a separate skill | Not in this round at all; when it returns it is its own skill, starting from section 4.12 |
+| 13 `security` | basic skill in this round, scope set when taken | Tag an element, assign a role, create a global security policy — little more than that at first; details later |
+| 14 `metrics` | P2, separate skill | A metric view is a new object the model does not know at all; its own skill rather than a reference in `views` |
