@@ -89,7 +89,10 @@ Order and dependencies belong in the skill too: an agent has to know
 the entire basis on which the right skill gets chosen, it has a budget of 1536 characters
 in the listing, and it should carry both trigger phrasings and an explicit "not for X —
 that is /denodo:Y" line. Any edit to a `description` — however cosmetic — means running
-the eval suite; see below.
+the eval suite; see below. A feature renamed in 9.x goes into the description under both
+names, because users say the old one and the 9.5 documentation the new one: Data Catalog →
+Data Marketplace, Cache → Materialization, Embedded MPP → Lakehouse Accelerator, VDPCache
+job → Simple Cache Management, Reference Lineage → 360 Graph.
 
 ## The `verified:` mark
 
