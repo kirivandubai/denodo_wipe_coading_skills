@@ -1,7 +1,7 @@
 # Denodo 9.5 skills roadmap: what to build after v1
 
 **Date:** 2026-09-29
-**Status:** proposal — priorities are a recommendation, the decisions in section 9 are open
+**Status:** reviewed by the owner item by item (section 11); section 10 is the build order that follows from it
 **Basis:** a full read of the Denodo 9.5 documentation; complements the
 [design spec](2026-09-04-denodo-skills-design.md) and the [v1 scope](2026-09-04-denodo-v1-scope.md)
 
@@ -43,10 +43,10 @@ here is a hypothesis until a template carries a `verified:` mark.
 
 ---
 
-## 2. P0 — fix the core before adding skills
+## 2. Gaps in the core — no P0 left after the review
 
-These are not new skills but gaps in `execute` and `vql`. Every new domain skill widens the
-set of statements the agent emits, so these should be closed first.
+These are not new skills but gaps in `execute` and `vql`. The owner review took none of them
+as P0: 2.1 became a narrowed P1, the rest were dropped or attached to later skills.
 
 ### 2.1 The safety classifier misses state-changing statements
 
@@ -177,16 +177,16 @@ the platform-native alternative where a vault is configured.
 | 15 | `materialize` | new | P2 | episodic | important | VQL |
 | 16 | ~~`connectors`~~ — dropped, Design Studio (item 4) | — | — | — | — | — |
 | 17 | ~~`datasources` (files)~~ — dropped, Design Studio (item 4) | — | — | — | — | — |
-| 18 | `lakehouse` | new | P2 | episodic | important on Enterprise Plus | VQL |
-| 19 | `dbt` | new | P2 | daily for dbt teams, else never | important for dbt teams | local `dbt` over the same port |
+| 18 | ~~`lakehouse`~~ — dropped | — | — | — | — | — |
+| 19 | ~~`dbt`~~ — dropped | — | — | — | — | — |
 | 20 | ~~`deploy` (Solution Manager)~~ — dropped with item 10 | — | — | — | — | — |
-| 21 | `ai` | new | P3 | episodic | nice | VQL |
-| 22 | `dml` | new | P3 | episodic | nice | VQL |
-| 23 | `marketplace` (governance) | extension | P3 | episodic | nice | Marketplace REST |
-| 24 | `listeners` | new | P3 | rare | nice | VQL + broker |
+| 21 | `ai` | new | P2, this round | episodic | nice | VQL |
+| 22 | `dml` | new | P2, this round | episodic | nice | VQL |
+| 23 | ~~`marketplace` (governance)~~ — dropped | — | — | — | — | — |
+| 24 | ~~`listeners`~~ — dropped | — | — | — | — | — |
 | 25 | ~~`sap`~~ — dropped, Design Studio (item 4) | — | — | — | — | — |
-| 26 | `extensions` | new | P3 | rare | nice | local Java build + JAR |
-| 27 | `clients` | new | P3 | episodic | nice | client code only |
+| 26 | ~~`extensions`~~ — dropped | — | — | — | — | — |
+| 27 | ~~`clients`~~ — dropped | — | — | — | — | — |
 | 28 | ~~`vcs`~~ — dropped with item 10 | — | — | — | — | — |
 
 ---
@@ -533,6 +533,8 @@ second, non-admin profile. It rises to P1 if the audience includes data-product 
 
 **Owner review: P2, a separate skill (see section 11).** Not a reference inside `views` and not part of `semantics`. Its description must go through the eval suite against `views` and `semantics`, which will compete for "define a metric" and "semantic layer".
 
+**Owner's rule for the skill:** the only thing built on top of a metric view is a selection view; facts and dimensions are joined to that selection view, never to the metric view itself. To be confirmed live like every other rule before it carries a `verified:` mark.
+
 Metric views, new in 9.5: `CREATE METRIC VIEW`, `EVALUATE_METRIC`, dimensions and metrics,
 associations and cardinalities as prerequisites. At least one dimension is required; conditions
 on metrics go to `HAVING` and on dimensions to `WHERE`; sorting only by projected fields; no data
@@ -542,6 +544,8 @@ lineage. The model does not know this object at all. Could fold into `semantics`
 `vdp/data_catalog/metric_views/*`.
 
 ### 5.3 `materialize` (new)
+
+**Owner review: P2, a separate skill, scope as proposed (see section 11).** Remote tables write to a source database with `DROP` and `TRUNCATE` inside, so the skill needs the second half of section 9, decision 2 — writes to external databases — and brings `CREATE [OR REPLACE] REMOTE TABLE` and remote-table `REFRESH` into the classifier (rule from 2.1).
 
 Remote tables (`CREATE REMOTE TABLE` does not create a base view, unlike the wizard; editing is a
 drop; `REFRESH` truncates), materialized tables, summaries (Enterprise Plus, server admin;
@@ -588,6 +592,8 @@ S3/ADLS/HDFS/GCS routes.
 
 ### 5.6 `lakehouse` (new)
 
+**Owner review: dropped (see section 11).**
+
 Parquet, Iceberg and Delta Lake through the Lakehouse Accelerator (Embedded MPP): a JDBC data
 source of type `EMBEDDED_MPP`, `DISCOVER_OBJECT_STORAGE_MPP_PROCEDURE`, statistics, partitions,
 Iceberg snapshots and maintenance. Delta Lake is read-only; Iceberg UPDATE/MERGE needs format v2
@@ -598,6 +604,8 @@ Enterprise Plus only; without an MPP cluster and object storage the templates st
 `vdp/administration/embedded_parallel_processing/*`, `mpp/*`.
 
 ### 5.7 `dbt` (new)
+
+**Owner review: dropped (see section 11).**
 
 The Denodo dbt adapter (Denodo 9.4+, over the same port 9996) as an alternative authoring path:
 `view` → view, `table` → view with full cache, `incremental` → full cache with append/merge
@@ -628,22 +636,35 @@ queries and queues new ones — downtime on a single-node production. Default of
 - **`ai`** — LLM functions (`CLASSIFY_AI`, `SUMMARIZE_AI`, `TRANSLATE_AI` …), the `vector` type,
   `EMBED_AI`, `VECTOR_DISTANCE`, `DENODO_ASSISTANT_GENERATE_*` procedures. Enterprise Plus; every
   row costs money; LLM configuration is UI only. Could live as a reference inside `dialect`.
+  **Owner review: taken in this round, a skill of its own.** First check whether the server has
+  an LLM configured; the skill never runs an AI function over a table without a `LIMIT` the
+  human agreed to, because every row is a paid call.
 - **`dml`** — `INSERT`/`UPDATE`/`DELETE` through views, `RETURNING`, `WITH CHECK OPTION`. Writes
   to sources; rarely a developer task.
+  **Owner review: taken in this round, a skill of its own.** The safety side (writes to source
+  databases, section 9 decision 2) is settled later; the classifier already flags
+  `INSERT`/`UPDATE` by decision 2.1.
 - **`marketplace` (governance)** — deprecation, warnings, endorsements, workflow requests, saved
   queries, metadata search, marketplace metadata export/import between environments.
+  **Owner review: dropped.**
 - **`listeners`** — JMS and Kafka listeners; client JARs on the host; a listener executes any VQL
   arriving from the queue.
+  **Owner review: dropped.**
 - **`sap`** — BAPI, BW/BI, Essbase, OLAP; needs SAP JCo installed on the server host.
+  **Owner review: dropped with item 4 (Design Studio).**
 - **`extensions`** — Java custom functions, wrappers, input filters, view policies; local build
   plus JAR upload.
+  **Owner review: dropped.**
 - **`clients`** — connecting applications: JDBC (`jdbc:denodo://`, the `jdbc:vdb://` form is
   deprecated), ODBC, Arrow Flight SQL, SQLAlchemy, Spark, Hibernate, Power BI.
+  **Owner review: dropped.**
 - **`vcs`** — a fork inside `deploy`. Denodo explicitly discourages running the VCS commands
   manually or from CI/CD; workspaces (9.2) are the relevant new feature.
+  **Owner review: dropped with item 10.**
 - **Instructions for a human, not automation:** SaaS wizards (Marketo, GA4, Dynamics BC,
   SharePoint — mostly OAuth authorization-code flows in a browser) and governance bridges
   (Collibra, Purview, OpenLineage, IGC — separate services configured on their own host).
+  **Owner review: covered by item 4** — source wizards are Design Studio's job.
 
 ---
 
@@ -691,38 +712,44 @@ Assistant, Solution Manager environment modelling.
 
 1. ~~**Bring the dialect skill back.**~~ **Decided:** no skill; a verified reference in `vql`
    plus a short table of silent deltas (section 4.1, section 11).
-2. **Extend the "write only to your own database" invariant.** It does not cover global objects
-   (users, roles, global security policies, VDP tags, JARs, maps, server `SET`) or writes to
-   external databases (cache, remote tables, summaries, data movement). Without an extension,
-   `security`, `publish`, `cache` and `materialize` cannot be verified on a shared server.
-   Options: a reserved prefix for test objects plus mandatory cleanup, a dedicated server, or
-   9.2 workspaces if the transport accepts the `workspace` connection parameter (to check).
-3. **A second, non-admin profile in the transport**, required to verify `security` and any
-   privilege-dependent behaviour honestly.
+2. **Extend the "write only to your own database" invariant.** Split by the review into three
+   parts, each settled inside the task that needs it:
+   - *the cache of the agent's own views* — counted as its own objects; working assumption
+     taken with `cache` (item 6);
+   - *global objects* (roles, users, global security policies, VDP tags) — settled in the
+     `security` task (item 13); the verification chain's `verify_` prefix plus removal by id is
+     the existing precedent;
+   - *writes to external databases* (remote tables, materialized tables, writes through views)
+     — settled with `materialize` (item 15) and `dml` (item 22); the owner put the safety of
+     `dml` after the skill itself.
+   `publish` no longer needs it — dropped.
+3. **A second, non-admin profile in the transport** — settled in the `security` task (item 13),
+   together with the admin flag in `env check` (2.5).
 
 ---
 
-## 10. Suggested build order
+## 10. Build order after the owner review
 
 | Wave | Content | Why this order |
 |---|---|---|
-| 0 | Section 2: safety classifier, safe `DESC VQL`, transactions note, secret placeholders | every later skill emits more statements |
-| 1 | `dialect`, `views` extension, `lineage`, `datasources` extension, `performance`, `cache` | VQL only, verifiable on the current server with file fixtures |
-| 2 | `semantics` + marketplace safe sync, `testing`, `deploy`, `publish` | one new HTTP profile; `testing` protects later waves |
-| 3 | `scheduler` (spike first), `security` (non-admin profile), `metrics` | new transport and new invariant decisions |
-| 4 | remaining P2 by demand, then P3 | narrow audiences, harder verification |
+| 0 | Classifier: server `SET '…'` and `INSERT`/`UPDATE`/`MERGE` (2.1); `datasources` routes non-v1 sources to Design Studio (item 4); `vql/references/dialect.md` with a live `HELP` check (item 1, 2.5) | changes to existing skills and the core that every later skill relies on |
+| 1 | `views`: union semantics, partitioned unions, `FLATTEN`/`NEST` (item 2); `views` checks: delegation (item 5) and column-level dependencies (item 3) | one existing skill, VQL only, file fixtures on the current server |
+| 2 | New VQL skills: `cache`, FULL only (item 6); `semantics`, VDP half (item 7); `metrics` (item 14) | VQL only; `metrics` stands on the associations `views` already builds |
+| 3 | `marketplace`: carry metadata of a renamed view over (item 8), spike on the OpenAPI first | REST on the existing marketplace transport |
+| 4 | `security`, basic actions (item 13); `ai` (item 21); `dml` (item 22); `materialize` (item 15); `testing` with the Testing Tool (item 9) | each needs a decision or an installation first: global objects and a second profile, an LLM on the server, writes to external databases, the Testing Tool |
+| later | `scheduler` as a separate skill (item 12) | not in this round |
 
-Each new skill or description change goes through the eval suite (`evals/`): at least `dialect`
-versus `views`, `connectors` versus `datasources`, and `semantics` versus `marketplace` will
-compete for the same phrases.
+Dropped: 2.2, 2.3, items 10, 11, 16–20, 23–28; 2.4 has no item of its own. Every new skill or
+description change goes through the eval suite (`evals/`); the pairs most likely to compete are
+`semantics` versus `views` and `marketplace`, `metrics` versus `views` and `semantics`, `cache`
+versus `views`, and `dml` versus `views`.
 
 ---
 
 ## 11. Owner review log
 
 The owner went through this roadmap item by item, starting 2026-09-29. One line per decision;
-the sections above are edited to match. Section 10 (build order) is rebuilt once the review is
-complete.
+the sections above are edited to match, and section 10 (build order) was rebuilt from the result.
 
 | Item | Decision | Reason |
 |---|---|---|
@@ -749,3 +776,11 @@ complete.
 | 12 `scheduler` | later, a separate skill | Not in this round at all; when it returns it is its own skill, starting from section 4.12 |
 | 13 `security` | basic skill in this round, scope set when taken | Tag an element, assign a role, create a global security policy — little more than that at first; details later |
 | 14 `metrics` | P2, separate skill | A metric view is a new object the model does not know at all; its own skill rather than a reference in `views` |
+| 14 `metrics` (addition) | rule recorded | Only selection views are built on a metric view; other facts and dimensions are joined to the selection view |
+| 15 `materialize` | P2, separate skill | Remote tables, materialized tables, summaries and data movement in one skill of their own, not folded into `cache` |
+| 18 `lakehouse` | dropped | Enterprise Plus with an MPP cluster, nothing to verify it on, and connecting the source is Design Studio's job after item 4 |
+| 19 `dbt` | dropped | A competing authoring path to the plugin's own `.vql` loop, useful only to dbt teams |
+| 21 `ai` | this round, separate skill | Taken at once; check the server's LLM configuration first, never an unbounded AI call over a table |
+| 22 `dml` | this round, separate skill | Taken at once; the safety of writes to sources is settled later |
+| 23, 24, 26, 27 | dropped | Marketplace governance, listeners, Java extensions and client code are not part of the plugin |
+| Section 6, instructions for a human | covered by item 4 | SaaS source wizards and governance bridges are Design Studio or their own hosts |
