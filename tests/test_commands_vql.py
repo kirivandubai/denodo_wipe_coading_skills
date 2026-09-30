@@ -105,6 +105,23 @@ class RunStatementsTest(unittest.TestCase):
         self.assertEqual(doc["error"]["destructive"][0]["kind"], "procedure")
         self.assertEqual(FakeTransport.instances, [])
 
+    def test_server_setting_and_source_write_on_production_are_refused(self):
+        doc, code = self.run_it(
+            ["SET 'com.denodo.restfulws.vdbUri' = NULL", "UPDATE v SET a = 1 WHERE b = 2"],
+            profile_over={"production": True},
+        )
+        self.assertEqual(code, 2)
+        self.assertEqual(doc["error"]["kind"], "refused")
+        self.assertEqual([d["kind"] for d in doc["error"]["destructive"]], ["setting", "write"])
+        self.assertEqual(FakeTransport.instances, [])
+
+    def test_session_settings_on_production_run_without_flag(self):
+        _, code = self.run_it(
+            ["SET QUERYTIMEOUT TO 60000", "ALTER SESSION SET 'querytimeout' = '60000'"],
+            profile_over={"production": True},
+        )
+        self.assertEqual(code, 0)
+
     def test_non_destructive_on_production_runs_without_flag(self):
         _, code = self.run_it(["SELECT 1 FROM DUAL()"], profile_over={"production": True})
         self.assertEqual(code, 0)

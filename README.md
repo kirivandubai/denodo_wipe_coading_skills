@@ -154,7 +154,8 @@ This plugin gets installed on production servers, so the rules are conservative 
 default:
 
 - **Creating a new object** the agent does on its own. **`DROP`, `ALTER` of an existing
-  object, and anything at all on a profile marked `production = true`** require your
+  object, writes into sources (`INSERT`, `UPDATE`), server-wide settings (`SET '<property>'`),
+  and anything at all on a profile marked `production = true`** require your
   explicit confirmation — that is a standing rule the skills follow on every server.
   Underneath it, the execution layer adds a hard stop that does not depend on the agent
   reading its instructions: on a `production = true` profile a destructive statement is

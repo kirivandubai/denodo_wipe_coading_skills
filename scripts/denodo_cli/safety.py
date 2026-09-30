@@ -1,9 +1,16 @@
-"""Classify operations that destroy or overwrite existing objects.
+"""Classify operations that destroy or overwrite existing objects, or change state outside
+the agent's own project.
 
 The execution layer does not decide whether an operation is allowed — that is the
 core skill's job (design spec, section 6.3). It only makes the classification explicit:
 every result carries ``destructive``, and on a profile marked ``production = true`` a
 destructive operation is refused unless ``--allow-destructive`` is passed.
+
+Destructive means: it destroys or overwrites something that exists (a text classifier cannot
+tell whose object it is, so every ``DROP`` and ``ALTER`` counts), or it changes state outside
+the agent's own project — server settings, data in sources, objects of other databases,
+global objects. ``CREATE`` of a new object is not. The classifier is a deny list and never
+complete; a skill that teaches a state-changing statement extends it in the same change.
 
 VQL is classified by its leading keyword, and then by the name of the procedure it calls:
 the predefined procedures that change state (``DROP_REMOTE_TABLE``, ``CLEAN_CACHE_DATABASE``,
@@ -24,7 +31,22 @@ _VQL_KINDS = {
     "ALTER": "alter",
     "DELETE": "delete",
     "TRUNCATE": "delete",
+    # a write through a view changes the data in the source behind it; VQL has no MERGE,
+    # its merge is INSERT … ON DUPLICATE KEY UPDATE
+    "INSERT": "write",
+    "UPDATE": "write",
+    # SET '<property>' = … rewrites VDBConfiguration.properties of the whole server;
+    # WEBCONTAINER sets, stops, starts or reloads the embedded web container
+    "SET": "setting",
+    "WEBCONTAINER": "setting",
 }
+# Forms that start with one of the keywords above but only touch the caller's session or
+# only read: the ODBC connection settings (SET QUERYTIMEOUT TO …), ALTER SESSION, and
+# WEBCONTAINER STATUS. Any other SET counts as a server setting.
+_HARMLESS_FORMS = re.compile(
+    r"SET\s+[A-Za-z_][A-Za-z0-9_]*\s+TO\b|ALTER\s+SESSION\b|WEBCONTAINER\s+STATUS\b",
+    re.IGNORECASE,
+)
 
 # Predefined procedures that change state although they are invoked like a read. A deny
 # list, not an allow list: ``GET_ELEMENTS()``, ``DUAL()`` and the other hundred readers
@@ -73,14 +95,15 @@ _REPLACING_POSTS = (
 
 
 def classify_vql(statement: str) -> str | None:
-    """``"drop"``, ``"alter"``, ``"delete"`` for destructive statements, ``"procedure"`` for
-    a call of a predefined procedure that changes state, else ``None``."""
+    """``"drop"``, ``"alter"``, ``"delete"`` for destructive statements, ``"write"`` for a
+    write into a source, ``"setting"`` for a change of server configuration, ``"procedure"``
+    for a call of a predefined procedure that changes state, else ``None``."""
     body = _LEADING_NOISE.sub("", statement, count=1)
     match = re.match(r"([A-Za-z_]+)", body)
     if not match:
         return None
     kind = _VQL_KINDS.get(match.group(1).upper())
-    if kind:
+    if kind and not _HARMLESS_FORMS.match(body):
         return kind
     for call in _PROCEDURE_CALL.finditer(body):
         if call.group(1).upper() in STATE_CHANGING_PROCEDURES:

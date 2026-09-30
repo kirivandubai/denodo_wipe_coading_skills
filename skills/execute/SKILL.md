@@ -133,7 +133,15 @@ encrypt --env dev` — which keeps the plaintext out of the terminal as well.
 
 ### Destructive operations
 
-`DROP`, `ALTER`, `DELETE`, `TRUNCATE`; a `SELECT … FROM name(…)` or `CALL name(…)` of a
+A statement is destructive when it destroys or overwrites something that exists, or changes
+state outside your own project: server settings, data in sources, objects of other databases,
+global objects. `CREATE` of a new object is not. The tool cannot tell whose object a `DROP`
+or `ALTER` hits, so it flags every one.
+
+`DROP`, `ALTER`, `DELETE`, `TRUNCATE`; `INSERT` and `UPDATE` (a write through a view lands in
+the source behind it — `INSERT … ON DUPLICATE KEY UPDATE` included, VQL has no `MERGE`); the
+server-wide `SET '<property>' = …` (it rewrites the configuration of the whole server, `= NULL`
+deletes the property) and `WEBCONTAINER` except `STATUS`; a `SELECT … FROM name(…)` or `CALL name(…)` of a
 predefined procedure that changes state — `GENERATE_STATS`, `CREATE_REMOTE_TABLE`,
 `DROP_REMOTE_TABLE`, `CLEAN_CACHE_DATABASE`, `DROP_NONACTIVE_CACHE_TABLES`,
 `CREATE_SCHEMA_ON_SOURCE`, `DROP_SCHEMA_ON_SOURCE`, `REMOVE_ICEBERG_VIEW_SNAPSHOTS`,
@@ -144,8 +152,11 @@ the marketplace `POST`s that replace a whole set or delete what is missing from 
 `element-management/{all,DATABASES,VIEWS,WEBSERVICES,EXTERNAL_ELEMENTS}/synchronize`, the
 `external-tool-servers/synchronize` family, `views/{id}/tags` and
 `category-management/views/{id}/categories`. Every result carries a `destructive` field: the
-kind (`drop`, `alter`, `delete`, `procedure`, `replace`) when it is one of these, and
-`null` — not `false` — when it is not. The procedure check goes by name and catches only
+kind (`drop`, `alter`, `delete`, `write`, `setting`, `procedure`, `replace`) when it is one of
+these, and `null` — not `false` — when it is not. Session settings come back `null` and pass on
+any profile: `SET QUERYTIMEOUT TO …` (property name unquoted) and `ALTER SESSION SET
+'querytimeout' = …` last until the connection closes; a quoted property after a bare `SET` is
+the server. The procedure check goes by name and catches only
 those nine: a VQL procedure of your own that runs `DROP` through `EXECUTE` inside its body
 comes back `null`, and reading what a procedure does before calling it stays your job. On a profile with `production: true` the tool refuses them with
 `error.kind = "refused"` and executes **nothing**.
@@ -171,8 +182,9 @@ When refused:
 
 **Red flags — stop and ask the human:** you are typing `--allow-destructive`; the
 previous result had `error.kind: "refused"`; `env.production` is `true` and the VQL
-contains `DROP` or `ALTER`, or calls a procedure whose name starts with `DROP_`, `CLEAN_`,
-`REMOVE_`, `ROLLBACK_`.
+contains `DROP` or `ALTER`, writes with `INSERT` or `UPDATE`, sets a server property with
+`SET '…'`, or calls a procedure whose name starts with `DROP_`, `CLEAN_`, `REMOVE_`,
+`ROLLBACK_`.
 
 ### Error in the middle of a file
 

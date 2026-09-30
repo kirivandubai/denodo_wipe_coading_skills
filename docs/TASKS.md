@@ -22,18 +22,6 @@
 
 **Волна 0 — ядро и существующие навыки.**
 
-- **T22. Классификатор: серверный `SET` и запись в источники.** `дальше`. `safety.py`
-  помечает разрушительными серверный `SET '<свойство>' = …` (только форма с кавычками;
-  сессионный `SET QUERYTIMEOUT TO …` безвреден) и `INSERT`/`UPDATE`/`MERGE`. Критерий
-  «разрушительного» решён на ревью: выражение меняет состояние за пределами проекта агента —
-  настройки сервера, данные источников, объекты чужих баз, глобальные объекты; `CREATE` в
-  своей базе разрушительным не считается. Правило на будущее: навык, который учит меняющей
-  состояние операции, в том же PR расширяет классификатор. Критерий записать в спеку (6.3)
-  и в `execute`. Задача закрывает прежний открытый вопрос о критерии: писатели, которых нет в
-  чёрном списке (`GENERATE_STATS_FOR_FIELDS`, `GENERATE_SMART_STATS_FOR_FIELDS`,
-  `COMPUTE_SOURCE_TABLE_STATS`, `COMPACT_CACHE`, `REFRESH_BASE_VIEW`, Iceberg-процедуры),
-  добавляются тем навыком, который начнёт им учить, — обе копии списка одним изменением.
-  Проверка: юнит-тесты и отказ на профиле с `production = true`. Р. 2.1.
 - **T23. `datasources` отправляет источники вне v1 в Design Studio.** `дальше`. Проверенные
   шаблоны v1 (CSV, JSON-файл, JDBC-таблица) агент делает сам; REST API, базовое
   представление из SQL-запроса или процедуры, дрейф схемы, Excel, XML, Salesforce, custom
@@ -186,6 +174,46 @@
 ---
 
 ## Сделано
+
+- **T22. The classifier catches server settings and writes to sources.** `classify_vql` gets
+  two new kinds. `write`: a leading `INSERT` or `UPDATE` — a write through a view lands in the
+  source behind it. `setting`: the server-wide `SET '<property>' = …` (`= NULL` deletes the
+  property from `VDBConfiguration.properties`) and `WEBCONTAINER SET | STOP | START | RELOAD`.
+  Harmless forms that start with the same keywords pass on any profile: the ODBC connection
+  settings `SET <property> TO …` (unquoted property — an allow-listed shape, so any other `SET`
+  errs on the side of the server), `ALTER SESSION SET …`, and `WEBCONTAINER STATUS`.
+
+  **The criterion is written down** — in the spec (6.3), in `execute` and one line in `vql`,
+  and in the `safety.py` docstring: destructive means it destroys or overwrites something that
+  exists, or changes state outside the agent's own project (server settings, data in sources,
+  objects of other databases, global objects); `CREATE` of a new object is not. The rule for
+  growing the deny list (a skill that teaches a state-changing statement extends the
+  classifier in the same PR) is in the spec next to it. This closes the old open question
+  about the criterion; the unlisted writers (`GENERATE_STATS_FOR_FIELDS`, `COMPACT_CACHE`,
+  `REFRESH_BASE_VIEW`, the Iceberg procedures …) come with the skill that starts teaching them.
+
+  **Decisions beyond the letter of the task, each checked against the 9.5 documentation and
+  the 9.5.1 server.** (1) No `MERGE`: VQL has none — it is only a reserved word, the parser
+  answers `Syntax error: Exception parsing query near 'MERGE'`, and the merge form is
+  `INSERT INTO … ON DUPLICATE KEY UPDATE`, already caught as `INSERT`. (2) `ALTER SESSION` was a
+  false positive (`alter`) and is now exempt: the documentation defines it for the session
+  query timeout, and live `ALTER SESSION SET 'querytimeout' = '23456'` shows in `GETSESSION` on
+  the same connection and is gone on a new one. (3) `WEBCONTAINER` was not named in the task but
+  sits on the same documentation page as `SET` ("Changing Settings of Virtual DataPort and the
+  Web Container") and meets the same criterion; `STATUS` is its only read. The session form
+  `SET QUERYTIMEOUT TO …` comes from the ODBC connection-settings pages of the Developer Guide;
+  the server accepts it over the transport.
+
+  **Checked:** unit tests — 335, OK (19 new). Live 9.5.1 with scratchpad profiles through
+  `DENODO_PROFILES`: on a `production = true` profile pointing to a closed port, `SET '…' = 'x'`
+  and `WEBCONTAINER STOP` were refused as `setting` with exit code 2 (the closed port guarantees
+  nothing could have reached the server configuration had the refusal failed), while
+  `WEBCONTAINER STATUS` was not listed; on a `production = true` profile against the real
+  server, `INSERT` and `UPDATE` into a non-existent view were refused as `write`, the session
+  forms ran without the flag (`GETSESSION` → `60000`), and with `--allow-destructive` the
+  `INSERT` reached the server (`View 't22_no_such_view' not found`). No server `SET` was
+  executed on the server, and nothing was created: the checks needed no database of their own.
+  The eval suite was not run: no `description` changed.
 
 - **T20. Инструмент останавливает вызов предопределённой процедуры, меняющей состояние.**
   `classify_vql` после проверки первого ключевого слова ищет `FROM <имя>(` в любом месте

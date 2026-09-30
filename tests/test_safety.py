@@ -41,6 +41,91 @@ class ClassifyVqlTest(unittest.TestCase):
         self.assertEqual(classify_vql("TRUNCATE TABLE t"), "delete")
 
 
+class ServerSettingTest(unittest.TestCase):
+    """``SET '<property>' = …`` writes VDBConfiguration.properties of the whole server
+    (propagated to servers sharing an external metadata database); ``WEBCONTAINER`` does
+    the same for the embedded web container, or stops and reloads it."""
+
+    def test_quoted_property_is_a_server_setting(self):
+        self.assertEqual(
+            classify_vql("SET 'com.denodo.vdb.server.xmlFunctions.allowedProtocols' = 'http,https'"),
+            "setting",
+        )
+
+    def test_jvm_options_are_a_server_setting(self):
+        self.assertEqual(classify_vql("SET 'java.env.DENODO_OPTS_START' = '-server -Xms8g -Xmx8g'"), "setting")
+
+    def test_removing_a_property_is_a_server_setting(self):
+        # = NULL without quotes deletes the property from the configuration file
+        self.assertEqual(classify_vql("SET 'com.denodo.restfulws.vdbUri' = NULL"), "setting")
+
+    def test_lowercase_and_no_spaces(self):
+        self.assertEqual(classify_vql("set 'com.denodo.restfulws.vdbUri'='//localhost:9999/admin'"), "setting")
+
+    def test_leading_comment_is_skipped(self):
+        self.assertEqual(classify_vql("-- raise the limit\nSET 'x.y' = '1'"), "setting")
+
+    def test_set_the_tool_does_not_recognise_counts_as_a_server_setting(self):
+        # only the documented session form passes; anything else errs on the side of refusing
+        self.assertEqual(classify_vql('SET "x.y" = \'1\''), "setting")
+
+    def test_web_container_changes_are_server_settings(self):
+        self.assertEqual(classify_vql("WEBCONTAINER SET 'java.env.DENODO_OPTS_START' = '-Xmx2g'"), "setting")
+        self.assertEqual(classify_vql("WEBCONTAINER STOP"), "setting")
+        self.assertEqual(classify_vql("webcontainer start 'denodo-restfulws'"), "setting")
+        self.assertEqual(classify_vql("WEBCONTAINER RELOAD 'denodo-restfulws'"), "setting")
+
+    def test_web_container_status_is_a_read(self):
+        self.assertIsNone(classify_vql("WEBCONTAINER STATUS"))
+
+    def test_set_inside_a_string_does_not_count(self):
+        self.assertIsNone(classify_vql("SELECT 'SET ''x'' = 1' AS s FROM DUAL()"))
+
+
+class SessionSettingTest(unittest.TestCase):
+    """Session settings last until the connection closes and touch nothing else, so they
+    pass on any profile (checked live on 9.5.1: ``ALTER SESSION SET 'querytimeout'`` shows
+    in ``GETSESSION`` on the same connection and is gone on the next one)."""
+
+    def test_odbc_connection_settings(self):
+        self.assertIsNone(classify_vql("SET QUERYTIMEOUT TO 3600000"))
+        self.assertIsNone(classify_vql("SET I18N TO us_pst"))
+        self.assertIsNone(classify_vql("set force_decimal_properties to true"))
+
+    def test_alter_session(self):
+        self.assertIsNone(classify_vql("ALTER SESSION SET 'querytimeout' = '10000'"))
+        self.assertIsNone(classify_vql("alter session set 'querytimeout' = NULL"))
+
+    def test_alter_of_an_object_named_session_is_still_alter(self):
+        self.assertEqual(classify_vql("ALTER VIEW session ADD COLUMN x:text"), "alter")
+
+
+class SourceWriteTest(unittest.TestCase):
+    """``INSERT`` and ``UPDATE`` through a view change the data in the source behind it.
+    VQL has no ``MERGE`` (the 9.5.1 parser rejects it); its merge is
+    ``INSERT … ON DUPLICATE KEY UPDATE``."""
+
+    def test_insert_is_a_write(self):
+        self.assertEqual(classify_vql("INSERT INTO customer (id, name) VALUES (1, 'a')"), "write")
+
+    def test_insert_select_is_a_write(self):
+        self.assertEqual(classify_vql("insert into all_sales SELECT * FROM online_sales"), "write")
+
+    def test_merge_form_of_insert_is_a_write(self):
+        self.assertEqual(
+            classify_vql("INSERT INTO all_sales ON DUPLICATE KEY(sale_id) UPDATE SELECT * FROM online_sales"),
+            "write",
+        )
+
+    def test_update_is_a_write(self):
+        self.assertEqual(
+            classify_vql("UPDATE internet_inc SET specific_field1 = '10' WHERE iinc_id = 6"), "write"
+        )
+
+    def test_insert_inside_a_string_does_not_count(self):
+        self.assertIsNone(classify_vql("SELECT 'INSERT INTO t' AS s FROM DUAL()"))
+
+
 class StateChangingProcedureTest(unittest.TestCase):
     """Predefined procedures that change state are invoked with SELECT or CALL, so the
     leading keyword says nothing; the name does (T20)."""
