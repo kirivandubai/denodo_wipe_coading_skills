@@ -140,7 +140,7 @@ the platform-native alternative where a vault is configured.
 
 ### 2.5 Smaller core additions
 
-**Owner review (see section 11):** `HELP` — kept if a live check shows it answers over the transport, then one line in `vql` next to the `DESC VQL` rule; the admin flag in `env check` — decided together with `security` (item 13); identifier conventions — dropped, rows go to `execute/references/errors.md` when an agent actually trips on them; feature renames — a convention in `CONTRIBUTING.md` (done), not a task. The original list follows.
+**Owner review (see section 11):** `HELP` — kept if a live check shows it answers over the transport, then one line in `vql` next to the `DESC VQL` rule (checked in T23: it answers with no rows, so dropped); the admin flag in `env check` — decided together with `security` (item 13); identifier conventions — dropped, rows go to `execute/references/errors.md` when an agent actually trips on them; feature renames — a convention in `CONTRIBUTING.md` (done), not a task. The original list follows.
 
 - `HELP <command>` returns the server's own syntax for a statement — a better source than memory
   when a template is missing.
@@ -757,7 +757,7 @@ the sections above are edited to match, and section 10 (build order) was rebuilt
 | 2.2 `DESC VQL` options | dropped | Already covered by "read it, do not apply it" in `execute` and `views`; changing the defaults would break `DESC VQL` as a syntax reference. Safe export options go with `deploy`, if it stays |
 | 2.3 transactions | dropped | `execute` already says nothing is rolled back after `failed_at`; the transport is autocommit anyway |
 | 2.4 secrets | no separate item | Each case comes with a skill not yet written; the first skill that needs a secret without `ENCRYPTED` brings the substitution (and output redaction) with it |
-| 2.5 `HELP` | pending a live check | Useful only if it answers over ODBC; then one line in `vql`. Not checked yet: the server was not reachable |
+| 2.5 `HELP` | dropped after a live check | Useful only if it answers over ODBC. Checked on 9.5.1 (2026-09-30): `HELP`, `HELP CREATE VIEW` and `HELP CREATE DATASOURCE JSON` answer `ok` with no columns and no rows over the transport, so there is nothing to put in `vql` |
 | 2.5 admin flag in `env check` | moved to `security` | Matters only for admin-only procedures and security restrictions |
 | 2.5 identifier conventions | dropped | Mostly covered by `vql` naming and `errors.md`; the rest is a loud error the agent fixes itself |
 | 2.5 feature renames | convention, done | One sentence in `CONTRIBUTING.md` on descriptions |

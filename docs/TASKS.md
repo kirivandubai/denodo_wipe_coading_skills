@@ -22,16 +22,7 @@
 
 **Волна 0 — ядро и существующие навыки.**
 
-- **T24. Справочник диалекта `vql/references/dialect.md`.** `дальше`. Все дельты VQL против
-  PostgreSQL/Oracle, каждая проверена `SELECT … FROM Dual()`; в тело `vql` или `views` —
-  таблица из 8–10 самых опасных тихих дельт (даты, подстроки, NULL в агрегатах, `CAST`,
-  переполнение `SUM`), туда же переезжают две строки про приведение типов из
-  `views/SKILL.md`. Закрывает прежний открытый вопрос «заводить `/denodo:query` или
-  расселять дельту по месту»: навыка нет, дельта — справочником. Заодно проверить, отвечает ли `HELP <команда>` через транспорт: если да
-  — одна строка в `vql` рядом с правилом про `DESC VQL`, если нет — снять (р. 2.5). Р. 4.1.
-  *Checked during T23 (2026-09-30, live 9.5.1):* `HELP`, `HELP CREATE VIEW` and
-  `HELP CREATE DATASOURCE JSON` answer `ok` over the transport with no columns and no rows —
-  `HELP` gives nothing over ODBC, so the 2.5 line is dropped and T24 needs no further check.
+*Wave 0 is done: T22, T23 and T24 are under «Сделано» below.*
 
 **Волна 1 — `views`.**
 
@@ -169,6 +160,54 @@
 ---
 
 ## Сделано
+
+- **T24. The dialect reference `vql/references/dialect.md` and the table of silent deltas in
+  `vql`.** The reference holds about sixty rows in seven sections — text; numbers, casts and
+  aggregates; dates and times (Java pattern letters, day of the week, time zones); `NULL`,
+  ordering and the shape of a query; JSON; how delegation changes the answer; legacy VQL — each
+  as "you write / Denodo does / write instead", the functions that do not exist mapped to the
+  ones that do. Every row was run on 9.5.1, `SELECT … FROM Dual()` or against a view; the
+  delegated ones against the PostgreSQL and SQL Server views. The body of `vql` gets a section
+  "Expressions: VQL is not PostgreSQL": one rule (an expression new to you gets one run on
+  `Dual()` with an input whose answer you know) and a ten-row table of the deltas that return a
+  wrong value or `NULL` without an error. The `SUM` overflow and `decimal`-cast measurements
+  moved from `views` into it; `views` keeps the two imperatives and points to `vql`, and the
+  "only the aggregate-over-cast form is refused" sentence that read as if `SUM(CAST('long', x))`
+  were refused is fixed. `execute/references/errors.md` gets reserved words as aliases (`full`,
+  `user`), which an agent actually tripped on. `HELP` is dropped (checked in T23); roadmap 2.5
+  and section 11 say so.
+
+  **Decisions.** (1) The table lives in `vql`, not `views`: a `SELECT` is written everywhere —
+  ad-hoc questions, verification queries, procedure bodies — and `vql` fires on a question about
+  expressions: the new eval case `routing-vql-expression` passes 3/3 on unchanged descriptions,
+  so no `description` was touched. (2) Loud differences stay in the reference only; the table
+  in the body is silent ones only.
+
+  **The documentation is wrong in three places the reference now contradicts, each checked
+  live:** `EXTRACT(DOW …)` depends on the i18n like `GETDAYOFWEEK` (Sunday is `6` under
+  `es_euro`, not always `0`); `COUNT(field)` works without `GROUP BY`; `AVG` over a `decimal`
+  returns a `decimal` exact to about twelve digits, not a `double`. Found on the way, also
+  silent: `decimal` division keeps six decimals; month names in patterns are read in the
+  i18n's language (a view parsing `02-JAN-00` returns only `NULL` dates when queried under a
+  Spanish i18n), a `timestamptz` formats to a different day under another i18n, and a text
+  column of numbers compared with a number compares as text.
+
+  **Checked with subagents, baseline first.** Three read-only scenarios over file-backed views
+  (a customer profile, a monthly returns report, addresses and quarterly returns), eight
+  baseline runs (Opus ×5, Sonnet ×3) with the old `vql`/`views`/`execute`: every final number
+  was right, but found by experiment and heavy cross-checking — Opus spent 21–37 tool calls and
+  two runs exported 16–18 MB of rows to recompute in Python; all eight named the missing dialect
+  coverage ("the SELECT is ordinary SQL" was called misleading by each). Four runs with the
+  change: all right, Opus 23 and 27 calls against 28–35 and 37, Sonnet 12 and 9 against 10 and
+  15, and every run named the table rows that saved an attempt. A baseline run caught a wrong row
+  of mine (`EXTRACT(DOW …)` as "the stable one") before the change was tested; the reviews of the
+  runs with the change added `TRIM` before `REGEXP_LIKE`, the date-from-parts and completed-age
+  recipes, the `CAST(x AS double)` row, month-name language, `timestamptz` formatting, the
+  `POSITION` guard, `TRIM` before cutting and case-exact grouping. Caveat: the reference first
+  quoted two figures measured on the scenario data (street numbers, blank e-mails); they are
+  replaced by the mechanism, and item (a) of the address scenario is not a clean measure of
+  generalisation. Unit tests 335 OK; `verify --env lab` green; nothing was created on the server
+  by the checks.
 
 - **T23. `datasources` sends every source beyond the three templates to Design Studio.** The
   agent still builds a delimited or JSON file on the server's own disk and a JDBC table with a

@@ -11,9 +11,10 @@ records how two views relate. Order in the chain: **base view → derived view �
 view → association**.
 
 Sources, wrappers and base views are `/denodo:datasources`; databases, folders and VDP
-tags are `/denodo:catalog`. The SELECT inside `AS` is ordinary SQL and has no skill of its
-own; the dialect deltas that cost data are in the aggregate table below. Applying files is
-`/denodo:execute`, and the working loop, the naming defaults and the safety rule are
+tags are `/denodo:catalog`. The SELECT inside `AS` has no skill of its own: the expressions
+where VQL returns a wrong value without an error — substrings, casts, date patterns, `SUM`
+over `int` — are the table in `/denodo:vql` and its `references/dialect.md`. Applying files
+is `/denodo:execute`, and the working loop, the naming defaults and the safety rule are
 `/denodo:vql`.
 
 **The dangerous part of this skill is what happens after a successful statement.** All
@@ -100,25 +101,20 @@ without one lands at the root of the database.
   over the mart: `COUNT` gives `long` (`DESC` prints it as `BIGINT`) and `AVG` over an
   integer gives `double` — *verified: 9.5.1 (live, 2026-09-10)*; and **`SUM` over an `int`
   column stays `int`** — *verified: 9.5.1 (live, 2026-09-12)*. The last one costs data,
-  not just a type: the sum accumulates in 32 bits,
-  and past `2147483647` the server returns a **wrong number with no error and no warning**
-  — stable across runs, so it reads like a real figure. Measured on a 68 636-row fact
-  column: `SUM(x)` answered `1140298269` where the true total is `168668968269`
-  (`SUM(CAST('long', x))`, cross-checked against `AVG × COUNT`); a two-row case built to
-  overflow returned `NULL` instead. **Cast the input for any `SUM` over an `int` fact
+  not just a type: past `2147483647` the sum comes back as `NULL` or as a wrong number that
+  reads like a real figure, with no error. **Cast the input for any `SUM` over an `int` fact
   column — and only over an `int` one: `SUM(CAST('long', x))`.** Over a `decimal` measure
-  the very same cast *is* the data loss: it truncates every row before the sum, and on a
-  144 067-row money column it answered `183734747` against a true `183801994.51` — again
-  with no error and no warning — *verified: 9.5.1 (live, 2026-09-12)*. `DESC VIEW` names
-  the type; `decimal` and `double` measures need no cast at all.
-  This is the one aggregate where casting the input is the fix —
-  it is not one for `AVG`, and `AVG(TO_DECIMAL(x))` under a `GROUP BY` is rejected outright
-  (see Common mistakes).
+  the very same cast truncates every row before the sum. `DESC VIEW` names the type;
+  `decimal` and `double` measures need no cast at all. The measurements behind both rules are
+  in `/denodo:vql`, `references/dialect.md`. This is the one aggregate where casting the input
+  is the fix — it is not one for `AVG`, and `AVG(TO_DECIMAL(x))` under a `GROUP BY` is
+  rejected outright (see Common mistakes).
 - **What does work under `GROUP BY`**, so you do not route around it: `COUNT(DISTINCT x)`,
-  and expressions over the grouped columns in the projection — `COALESCE(reason_sk, -1)`,
-  `TRIM(reason_desc)` — *verified: 9.5.1 (live, 2026-09-12)*. Only the aggregate-over-cast
-  form above is refused, and a mart that needs "returns" as well as "return lines" wants
-  both `COUNT(DISTINCT ticket_number)` and `COUNT(*)`.
+  `SUM(CAST('long', x))`, and expressions over the grouped columns in the projection —
+  `COALESCE(reason_sk, -1)`, `TRIM(reason_desc)` — *verified: 9.5.1 (live, 2026-09-12)*.
+  Of the casts, only `AVG` over one (`AVG(TO_DECIMAL(x))`) is refused. A mart that needs
+  "returns" as well as "return lines" wants both `COUNT(DISTINCT ticket_number)` and
+  `COUNT(*)`.
 - Attaching tags: `TAGS ( pii )` before the field properties for the whole view,
   `( email ( description = '…' ) TAGS ( pii ) )` for one column — both
   *verified: 9.5.1 (live, 2026-09-10)*. The tag itself is `/denodo:catalog` and must
