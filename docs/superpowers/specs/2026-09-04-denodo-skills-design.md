@@ -78,6 +78,7 @@ Virtual DataPort — основной адресат, но не единстве
 /denodo:marketplace   Data Marketplace: теги, категории, external elements (REST)
 /denodo:procedures    хранимые процедуры: предопределённые, VQL, Java (вне v1)
 /denodo:cache         full cache of a view: on and off, load, clear (T27, beyond v1)
+/denodo:semantics     metadata AI consumers read: descriptions, keys, associations, MCP tag (T28, beyond v1)
 ```
 
 The dialect has no skill of its own (section 9): it is a table in the body of `/denodo:vql`
@@ -135,9 +136,12 @@ denodo_skills/                        репозиторий = плагин = м
 │   ├── procedures/
 │   │   ├── SKILL.md
 │   │   └── references/               predefined, vql-procedures, java-procedures
-│   └── cache/
+│   ├── cache/
+│   │   ├── SKILL.md
+│   │   └── references/full-cache.md  every load parameter and ALTER VIEW … CACHE form, measured
+│   └── semantics/
 │       ├── SKILL.md
-│       └── references/full-cache.md  every load parameter and ALTER VIEW … CACHE form, measured
+│       └── references/metadata.md    what each AI consumer reads, every metadata ALTER, inheritance
 ├── scripts/
 │   ├── denodo                        launcher (только stdlib)
 │   └── denodo_cli/                   реализация
@@ -746,6 +750,15 @@ a view only — switching it on and off, loading it with the rows the human name
 it. Partial cache, time to live, incremental loads, cache indexes and scheduled refreshes
 stay in Design Studio and Scheduler. It cost the execution layer one classifier rule (the
 load query, section 6.3); its three templates run in the `verify` chain.
+
+**Also beyond v1, `/denodo:semantics`** (T28, from the owner's roadmap review): the Virtual
+DataPort half of what AI consumers read — an audit of a database for view, field, association
+and tag descriptions, primary keys, missing associations and the MCP visibility tag, and the
+metadata written with `ALTER` or in the view's own file once the human approves the texts.
+Logical names, property groups and marketplace-side descriptions wait for a `marketplace`
+extension. It cost the execution layer nothing: every statement it writes is an `ALTER`,
+already classified; its three templates and the claim that re-applying a view's file removes
+the metadata run in the `verify` chain.
 
 ## 13. Риски и открытые вопросы
 

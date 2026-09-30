@@ -12,7 +12,9 @@ view → association**. A derived view is also how several views of one entity b
 (a union) and how an array becomes rows and back (`FLATTEN`, `NEST`).
 
 Sources, wrappers and base views are `/denodo:datasources`; databases, folders and VDP
-tags are `/denodo:catalog`. The SELECT inside `AS` has no skill of its own: the expressions
+tags are `/denodo:catalog`. Describing, keying and tagging views that already exist — an
+audit of a database for people and AI consumers — is `/denodo:semantics`. The SELECT inside
+`AS` has no skill of its own: the expressions
 where VQL returns a wrong value without an error — substrings, casts, date patterns, `SUM`
 over `int` — are the table in `/denodo:vql` and its `references/dialect.md`. Applying files
 is `/denodo:execute`, and the working loop, the naming defaults and the safety rule are
@@ -28,7 +30,9 @@ already has dependants.
 ## Templates
 
 Each template is one file, applied whole, `CREATE OR REPLACE` throughout — re-applying
-after a fix is safe.
+after a fix is safe. It is also the whole truth about the view: a description, field
+description, key or tag added to the view since by `ALTER` is removed by the next apply,
+silently — keep them in the file (`/denodo:semantics`).
 
 ### Derived view
 

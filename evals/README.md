@@ -99,6 +99,11 @@ Two guard `/denodo:cache` (T27): putting a full cache on a view and loading it
 (`routing-cache-empty-view`) — the second names no statement, only the symptom, which is how
 the silent failures of a full cache reach a human.
 
+Two guard `/denodo:semantics` (T28): describing the undocumented views of a database for an AI
+assistant (`routing-semantics`), and an agent that does not see a view through the Denodo MCP
+Server (`routing-semantics-mcp-visibility`) — the second names neither a tag nor a statement,
+only the symptom, and the cause is a VDP tag the MCP Server is configured with.
+
 **`discrimination`** — фразы на границах, где описания конкурируют. Каждый такой кейс несёт
 и положительный, и отрицательный грейдер, потому что проверяется именно выбор между двумя:
 
@@ -114,6 +119,8 @@ the silent failures of a full cache reach a human.
 | `discrimination-json-array` | `views` | `datasources` |
 | `discrimination-impact-not-procedures` | `views` | `procedures` |
 | `discrimination-cache-not-views` | `cache` | `views` |
+| `discrimination-semantics-not-views` | `semantics` | `views` |
+| `discrimination-semantics-not-marketplace` | `semantics` | `marketplace` |
 
 Первые две строки — тот самый риск, ради которого сьют и заводился: «тег» в VDP и «тег» в
 маркетплейсе — **разные объекты на разных серверах**, и перепутанный навык уйдёт корректным
