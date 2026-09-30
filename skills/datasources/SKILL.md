@@ -191,8 +191,8 @@ CREATE OR REPLACE TABLE bv_crm_customers I18N us_pst (
   match them against the header. Two consequences, both silent:
   a wrapper with three of eight columns returns **zero rows**, and a wrapper with the right
   count in the wrong order returns rows with **values in the wrong columns**
-  (`s_store_id` holding `1`, `s_city` holding `13-MAR-12`). Narrow the columns in the base
-  view's field list or in a derived view, never in the wrapper.
+  (`s_store_id` holding `1`, `s_city` holding `13-MAR-12`). Narrow the columns in a derived
+  view, never in the wrapper — and not in the base view either (below).
 - **`IGNOREMATCHINGERRORS = FALSE` is what turns that silence into a message.** The server
   default is `TRUE`: lines whose column count does not match the schema are dropped without
   a word, which is exactly the zero-row case above. With `FALSE` the same wrapper answers
@@ -207,14 +207,19 @@ CREATE OR REPLACE TABLE bv_crm_customers I18N us_pst (
   without it an empty field stays an empty string, with it becomes `NULL`. Numeric and date
   columns need nothing — an empty field is already `NULL` there.
   *verified: 9.5.1 (live, 2026-09-09)*
-- **The base view may list fewer columns than the wrapper** — that is where you narrow.
-  The wrapper mirrors the file, the base view exposes what the human asked for (four of
-  twenty-nine columns is fine, in the field list and in `OUTPUTLIST` together).
-  *verified: 9.5.1 (live, 2026-09-09)*
+- **The base view lists the wrapper's columns in the wrapper's order; narrow in a derived
+  view.** A base view with fewer columns creates and reads fine, but an equality `WHERE` on
+  it is handed to the DF wrapper **by position**: a base view of seven of a file's
+  twenty-four columns answered `WHERE item_sk = 29` with the rows whose *second file column*
+  is 29 — one row instead of seven, no error — while `<` and `item_sk + 0 = 29` were right.
+  The `(any) OPT ANY` block `DESC VQL` prints does not help. If the human wants the narrow
+  base view anyway, give it `CONSTRAINTS ( ADD <column> NOS ZERO () … )` for every one of
+  its columns: Denodo then filters itself, and the answer is right.
+  *verified: 9.5.1 (live, 2026-09-30)*
 - `TIMETOLIVEINCACHE DEFAULT` is required between `CACHE OFF` and `ADD SEARCHMETHOD`.
 - The `CONSTRAINTS ( … )` block that the server prints in `DESC VQL` is optional for a
-  delimited file — the DF wrapper does filter what the server hands it — and so is `I18N`
-  inside `ADD SEARCHMETHOD`. For a JSON file it is not optional (**JSON file** below). `I18N <map>` after the view name is not
+  delimited file whose base view mirrors the wrapper — the DF wrapper does filter what the
+  server hands it — and so is `I18N` inside `ADD SEARCHMETHOD`. For a JSON file it is not optional (**JSON file** below). `I18N <map>` after the view name is not
   (`LIST MAPS I18N` shows the 76 available; `us_pst` is the usual default).
 - The path is **on the Denodo server**, not on your machine. If it points to a directory,
   every file in it is read as one table — add `FILENAMEPATTERN = '.*\.csv'` and keep the
@@ -631,7 +636,7 @@ the data back, every time:
 |---|---|---|
 | Rows arrive | `vql run --env dev --database <db> -e "SELECT COUNT(*) FROM <bv>"` | `0` — a DF wrapper missing columns, or an empty/unreachable file |
 | The count is *right* | compare with what the human expects the source to hold | a JSON wrapper without the `REGISTER OF` wrapper inflates rows through nested arrays |
-| **A filter filters** | `SELECT COUNT(*) FROM <bv> WHERE <key> = '<one value>'`, and one on a register subfield if there is one | the whole table — a JSON base view without the template's `CONSTRAINTS … NOS ZERO ()`. Every consumer's `WHERE` is then ignored, and nothing else in this table notices |
+| **A filter filters** | `SELECT COUNT(*) FROM <bv> WHERE <key> = '<one value>'`, and one on a register subfield if there is one; for a number, compare with `WHERE <key> + 0 = <value>`, which Denodo evaluates itself | the whole table — a JSON base view without the template's `CONSTRAINTS … NOS ZERO ()`; or a different count from the two forms — a DF base view narrower than its wrapper, filtering another column. Every consumer's `WHERE` is then wrong, and nothing else in this table notices |
 | Values are values | `SELECT * FROM <bv>` with `--max-rows 5`, look at every column | a whole column of `NULL` = the type in `CREATE TABLE` does not match the data (`cust_id:int` over `C-10472`) |
 | Text values have no padding | the same read-back — look at where each string **ends**, not just at what it says | `"0-500          "` — an export padded to a fixed width. Nothing fails, and then every `WHERE col = '0-500'` and every `GROUP BY` a consumer writes is wrong. `TRIM` it in the view above and say so in the `DESCRIPTION`; `NULLVALUE ''` (text columns only) handles the empty-string half of the same problem |
 | Schema is what you wrote | `vql desc --env dev --database <db> <bv>` | missing or extra columns |
@@ -661,7 +666,7 @@ attempt: **When a template does not work straight away**, above.
 
 | You wrote | What happens | Fix |
 |---|---|---|
-| DF `OUTPUTSCHEMA` with the columns the human asked for | `CREATE` succeeds, `SELECT` returns **0 rows** | list every column of the file; narrow in the base view |
+| DF `OUTPUTSCHEMA` with the columns the human asked for | `CREATE` succeeds, `SELECT` returns **0 rows** | list every column of the file; narrow in a derived view |
 | DF `OUTPUTSCHEMA` with the right count but the wrong order | rows arrive with values under the wrong names | the mapping is positional — reorder to match the header |
 | DF source without `IGNOREMATCHINGERRORS = FALSE` | schema mismatches are dropped row by row, silently | add it; the mismatch becomes `[DF ROUTE] [PARSE_ERROR] Invalid line found at data file` |
 | `Different number of columns` while the wrapper's count and order already match the header | the records do not split one per line on the delimiter — a line break or a delimiter inside quoted values | nothing to fix in VQL: stop, Design Studio (**When a template does not work straight away**) |
@@ -671,6 +676,7 @@ attempt: **When a template does not work straight away**, above.
 | JSON `OUTPUTSCHEMA` as a flat field list | `CREATE` succeeds, row count is wrong (arrays multiply rows) | wrap the fields in `<name> = 'JSONFile' : REGISTER OF ( … )` |
 | `CREATE TABLE … ( lines:ARRAY OF (…) )` | `Syntax error` | declare `CREATE OR REPLACE TYPE` first, use its name |
 | JSON base view without `CONSTRAINTS` | `CREATE` succeeds, `SELECT` works, and every `WHERE` on it returns all rows | the template's block: `ADD <column> NOS ZERO ()` for every column and every register subfield |
+| DF base view with fewer columns than its wrapper | `CREATE` succeeds, `SELECT` works, and `WHERE col = x` returns the rows where another column is `x` | list every wrapper column, in its order, and narrow in a derived view — or `ADD <column> NOS ZERO ()` for each column of the base view |
 | `CACHE OFF ADD SEARCHMETHOD` | `Syntax error … near 'ADD'` | `CACHE OFF TIMETOLIVEINCACHE DEFAULT ADD SEARCHMETHOD` |
 | `cust_id:int` over text keys | column comes back all `NULL`, no error | fix the type in `CREATE TABLE`, re-apply |
 | `DATABASENAME`/`DATABASEVERSION` without `CLASSPATH` | `error creating new data source: Cannot invoke "java.util.List.size()"` | add `CLASSPATH = '<driver directory>'` |
