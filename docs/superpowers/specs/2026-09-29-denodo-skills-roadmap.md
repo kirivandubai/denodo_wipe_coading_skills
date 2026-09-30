@@ -270,6 +270,15 @@ does not — the agent has to find and update dependents itself (see `lineage`).
 
 ### 4.3 `lineage` (new) — impact analysis before a change
 
+**Done in T26 (2026-09-30):** `views` has "Before a column changes" and
+`references/dependencies.md`. Checked live, two of the pitfalls below changed: the dependency
+procedures take **exact, case-sensitive names** and answer a pattern with an error, not with a
+wider result — the `LIKE` matching is real only in the catalog procedures (`GET_ELEMENTS`,
+`GET_VIEWS`, `GET_VIEW_COLUMNS`); and the bigger trap is one nobody listed —
+`COLUMN_DEPENDENCIES` traces output columns only, so a column used in a join or a filter looks
+unused. The privilege narrowing stays documentation-only until a second, non-administrator
+profile exists (T31).
+
 **Owner review: P2, no skill — additions to `views` (see section 11).** `views` already runs `USED_BY()` before a change and `GET_VIEWS(… invalid only)` after, and `procedures` documents the whole dependency family; a separate skill would compete with both for the same phrases. To add to `views`: column level (`COLUMN_DEPENDENCIES`) next to `USED_BY`, the privilege and `LIKE` pitfalls after a live check, and the phrases "what uses this view / can I drop this column / where does this field come from" in its description (eval suite). Web service and cache dependants are added by the skill that introduces them. The original proposal follows.
 
 **Scope.** Read-only: `USED_BY`, `VIEW_DEPENDENCIES`, `COLUMN_DEPENDENCIES`,
@@ -329,6 +338,13 @@ authentication and can serve as a fixture for HTTP sources without internet acce
 `platform/administration/credentials_vault/credentials_vault`.
 
 ### 4.5 `performance` (new) — why is this query slow
+
+**Done in T26 (2026-09-30):** a Verify row and Silent failure 3 in `views`, and
+`references/delegation.md`. Over the transport the plan comes from
+`GET_QUERY_EXECUTION_PLAN()` (`noDelegationCauses` names the function); `DESC QUERYPLAN` is
+empty, and `GET_DELEGATED_SQLSENTENCE` answers — but returns the delegated part without an
+error even when the aggregate stays in Denodo, so it is not the check. Views over two data
+sources print no cause at all.
 
 **Owner review: P1, narrowed to a delegation check in `views` (see section 11).** The vibe-coding risk is a mart over a JDBC source that silently stops being delegated because of one function the source cannot run: correct rows, minutes instead of seconds in production. Today neither `views` nor `datasources` checks delegation. To add: one row in the `views` verification table — for a view over JDBC read `GET_DELEGATED_SQLSENTENCE` or `DESC QUERYPLAN`, confirm the join and the aggregate reached the source whole, and name the blocking function to the human when they did not; first confirm live that both answer over the transport. Tuning — statistics, the cost-based optimizer, join hints, data movement — is dropped: expert work with an execution trace in Design Studio, partly server-wide `SET`, and a wrong flag returns wrong data. The original proposal follows.
 

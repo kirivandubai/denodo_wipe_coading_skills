@@ -1,6 +1,6 @@
 ---
 name: views
-description: Use when building on top of views that already exist in Denodo 9.5 — a derived view over base views (CREATE VIEW … FOLDER … AS SELECT, a join, an aggregate, a mart, a parameterised view, a UNION ALL of views holding the same entity, FLATTEN of an array such as JSON order lines into rows, NEST of rows into an array), an interface view used as a stable contract whose implementation can be swapped (CREATE INTERFACE VIEW … SET IMPLEMENTATION), or an association that records how two views relate (CREATE ASSOCIATION … REFERENTIAL CONSTRAINT … ENDPOINT … ADD MAPPING). Also for changing a view that other views depend on, for "make a mart", "combine these sources into one view", "one row per item of this array", "expose this as a data product", "link these two views", and for a view that was created without an error but fails on SELECT or turns up INVALID. Not for connecting a source or making base views — that is /denodo:datasources; not for databases, folders or VDP tags — /denodo:catalog.
+description: Use when building on top of views that already exist in Denodo 9.5 — a derived view over base views (CREATE VIEW … AS SELECT: a join, an aggregate, a mart, a parameterised view, a UNION ALL of views of one entity, FLATTEN of an array such as JSON order lines into rows, NEST of rows into an array), an interface view as a contract whose implementation can be swapped (CREATE INTERFACE VIEW … SET IMPLEMENTATION), or an association between two views (CREATE ASSOCIATION … REFERENTIAL CONSTRAINT). Also before changing a view others depend on — "what uses this view", "can I drop this column", "where does this field come from" — for whether a mart over a database runs there or pulls every row into Denodo, for "make a mart", "combine these sources into one view", "expose this as a data product", and for a view created without an error that fails on SELECT or turns up INVALID. Not for connecting a source or making base views — /denodo:datasources; not for databases, folders or VDP tags — /denodo:catalog.
 ---
 
 # Derived views, interface views and associations
@@ -21,7 +21,9 @@ is `/denodo:execute`, and the working loop, the naming defaults and the safety r
 **The dangerous part of this skill is what happens after a successful statement.** All
 three objects can be accepted by the server and be broken, and all three break *other
 people's* objects the same way: the DDL returns success, and the failure surfaces later,
-on someone's `SELECT`. The Verify section is not optional.
+on someone's `SELECT`. So does a mart over a database that quietly stops running in it.
+The Verify section is not optional, and neither is "Before a column changes" when the view
+already has dependants.
 
 ## Templates
 
@@ -91,9 +93,9 @@ Clause order: `FOLDER` → `DESCRIPTION` → `PRIMARY KEY` → `TAGS` → `( fie
   key, and joining on that key multiplies every figure in the mart with no error anywhere.
   In the sample data behind the templates the `store` dimension is 12 rows for 6 stores and
   `call_center` 6 rows for 3 centres; the fact carries the surrogate key, so join on that
-  and project the business key as a column, so the consumer can still roll up. **The tell
-  is a pair of validity columns** — `rec_start_date` / `rec_end_date` and a business key
-  repeating under them — so a `DESC VIEW` answers the question before the `COUNT` does.
+  and project the business key as a column, so the consumer can still roll up. **The hint
+  is a pair of validity columns** (`rec_start_date` / `rec_end_date`), and the `COUNT`
+  decides: validity columns over one row per business key are not history.
 - **`INNER` drops facts, and nobody is told.** The template joins `INNER` because its two
   sample files match completely; real files do not — 10 062 of the 287 514 sample store
   returns carry no store key at all, and 3 212 of the 71 763 web returns name no reason. Decide
@@ -426,10 +428,11 @@ can then be written in VQL names. Unchanged either way: `decimal`, `float`, `boo
 | Union branches | one per source of the same entity. Read each with `vql desc`: sources name, order and type their columns differently, and every branch lists them in the union's order, not its source's |
 | What the union is split on | what consumers filter by — a constant per source (`channel`) or a real column (a date). "Fast for one channel" or "only this year's data from the warehouse" is the request for a split |
 | Grain after a flatten | the element (one row per line) or the parent (one row per order, with figures from its lines) — the human. The second joins the element figures, aggregated, to the parent's figures at the result's grain (`references/arrays.md`), never a `SUM` of the parent's measures over flattened rows |
-| Existing dependants | `USED_BY()` before touching anything that already exists — see Verify |
+| Existing dependants | `USED_BY()` before touching anything that already exists; for a column that changes, "Before a column changes" below |
 
 Do not ask about cache, swap, statistics or indexes: they have server defaults, they are
-not part of creating these objects, and they are outside v1.
+not part of creating these objects, and they are outside v1. Whether a view over a database
+runs in that database is not one of them — Verify checks it.
 
 ## When the request asks for something the data does not have
 
@@ -459,6 +462,81 @@ The same holds for a measure named loosely — "how many returns" over a file wh
 return *lines*. Publish both counts under names that say which is which
 (`return_ticket_count`, `return_line_count`) rather than picking one silently.
 
+## Before a column changes: who uses it
+
+"Can this column go", "can we rename it", "what breaks if the source drops it" — asked about
+a view that already has dependants, before anything is changed. Everything here only reads.
+
+```sql
+-- verified: 9.5.1 (live, 2026-09-30)
+-- Can ib_income_band_sk go from bv_income_band?
+-- 1. The views that name bv_income_band in their own definition. Only these can use its columns.
+SELECT used_by_database_name, used_by_name
+  FROM USED_BY()
+ WHERE input_view_database_name = 'sales_analytics'
+   AND input_view_name = 'bv_income_band'
+   AND depth = 1;
+
+-- 2. The definition of each of them: search it for the column
+--    (for a metric view, also its ASSOCIATIONS list for the associations of step 3).
+DESC VQL VIEW iv_household_income ('includeDependencies' = 'no', 'dropElements' = 'no');
+
+-- 3. The associations that map it.
+SELECT association_name, mappings, valid
+  FROM GET_ASSOCIATIONS()
+ WHERE input_database_name = 'sales_analytics'
+   AND input_type = 'views'
+   AND input_name = 'bv_income_band';
+
+-- 4. Everything built on a view the column breaks goes down with it.
+SELECT used_by_database_name, used_by_name, depth
+  FROM USED_BY()
+ WHERE input_view_database_name = 'sales_analytics'
+   AND input_view_name = 'iv_household_income';
+```
+
+In the templates of this skill the answer is: `iv_household_income` uses `ib_income_band_sk`
+only in its join's `ON`, and `a_income_band_household` maps it — so the column breaks both,
+and `household_income_by_band` and the `household_income` contract with them.
+
+- **Step 2 is not optional, and `COLUMN_DEPENDENCIES()` does not replace it.** That procedure
+  traces *output* columns: a column a dependant uses only in `ON`, `WHERE`, `GROUP BY` or
+  `HAVING` has no row there, and removing it still turns the dependant `INVALID` —
+  *verified: 9.5.1 (live, 2026-09-30)*. An empty answer from it is not "unused". Search the
+  whole definition: the `SELECT` list, every `ON`, the filters and the grouping.
+- **A view above a broken one keeps `view_status = 'OK'`** and fails on every `SELECT`. So
+  step 4 is the list of what breaks without being reported — `GET_VIEWS(… invalid only)`
+  names only the views that used the column themselves. An empty step 4 is the good answer:
+  nothing is built on top. A metric view that names the column in a dimension or a metric
+  is a direct user and goes `INVALID`; one that reaches it only through an association from
+  step 3 (`valid = false`) stays `OK`, and every metric grouped or filtered by a dimension
+  reached through it fails with `Error applying metric transformation.` — *verified: 9.5.1
+  (live, 2026-09-30)*.
+- `USED_BY()` finds dependants in every database, and only views: no associations (step
+  3), no web services, nothing outside the catalog. A published web service that exposes
+  the view shows up only in the database's full definition: search `DESC VQL DATABASE <db>`
+  for the view's name before calling the list complete — it is one large text, so save it
+  and search it rather than reading it. What no query finds — reports, clients, jobs
+  reading the view — goes into the report as what the list cannot see.
+- The names you pass must be exact and in the right case: a pattern or a wrong case is an
+  error that names nothing, not an empty result.
+- **Report it as a list the human can act on**: each object, how it uses the column
+  (`SELECT` list and which output column, join condition, filter, grouping, mapping), and
+  what goes down with it — then what the list cannot see. The decision to go ahead is
+  theirs (`/denodo:vql`).
+- **The four steps answer it without building anything.** A copy of the real views built to
+  rehearse the change in another database becomes a dependant of them: it shows up in their
+  `USED_BY()` for everyone else, and their `DROP … CASCADE` takes it along.
+- When the change is made, it goes through the view's own file. The output of `DESC VQL`
+  is not a file to edit and re-run: it opens with `DROP … CASCADE`, which removes the very
+  dependants this section listed.
+
+**"Where does this field come from"** is the question `COLUMN_DEPENDENCIES()` does answer:
+with `input_column_name` it walks one field down to the base view and the data source in one
+call, with the expression wherever the value is computed. The query, how to read
+its rows, and the step from a base view to the table and column in the database are in
+`references/dependencies.md`.
+
 ## Reference
 
 - `references/derived.md` — the full `CREATE VIEW` grammar, field properties,
@@ -474,6 +552,12 @@ return *lines*. Publish both counts under names that say which is which
 - `references/arrays.md` — `FLATTEN` in full (empty arrays, renamed fields, arrays inside
   registers, two arrays), a parent summary that keeps every parent, `NEST`, `REGISTER`, the
   types they leave behind, element access by position, checking a flatten.
+- `references/dependencies.md` — `USED_BY`, `VIEW_DEPENDENCIES` and `COLUMN_DEPENDENCIES`
+  in full: what each one cannot see, measured use by use, reading a field's lineage down to
+  the source table, the name and privilege rules.
+- `references/delegation.md` — reading the plan for delegation, the causes measured on SQL
+  Server and PostgreSQL, why the answer is per query, why `GET_DELEGATED_SQLSENTENCE` is not
+  the check, and the options to put in front of the human.
 
 ## Verify
 
@@ -483,7 +567,7 @@ the reason this skill exists.** After applying, always:
 | Question | Read-back |
 |---|---|
 | Did the objects land, and where | `SELECT name, type, subtype, folder FROM GET_ELEMENTS() WHERE input_database_name = '<db>' AND type = 'view'` — `subtype` is `base`, `derived` or `interface`; associations are `type = 'association'`. `type` is an output column and takes `IN`; the `input_…` parameters take `=` only |
-| **Is anything broken now** | `SELECT name, view_type, view_status FROM GET_VIEWS() WHERE input_database_name = '<db>' AND input_retrieve_invalid_views_only = true` — **empty is the only good answer.** `view_type` here is the same fact as `subtype` above in numbers: `0` base, `1` derived, `2` interface |
+| **Is anything broken now** | `SELECT name, view_type, view_status FROM GET_VIEWS() WHERE input_database_name = '<db>' AND input_retrieve_invalid_views_only = true` — **empty is the only good answer.** It is not the whole answer: a view built on an `INVALID` one stays `OK` and fails on `SELECT`, so everything `USED_BY()` lists above an `INVALID` view is broken too. `view_type` here is the same fact as `subtype` above in numbers: `0` base, `1` derived, `2` interface, `5` metric |
 | Does it carry rows | `SELECT * FROM <view> LIMIT 10`, and a count that can be checked against the input |
 | **Did the join keep every fact** | add the mart's row counters back up and compare with the fact it was built from: `SUM(<row count column>)` over the mart equals `COUNT(*)` of the input, minus exactly the rows you decided to drop. A join that quietly dropped the unmatched facts, or doubled them on a duplicated dimension key, passes every other check in this table |
 | Schema of the contract | `vql desc --env dev --database <db> <interface view>` — the columns the consumer sees |
@@ -491,7 +575,8 @@ the reason this skill exists.** After applying, always:
 | Nothing changed for the consumer | take the schema and a `SELECT … LIMIT n` through the contract **before** the change, keep them, and diff against the same two afterwards. That is the only claim the consumer cares about, and it is cheap to make checkable |
 | Are the associations still whole | `SELECT association_name, mappings, valid FROM GET_ASSOCIATIONS() WHERE input_database_name = '<db>' AND input_type = 'views'` — **`valid` must be `true`** |
 | One association in full | `vql desc --env dev --database <db> <name> --type association` — roles, multiplicities, mappings, principal side |
-| Who depends on this view | `SELECT view_name, used_by_name, depth FROM USED_BY() WHERE input_view_database_name = '<db>' AND input_view_name = '<view>'` — run it **before** a change, not after |
+| Who depends on this view | `SELECT view_name, used_by_database_name, used_by_name, depth FROM USED_BY() WHERE input_view_database_name = '<db>' AND input_view_name = '<view>'` — run it **before** a change, not after. For one column, "Before a column changes" |
+| **Does a view over a database run in the database** | for every view whose base views are JDBC: `SELECT execution_plan FROM GET_QUERY_EXECUTION_PLAN() WHERE input_query = 'SELECT * FROM <view>'`. Delegated whole: exactly one `SQLSentence =`, and it holds the joins and the `GROUP BY`. `noDelegationCauses = [The aggregate function 'median' cannot be delegated to this database]` names what keeps the rest in Denodo. Two or more `JDBC ROUTE (` blocks with **no cause printed** mean two data sources, joined in Denodo — then a `GROUP BY` in the big table's `SQLSentence` (`optimizationsApplied = [Aggregation Push-down]`) means groups travel, its absence means every row does. Anything but the first is Silent failure 3 |
 | **Does each branch of a union arrive whole** | `SELECT channel, COUNT(*), SUM(<measure>) FROM <union> GROUP BY channel` — or `GROUP BY` a `CASE` of the branch conditions when the split is a real column — against `COUNT(*)` and `SUM` of each source view under its own branch condition. It catches a branch whose columns are out of order and the rows a `NULL` partition key lost — neither raises an error |
 | **Is the declared primary key unique** | `SELECT <key columns>, COUNT(*) FROM <view> GROUP BY <key columns> HAVING COUNT(*) > 1` — no rows. Denodo does not enforce a `PRIMARY KEY`; over overlapping union branches or a flatten, this is the proof nothing was counted twice |
 | **Does a one-source query read one source** | `SELECT execution_plan FROM GET_QUERY_EXECUTION_PLAN() WHERE input_query = '<the query, quotes doubled>'`: `optimizationsApplied = [Branch Pruning]`, and one `BASE PLAN (` block per source read, its `name = …` on the next line; no block at all means the query reads nothing. It plans without running the query, so an ad-hoc union can be checked before the view exists. `DESC QUERYPLAN` answers with nothing through the tool, and `TRACE` with the plain result |
@@ -502,8 +587,13 @@ the reason this skill exists.** After applying, always:
 interface view that used that column goes to `view_status = 'INVALID'` and every
 association that mapped it goes to `valid = false`. Nothing is reported at DDL time, the
 replaced view itself still selects fine, and the failure lands on whoever queries the
-dependant next — *verified: 9.5.1 (live, 2026-09-10)*. Adding a column is safe;
-restoring the column repairs the dependants automatically.
+dependant next — *verified: 9.5.1 (live, 2026-09-10)*. The views built on those dependants
+do not even change status: they stay `OK` and fail on `SELECT` — *verified: 9.5.1 (live,
+2026-09-30)*. "Used" means anywhere in the definition — a join key or a filter column breaks
+the dependant exactly like a selected one. Adding a column is safe; restoring the column
+repairs the views and associations automatically. Not a REST web service that published the
+field: it drops the field from its own definition and does not take it back — *verified:
+9.5.1 (live, 2026-09-30)*.
 
 **Silent failure 2: `SET IMPLEMENTATION` does not check the schema.** An implementation
 whose column names do not match the interface's field list, or that is missing a field
@@ -513,9 +603,38 @@ showing the declared schema. Only `SELECT` fails, with a message that names noth
 *verified: 9.5.1 (live, 2026-09-10)*. **A `SELECT` through the contract is part of
 applying it**, every time, including a swap of the implementation.
 
+**Silent failure 3: a view over a database that does not run in the database.** One
+expression the database cannot run — `MEDIAN` on SQL Server, a `CAST` of text to integer on
+PostgreSQL — keeps its node and everything above it in Denodo. The database still does the
+joins below it, and every joined row travels to Denodo to be aggregated there. The rows are
+right, nothing reports an error, and the cost grows with the fact table: a second on sample
+data, minutes in production — *verified: 9.5.1 (live, 2026-09-30)*. Views over two
+different data sources are never joined in the database, and the plan prints no cause for
+that at all; at best Denodo pre-aggregates per join key in each database, and the plan shows
+whether it did. Which expressions delegate depends on the database, so read the plan (Verify)
+instead of a list. Then:
+
+- **Tell the human, and let them decide.** Name the expression and the column it computes,
+  or the two data sources, and say that every row below that point is read into Denodo —
+  at production volume, not the sample's. Swapping the function for one that delegates
+  (`AVG` for `MEDIAN`) changes the answer, and even an exact rewrite is a second definition
+  of the measure with trade-offs of its own: both are their call. When you cannot ask,
+  build what was asked and put the cost and the options in the report.
+- **The answer is per query.** A column the query does not select is dropped from its plan:
+  over a mart with a `MEDIAN` column, a query without it goes to the database whole. Plan
+  `SELECT *` after creating the view, and the consumer's own query when the answer matters.
+  A `COUNT(*)` or a key check never runs the blocking column, so its timing proves nothing.
+- **`GET_DELEGATED_SQLSENTENCE` is not the check.** It returns the SQL of whatever part was
+  delegated, without an error, even when the aggregate stayed in Denodo — a `GROUP BY`
+  missing from its answer is the only sign.
+
+`references/delegation.md` has the measured causes, how to read each node, and the options
+to offer.
+
 So the read-back after any change to something that already existed is: `USED_BY()`
 before, `GET_VIEWS(… invalid only)` and `GET_ASSOCIATIONS().valid` after, then a `SELECT`
-through each dependant that matters.
+through each dependant that matters — including the ones above an `INVALID` view, which
+still say `OK`.
 
 ## Common mistakes
 
@@ -546,6 +665,11 @@ through each dependant that matters.
 | `COUNT(*)` over `FLATTEN` as the number of lines | nothing — each order without lines counts as a line | `COUNT(<element field>)`, or the template's `IS NOT NULL` |
 | `SELECT lines …` after `FLATTEN … ( o.lines )` | `Field not found 'lines' in view with schema …` | the array is gone; select its fields |
 | `NEST(line_no AS n, …)` | `Syntax error … near 'AS'` | rename in the view below |
+| no row in `COLUMN_DEPENDENCIES()` for a column, read as "nothing uses it" | nothing — a join key, a filter or a grouping column is not an output column | read the definition of each direct dependant ("Before a column changes") |
+| `SELECT` from a view whose column went away underneath | `View without search methods:` | the view is `INVALID`: `GET_VIEWS(… invalid only)`, then restore the column or change the dependant |
+| `USED_BY()` / `COLUMN_DEPENDENCIES()` with `'%sales%'`, or a name in the wrong case | `… USED_BY [STORED PROCEDURE] [ERROR] Received exception with` — nothing more | the exact name as `GET_ELEMENTS()` prints it; `%` and `_` work in `GET_ELEMENTS()`, `GET_VIEWS()`, `GET_VIEW_COLUMNS()` only |
+| a SQL back from `GET_DELEGATED_SQLSENTENCE`, read as "delegated" | nothing — it returns the delegated part only | `GET_QUERY_EXECUTION_PLAN()`: one `SQLSentence`, no `noDelegationCause` |
+| "no `noDelegationCause` in the plan", read as "delegated" | nothing — two data sources print no cause | count the `JDBC ROUTE (` blocks as well |
 
 Dropping is the human's call — `/denodo:vql`. Before asking, show what goes with it:
 `USED_BY()` for a view, `GET_ASSOCIATIONS()` for the associations that hang off it.

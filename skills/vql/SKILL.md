@@ -96,7 +96,8 @@ of v1 support it, including `DATABASE`.
   protect it; that guess is wrong and it costs you a re-appliable file.
 - `CREATE OR REPLACE VIEW` over a view that others depend on is fine when the change is
   additive — *verified: 9.5.1 (live, 2026-09-09)*. Removing or retyping a column that a
-  dependent view selects is a breaking change: check dependents first.
+  dependent view uses — selects, joins on, filters or groups by — is a breaking change:
+  check dependents first (`/denodo:views`, "Before a column changes").
 - Assigning a tag needs both blocks — `ADD_TO ( ... ) REMOVE_FROM ( VIEWS () COLUMNS () )`
   — or it is a syntax error.
 - **Data Marketplace has no `OR REPLACE`.** Every operation goes by numeric id, and an id
@@ -116,6 +117,7 @@ it just means the verification is yours to do, with `DESC` and a `SELECT`.
 | Read-only `SELECT`, `DESC`, `GET_*`, `env check` — on any profile, production included | `ALTER` of an object that already exists |
 | Session settings: `SET QUERYTIMEOUT TO …`, `ALTER SESSION SET 'querytimeout' = …` | `INSERT`, `UPDATE` — the rows land in the source behind the view |
 | — | `SET '<property>' = …`, `WEBCONTAINER SET / STOP / START / RELOAD` — the whole server's configuration, not your session |
+| — | `CREATE OR REPLACE` of an existing view that drops or renames a column other objects use — the server accepts it and breaks them without an error (`/denodo:views`, "Before a column changes") |
 | — | a predefined procedure that changes state, however it is spelled: `SELECT * FROM DROP_REMOTE_TABLE(…)`, `CALL CLEAN_CACHE_DATABASE(…)`, `GENERATE_STATS(…)` — the list is in `/denodo:procedures` |
 | `GET` calls to the marketplace | every destructive marketplace call (below) |
 | — | **any change at all on a profile with `production: true`, `CREATE` included** |
