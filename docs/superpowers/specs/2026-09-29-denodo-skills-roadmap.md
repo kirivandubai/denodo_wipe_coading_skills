@@ -401,6 +401,15 @@ configured cache. Cache writes go to an external database — see section 9, dec
 
 **Owner review: P1, a separate skill, VDP half only (see section 11).** New views already get a description and a primary key from `views`; the gap is an audit of what already exists. Scope: walk a database, find views without a description, field descriptions, primary key, associations or the MCP visibility tag, and fill them in. Descriptions are derived from the data (a profile of the values), never invented from a column name, and the human approves them before they are written. Triggers: "describe these views", "prepare for AI / MCP", "why does the agent not see this view". The marketplace half (logical names, property groups, sync pitfalls) comes later as a `marketplace` extension. The original proposal follows.
 
+**Built in T28** (`skills/semantics/`). Checked on 9.5.1: descriptions of views, fields,
+associations and tags, primary keys and tag assignments are all written with `ALTER`, which
+keeps the cache, the dependants and the privileges; re-applying a view's own `CREATE OR
+REPLACE` without them removes every one, the MCP tag included; a field description is
+inherited live through plain column references and stops at any expression; a declared key
+marks its columns `NOT NULL`, and `ADD PRIMARY KEY` replaces an existing key without an error.
+The MCP Server, Assisted Query and the AI SDK were not queried — what they read is taken from
+their manuals. The marketplace pitfalls below stay with the later `marketplace` extension.
+
 **Scope.** View and field descriptions, primary keys, associations, the VDP tag that controls
 MCP Server visibility, Data Marketplace logical names and property groups with the
 "Include in AI context" flag, and synchronisation with the marketplace so the metadata reaches it.

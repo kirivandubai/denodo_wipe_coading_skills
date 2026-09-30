@@ -126,6 +126,7 @@ phrasing; `/denodo:vql` is the entry point when the request is ambiguous.
 | `/denodo:marketplace` | marketplace tags, categories, external elements, catalog synchronisation | REST |
 | `/denodo:procedures` | calling the server's predefined procedures, writing your own in VQL, importing a Java one from a JAR | VQL |
 | `/denodo:cache` | the full cache of a view: switching it on and off, loading it with all rows or the ones you name, clearing it; every other cache setting goes to Design Studio | VQL |
+| `/denodo:semantics` | what people and AI consumers (MCP Server, Assisted Query, AI SDK) read about existing views: an audit of descriptions, primary keys, associations and the MCP visibility tag, and descriptions written from the data after you approve them | VQL |
 
 **A "tag" alone does not say which server you mean.** Virtual DataPort tags
 (`CREATE TAG`, VQL) and Data Marketplace tags (REST) are different objects on different
@@ -137,7 +138,8 @@ servers; tags imported into the marketplace from VDP are read-only there. `catal
 In scope: the sixteen objects of the first six skills, everything needed to take a request
 from plain language to a mart a consumer can browse. `/denodo:procedures` sits outside that
 scope — stored procedures are not part of the mart scenario — and is there because it is
-useful on its own. So is `/denodo:cache`, for the full cache of a view only.
+useful on its own. So are `/denodo:cache`, for the full cache of a view only, and
+`/denodo:semantics`, for the Virtual DataPort half of view metadata.
 
 Created in Design Studio, not by the agent: every data source beyond a delimited or JSON file
 on the server and a JDBC table with a password — REST APIs, Excel, XML, Salesforce, SAP, cloud

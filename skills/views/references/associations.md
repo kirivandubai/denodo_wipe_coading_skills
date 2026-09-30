@@ -15,6 +15,7 @@ below was taken off a live 9.5.1 instance.
 ```
 CREATE [ OR REPLACE ] ASSOCIATION <name> [ REFERENTIAL CONSTRAINT ]
     [ FOLDER = <literal> ]
+    [ DESCRIPTION = <literal> ]
     ENDPOINT <role name> [<database>.]<view> [ PRINCIPAL ] ( <multiplicity> )
         [ PRECONDITION ( <condition> ) ]
     ENDPOINT <role name> [<database>.]<view> [ PRINCIPAL ] ( <multiplicity> )
@@ -25,6 +26,9 @@ CREATE [ OR REPLACE ] ASSOCIATION <name> [ REFERENTIAL CONSTRAINT ]
 
 *verified: 9.5.1 (live, 2026-09-10)*, every clause including the optional ones.
 `FOLDER` may be omitted — the association then lands at the root of the database.
+`DESCRIPTION` goes right after `FOLDER` — *verified: 9.5.1 (live, 2026-09-30)*; an existing
+association takes one with `ALTER ASSOCIATION <name> DESCRIPTION = '…'` (`/denodo:semantics`).
+The MCP Server shows it next to the join (documentation).
 
 ## Reading an endpoint
 

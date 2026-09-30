@@ -214,6 +214,6 @@ rows — the SELECT is what catches it.
 
 Writing the VQL or choosing where an object lives: `/denodo:vql` (conventions,
 safety, idempotency) and the domain skills `/denodo:catalog`, `/denodo:datasources`,
-`/denodo:views`, `/denodo:marketplace`, `/denodo:procedures`, `/denodo:cache`. Trigger phrase confusion: VDP tags
+`/denodo:views`, `/denodo:marketplace`, `/denodo:procedures`, `/denodo:cache`, `/denodo:semantics`. Trigger phrase confusion: VDP tags
 (`CREATE TAG`, VQL) and marketplace tags (`POST /public/api/tags`, REST) are
 different objects on different servers; the tool does not translate between them.

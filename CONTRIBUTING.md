@@ -26,7 +26,8 @@ denodo_skills/
 │   ├── views/               derived views, interface views, associations + references/
 │   ├── marketplace/         marketplace tags, categories, external elements + references/
 │   ├── procedures/          predefined, VQL and Java stored procedures + references/
-│   └── cache/               the full cache of a view + references/
+│   ├── cache/               the full cache of a view + references/
+│   └── semantics/           descriptions, keys, associations, MCP visibility + references/
 ├── scripts/
 │   ├── denodo               launcher — standard library only
 │   └── denodo_cli/          the implementation behind it

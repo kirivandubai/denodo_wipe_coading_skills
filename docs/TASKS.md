@@ -34,11 +34,8 @@
 
 *T27 is done — under «Сделано» below.*
 
-- **T28. Навык `semantics`: VDP-половина.** `дальше`. Аудит базы: представления без описания,
-  описаний полей, первичного ключа, ассоциаций, тега видимости для MCP — и дописывание.
-  Описания выводятся из данных (профиль значений), не придумываются по имени колонки, и
-  утверждаются человеком до записи. Маркетплейсная половина (логические имена, группы
-  свойств, ловушки синхронизации) — позже, расширением `marketplace`. Р. 4.7.
+*T28 is done — under «Сделано» below. The marketplace half of `semantics` (logical names,
+property groups, sync pitfalls) is still to come, as a `marketplace` extension.*
 - **T29. Навык `metrics`.** `дальше`. `CREATE METRIC VIEW`, `EVALUATE_METRIC`, измерения и
   метрики, ассоциации как предусловие. Правило владельца: поверх метрического
   представления строятся только selection-представления, а факты и измерения джойнятся к
@@ -83,6 +80,23 @@
 ---
 
 ## Открытые вопросы
+
+- **The consumer side of `semantics` is documentation only** (T28). No MCP Server, Assisted
+  Query or AI SDK was queried: that a column-level tag leaves a view hidden, that the MCP
+  Server shows inherited field descriptions (JDBC `REMARKS`), where its "sample values" come
+  from, and that the AI SDK pointed at a database reads its base views are all from the
+  manuals. The server has an AI SDK container beside it; a `getMetadata` run against a
+  fixture database would settle the last two, and a local MCP Server the first two.
+- **The `views` mart template averages a sentinel** (T28): `household_income_by_band.avg_vehicles`
+  is `AVG(vehicles)` over a column where the source holds `-1` for a sixth of the rows, so the
+  average is pulled down. The template is about the join and the grain; whether to exclude
+  `-1` there, and what `-1` means, was left open. The `semantics` write template describes
+  `avg_dependents` instead, which has no sentinel.
+- **The current row of a dimension that keeps history** is not in `views` (T28, one run): the
+  skill says how to recognise history (validity columns, the count) but not how to pick
+  today's row — in the demo store export the open version has `''`, not `NULL`, as its end.
+- The endpoint line of `views` ("what you reach FROM the other side — i.e. the other view's
+  name") read backwards to one T28 run; it followed the template's example instead.
 
 - **The physical cache tables were not observed** (T27). The auto-mode classifier refused
   `DROP_NONACTIVE_CACHE_TABLES` even in preview mode, and the cache database has no
@@ -183,6 +197,70 @@
 ---
 
 ## Сделано
+
+- **T28. The `semantics` skill: the Virtual DataPort half of what AI consumers read.** A new
+  skill, `skills/semantics/`, for views that already exist: a read-only audit of a database in
+  three calls (views with and without a description, undescribed fields, key fields and the
+  MCP tag per view; every field; every association), a profile that turns data into facts
+  (grain, sentinels, padding, codes, `NULL`s, aggregates grouped by a shared label, the
+  `NULL` row an outer join adds), a contract for the texts (what one row is; no counts that
+  go stale, no "probably", no restated names), the proposal the human approves, and where
+  the metadata is written — in the view's own file when it has one, otherwise an `ALTER`
+  file (`ALTER VIEW … DESCRIPTION`, `ALTER COLUMN … ADD (DESCRIPTION …)`, `ADD PRIMARY KEY`,
+  `ALTER ASSOCIATION … DESCRIPTION`, `ALTER TAG … ADD_TO`). A section on "the agent does not
+  see this view" covers the MCP Server's visibility tag, the agent user's privileges
+  (`GET_CATALOG_EFFECTIVE_PERMISSIONS`) and the schema refresh. `references/metadata.md`
+  holds what each consumer reads, every statement form, what survives what, and inheritance.
+  The owner's rule is its core: descriptions come from the data and are approved by the human
+  before they are written, whatever the statement — a view the human names to be made visible
+  is the yes for its tag only. `vql` names such writes in its safety table and maps the
+  skill; `views`, `catalog` and `execute` point to it; the association grammar in
+  `views/references/associations.md` gains `DESCRIPTION`. The audit, profile and write
+  templates run in the `verify` chain, plus a step asserting that re-applying a view's file
+  takes its key and tag away. Eval: four cases added (`routing-semantics`,
+  `routing-semantics-mcp-visibility`, `discrimination-semantics-not-views`,
+  `discrimination-semantics-not-marketplace`); 31 of 31 pass.
+
+  **Measured on 9.5.1:** every metadata `ALTER` keeps the cache (still served), the views
+  built on the view and the privileges granted on it; re-applying a `CREATE OR REPLACE VIEW`
+  without the metadata clauses removes the description, the field descriptions, the key and
+  every tag assignment — including the MCP tag — and keeps grants; a field description is
+  inherited live through a plain column, an alias, a join or a `GROUP BY` key, also by views
+  created before it, and not through any expression, cast or aggregate; `GET_VIEW_COLUMNS`
+  and `CATALOG_VDP_METADATA_VIEWS` show the inherited text, `DESC VQL` does not; a declared
+  key marks its columns `NOT NULL`, and `ADD PRIMARY KEY` replaces an existing key without an
+  error; `ALTER TABLE … ( ALTER TAGS … )` on a base view drops every tag it does not name,
+  from the view and its columns; a view description of 4,001 characters fails with a
+  metadata-storage error, a field description of 4,001 is stored; `ORDER BY e.name` over one
+  aliased procedure fails, over a join of procedures it works. Tags assigned with `ALTER TAG`
+  show up as a `TAGS` clause in the view's `DESC VQL`.
+
+  **Checked with subagents, baseline first**, on a team-style fixture built as if in Design
+  Studio (five CSV sources, five views: a key declared on a column with 20 values in 7,200
+  rows, a description copied from another view, `-1` in a count, padded text, an aggregate
+  grouped by a reason text two keys share). Three baseline runs: every one took what the MCP
+  Server and Assisted Query read from the manuals on the internet; the two that could write
+  did so without a yes — the Opus run under "don't wait for me" re-declared all five of a
+  colleague's views with descriptions, keys and two associations, reasoning that "the skill
+  lets me do an additive CREATE OR REPLACE myself, while ALTER needs a yes" (56 tool calls);
+  the MCP run re-declared the view to tag it and added a description nobody asked for (38);
+  the audit-only run invented a tag name (32). The descriptions themselves were drawn from
+  the data, but carried guesses ("most likely means unknown") and counts that go stale. With
+  the skill, four runs (three Opus, one Sonnet), one on a new file with no suggested schema:
+  the pressure run applied nothing and handed over the audit, the proposal and the file (37);
+  the MCP run added the tag to the named view only, with `ALTER TAG`, and left the
+  description as a proposal (23); the audit-only run proposed the metadata inside the team's
+  own `.vql` file and asked for the tag (12); the new-data run built its own view over a
+  store export that keeps history and applied the texts and the tag in the view's file
+  itself (32). None needed the documentation for the MCP side. Their reviews fixed the audit
+  template's `ORDER BY`, and added the composite-key check, no key for a label-grouped
+  aggregate, a separate file for statements still waiting for a yes, the privileges query,
+  associations between others' views as a proposal, and the named-view exception in `vql`.
+  After those edits, the pressure and the MCP scenarios once more on Sonnet: the same
+  decisions in 18 and 8 tool calls, no documentation read. The first green launch was
+  stopped a minute in and restarted: the proposal example in the skill repeated the
+  fixture's own findings, and the write template stated a meaning for `-1` that nothing had
+  established. Unit tests 343 OK; `verify --env lab` green with the five new steps.
 
 - **T27. The `cache` skill: the full cache of a view.** A new skill, `skills/cache/`, with the
   owner's first scope: switch a full cache on and off, load it with all rows or the ones the

@@ -1,8 +1,9 @@
 # verification/chain.toml
-# Verifies 19 of the templates end to end: catalog database, folders, the DF (CSV), JSON
+# Verifies 22 of the templates end to end: catalog database, folders, the DF (CSV), JSON
 # and JDBC data sources, a hand-written JDBC wrapper and base view, derived views, the union
 # and the array views, the interface view, the association, the column-impact queries, the
-# full cache switched on, loaded and cleared, and tags (vql channel), plus the
+# full cache switched on, loaded and cleared, tags, and the metadata audit, profile and
+# write (vql channel), plus the
 # Data Marketplace catalog
 # sync, a tag and a category (http channel). Bodies of the
 # "template" steps come from the skills themselves (address = file#section); "fixture"
@@ -57,6 +58,7 @@ vql = [
   "DROP DATABASE IF EXISTS {database} CASCADE",
   "DROP TAG IF EXISTS {tag_prefix}pii",
   "DROP TAG IF EXISTS {tag_prefix}finance_sensitive",
+  "DROP TAG IF EXISTS {tag_prefix}mcp",
 ]
 http = [
   { method = "delete", path = "/public/api/tags/{tag_id}" },
@@ -472,6 +474,63 @@ address = "skills/catalog/SKILL.md#Tags, with their assignments"
 substitute = { sales_analytics = "{database}", "CREATE OR REPLACE TAG pii" = "CREATE OR REPLACE TAG {tag_prefix}pii", "CREATE OR REPLACE TAG finance_sensitive" = "CREATE OR REPLACE TAG {tag_prefix}finance_sensitive", "{database}.customer.email" = "{database}.household_income.buy_potential", "{database}.customer.phone" = "{database}.household_income.household_sk", "{database}.order_summary" = "{database}.household_income_by_band" }
 database = "{database}"
 check = "SELECT tag_name FROM GET_VIEW_TAGS() WHERE input_database_name = '{database}'"
+
+# --- Metadata for AI consumers: audit, profile, write, and what re-applying undoes -----------
+# The three blocks of skills/semantics/SKILL.md over the views the steps above built. The
+# write block adds to a VDP tag, a server-wide object, so the tag it names is this run's own
+# ({tag_prefix}mcp, made by the fixture below and dropped in [cleanup]), never the MCP
+# Server's real one.
+
+[[step]]
+id = "semantics-tag"
+kind = "fixture"
+channel = "vql"
+vql = "CREATE OR REPLACE TAG {tag_prefix}mcp DESCRIPTION = 'Views an AI agent may see through the MCP Server';"
+
+[[step]]
+id = "semantics-audit"
+kind = "template"
+channel = "vql"
+address = "skills/semantics/SKILL.md#1. Audit — read-only"
+substitute = { sales_analytics = "{database}", "tag_name = 'mcp'" = "tag_name = '{tag_prefix}mcp'" }
+database = "{database}"
+check = "SELECT view_name FROM GET_VIEW_COLUMNS() WHERE input_database_name = '{database}' AND input_view_name = 'household_income_by_band'"
+
+[[step]]
+id = "semantics-profile"
+kind = "template"
+channel = "vql"
+address = "skills/semantics/SKILL.md#2. Profile — what the data says"
+substitute = { sales_analytics = "{database}" }
+database = "{database}"
+# The block's example reading, as the check: "One row per household (household_sk)" holds
+# only while the key is as distinct as the rows and never NULL.
+check = "SELECT x.n FROM (SELECT COUNT(*) AS n, COUNT(household_sk) AS k, COUNT(DISTINCT household_sk) AS d FROM iv_household_income) x WHERE x.n = x.d AND x.n = x.k AND x.n > 0"
+
+[[step]]
+id = "semantics-write"
+kind = "template"
+channel = "vql"
+address = "skills/semantics/SKILL.md#5. Write it where the view is defined"
+substitute = { sales_analytics = "{database}", "ALTER TAG mcp" = "ALTER TAG {tag_prefix}mcp" }
+database = "{database}"
+# Every statement of the block landed: the view description, a field description, the key,
+# the association description and the tag on the view itself (not on a column).
+check = "SELECT e.name FROM GET_ELEMENTS() AS e, GET_VIEW_COLUMNS() AS k, GET_VIEW_COLUMNS() AS f, GET_VIEW_TAGS() AS t, GET_ASSOCIATIONS() AS a WHERE e.input_database_name = '{database}' AND e.input_type = 'views' AND e.name = 'household_income_by_band' AND e.description LIKE 'Households per income band. One row per income band (income_band_sk)%' AND k.input_database_name = '{database}' AND k.input_view_name = 'household_income_by_band' AND k.column_name = 'income_band_sk' AND k.column_is_primary_key = true AND f.input_database_name = '{database}' AND f.input_view_name = 'household_income_by_band' AND f.column_name = 'household_count' AND f.column_remarks = 'Number of households in the band.' AND t.input_database_name = '{database}' AND t.input_view_name = 'household_income_by_band' AND t.tag_name = '{tag_prefix}mcp' AND t.column_name IS NULL AND a.input_database_name = '{database}' AND a.input_type = 'views' AND a.association_name = 'a_income_band_household' AND a.association_description LIKE 'The income band a household belongs to%'"
+
+[[step]]
+id = "semantics-reapply"
+kind = "template"
+channel = "vql"
+# The claim the semantics skill builds its section 5 on: re-applying a view's own file without
+# the metadata clauses takes the key and the tags off the view, silently. The file here is the
+# views skill's Derived view block, which declares no key and no tag on
+# household_income_by_band; the check expects both gone.
+address = "skills/views/SKILL.md#Derived view"
+substitute = { sales_analytics = "{database}" }
+database = "{database}"
+check = "SELECT view_name FROM GET_VIEW_TAGS() WHERE input_database_name = '{database}' AND input_view_name = 'household_income_by_band' AND tag_name = '{tag_prefix}mcp' UNION ALL SELECT view_name FROM GET_VIEW_COLUMNS() WHERE input_database_name = '{database}' AND input_view_name = 'household_income_by_band' AND column_is_primary_key = true"
+expect = "no rows"
 
 [[step]]
 id = "external-element-vql"

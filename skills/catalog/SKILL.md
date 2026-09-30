@@ -93,6 +93,9 @@ CREATE OR REPLACE TAG finance_sensitive
 The other way to attach a tag is `TAGS (pii)` inside `CREATE OR REPLACE VIEW` — that
 belongs to the view's file (`/denodo:views`).
 
+The tag the Denodo MCP Server shows views by (`mcp` in its shipped configuration) — which
+views carry it, and why an agent does not see a view — is `/denodo:semantics`.
+
 ## What you need before filling the template
 
 | Slot | Where it comes from |
