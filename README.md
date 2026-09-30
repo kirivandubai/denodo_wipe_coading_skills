@@ -121,7 +121,7 @@ phrasing; `/denodo:vql` is the entry point when the request is ambiguous.
 | `/denodo:vql` | the working loop, naming conventions, safety rules, idempotency — the core every other skill builds on | — |
 | `/denodo:execute` | applying VQL and REST calls to a live server, reading the JSON envelope, interpreting Denodo's error messages | both |
 | `/denodo:catalog` | virtual database, folder, VDP tag (and assigning a tag to views and columns) | VQL |
-| `/denodo:datasources` | JDBC / DF / JSON data sources, their wrappers, base views; introspecting a source | VQL |
+| `/denodo:datasources` | JDBC / DF / JSON data sources, their wrappers, base views; introspecting a source; handing every other source type to Design Studio | VQL |
 | `/denodo:views` | derived views, interface views, associations | VQL |
 | `/denodo:marketplace` | marketplace tags, categories, external elements, catalog synchronisation | REST |
 | `/denodo:procedures` | calling the server's predefined procedures, writing your own in VQL, importing a Java one from a JAR | VQL |
@@ -137,6 +137,11 @@ In scope: the sixteen objects of the first six skills, everything needed to take
 from plain language to a mart a consumer can browse. `/denodo:procedures` sits outside that
 scope — stored procedures are not part of the mart scenario — and is there because it is
 useful on its own.
+
+Created in Design Studio, not by the agent: every data source beyond a delimited or JSON file
+on the server and a JDBC table with a password — REST APIs, Excel, XML, Salesforce, SAP, cloud
+storage, base views over a SQL query or a stored procedure, refreshing a base view whose source
+changed. `/denodo:datasources` tells the human what to create there and builds on the result.
 
 Deliberately out of scope: a full function reference; performance and caching (summary
 views, materialized tables, remote tables, MPP); security and publication (users, roles,

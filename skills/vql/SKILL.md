@@ -171,7 +171,7 @@ did not create in this session; you are "cleaning up" anything.
 | Objects | Skill |
 |---|---|
 | Databases, folders, VDP tags | `/denodo:catalog` |
-| Data sources, wrappers, base views (JDBC, DF, JSON) | `/denodo:datasources` |
+| Data sources, wrappers, base views — JDBC tables, DF and JSON files; every other source type it hands to Design Studio | `/denodo:datasources` |
 | Derived views, interface views, associations | `/denodo:views` |
 | Marketplace tags, categories, external elements (REST) | `/denodo:marketplace` |
 | Stored procedures — calling one, or writing one | `/denodo:procedures` |

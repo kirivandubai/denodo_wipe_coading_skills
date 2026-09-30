@@ -117,8 +117,8 @@ DECLARE VIEW INDEX idx_customer_country ON ( country ASC )
 `SWAP`, `MAXRESULTSIZE`, `ONSCHEMACHANGE`, `DELEGATESTATSQUERY` and the
 `SMART_ONLY` / `SMART_THEN_ATSOURCE_THROUGH_VDP` / `ATSOURCE_THROUGH_VDP_ONLY` group are
 performance and lifecycle features. They are out of v1 scope: get the view returning
-correct rows first. `ONSCHEMACHANGE` is the one worth remembering — it decides what
-happens when the source's schema drifts.
+correct rows first. When the source's schema drifts under a base view, the base view is
+refreshed in Design Studio (**Source Refresh**, `SKILL.md`), not rewritten by hand.
 
 ## Changing and dropping
 

@@ -73,6 +73,11 @@ Frontmatter кейса задаёт `runs: 3` (три захода, чтобы �
 `/denodo:vql`: он точка входа и карта остальных навыков, обратиться к нему по дороге
 нормально.
 
+Two more routing cases guard the half of `datasources` that creates nothing itself: a REST API
+(`routing-datasources-rest-api`) and a base view out of date with its source
+(`routing-datasources-schema-drift`). The skill sends both to Design Studio, and it can only
+do that if its description still fires on them.
+
 **`discrimination`** — фразы на границах, где описания конкурируют. Каждый такой кейс несёт
 и положительный, и отрицательный грейдер, потому что проверяется именно выбор между двумя:
 
@@ -84,6 +89,7 @@ Frontmatter кейса задаёт `runs: 3` (три захода, чтобы �
 | `discrimination-derived-view` | `views` | `datasources` |
 | `discrimination-author-not-run` | `views` или `vql` | `execute` |
 | `discrimination-run-not-author` | `execute` | предметные навыки |
+| `discrimination-procedure-base-view` | `datasources` | `procedures` |
 
 Первые две строки — тот самый риск, ради которого сьют и заводился: «тег» в VDP и «тег» в
 маркетплейсе — **разные объекты на разных серверах**, и перепутанный навык уйдёт корректным

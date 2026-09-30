@@ -78,7 +78,9 @@ Three things about that shape are load-bearing:
   what has to be asked — otherwise the agent either invents values or interrogates the
   user with ten questions.
 - **Two levels of detail.** The minimal working template lives in `SKILL.md`; the full set
-  of options, and notes on what Design Studio generates, live in `references/`. `SKILL.md`
+  of options, and notes on what Design Studio generates, live in `references/`. A reference
+  holds grammar only for what the skill has the agent build: `datasources` sends every other
+  source type to Design Studio, so its references stop at the three it builds. `SKILL.md`
   is loaded into context once and is not re-read, so write it as standing rules, not as a
   one-time recipe.
 

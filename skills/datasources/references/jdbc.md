@@ -1,8 +1,14 @@
-# JDBC data sources and wrappers — full syntax
+# JDBC data sources and wrappers — tables
 
 Source of the grammar: VQL Guide 9.5, *JDBC Data Sources* and *JDBC Wrappers*; the driver
 list and the introspection procedures come from a live 9.5.1 server. Facts marked
 `verified:` were run there.
+
+This is the grammar for a base view over a **table or view**, on a data source that logs in
+with a user name and password. A base view over a SQL query or a stored procedure, and a
+data source that logs in any other way, are created in Design Studio (`SKILL.md`, **What you
+build, and what goes to Design Studio**); the base views over the tables of such a source
+are yours again once it answers.
 
 ## CREATE DATASOURCE JDBC
 
@@ -15,11 +21,9 @@ it.
 CREATE [ OR REPLACE ] DATASOURCE JDBC <name> [ EMBEDDED_MPP ]
     [ ID = <literal> ]
     [ FOLDER = <literal> ]
-    [ VAULT_SECRET = <literal> ]
     DRIVERCLASSNAME = <literal>
     DATABASEURI = <literal>
-    [ <credentials> | <kerberos> | <oauth> | <aws iam> | <gcp> | <pass-through> ]
-    [ WITH PROXY_CONNECTIONS ]
+    [ USERNAME = <literal> USERPASSWORD = <literal> [ ENCRYPTED ] ]
     [ CLASSPATH = <literal> ]
     [ DATABASENAME = <literal> DATABASEVERSION = <literal> ]
     [ ISOLATIONLEVEL = { TRANSACTION_NONE | TRANSACTION_READ_COMMITTED
@@ -28,12 +32,9 @@ CREATE [ OR REPLACE ] DATASOURCE JDBC <name> [ EMBEDDED_MPP ]
     [ IGNORETRAILINGSPACES = { TRUE | FALSE } ]
     [ FETCHSIZE = <integer> ]
     [ <data load configuration> ]
-    [ CREDENTIALS_VAULT ( STATUS { ON | DEFAULT } [ PROVIDER CYBERARK ( … ) ] ) ]
     [ <pool configuration> ]
     [ <external data configuration> ]
     [ PROPERTIES ( <literal> = <literal> [ VAR ] [, … ] ) ]
-    [ KERBEROSPROPERTIES ( <literal> = <literal> [, … ] ) ]
-    [ OAUTHPROPERTIES ( <literal> = <literal> [, … ] ) ]
     [ TRANSFER_RATE_FACTOR = <double> ]
     [ PROCESSING_UNITS = <integer> ] [ CPUS_PER_PROCESSING_UNIT = <integer> ]
     [ INTERNAL_TRANSFER_RATE = <double> ]
@@ -55,21 +56,16 @@ human asked for a specific pool. *verified: 9.5.1 (live, 2026-09-09)*
 ## Credentials
 
 ```sql
-<credentials> ::= USERNAME = <literal> USERPASSWORD = <literal> [ ENCRYPTED ]
-                | USERNAME = <literal> FROM_VAULT
-                | USERNAME = <literal> FROM_VAULT ( VAULT_SECRET = <literal>, FIELD_AT_SECRET = DEFAULT )
+USERNAME = <literal> USERPASSWORD = <literal> [ ENCRYPTED ]
 ```
 
 | Mechanism | Syntax | Status |
 |---|---|---|
 | Password, encrypted | `USERPASSWORD = '<string>' ENCRYPTED`, string from `ENCRYPT_PASSWORD '<password>'` | *verified: 9.5.1 (live, 2026-09-09)* — and the encrypted string can be copied between data sources **on the same server**, which is how you reuse an existing source's credentials without ever seeing the password |
 | Password, plain | `USERPASSWORD = '<password>'` | works, and the server stores it encrypted anyway — but the file keeps the clear text, so never in git |
-| Credentials vault | `VAULT_SECRET = '<secret>'` at the top, `FROM_VAULT` instead of the password, `CREDENTIALS_VAULT ( STATUS ON … )` | *unverified: 9.5 documentation only* — the vault must be configured on the server first |
-| Kerberos | `USE_KERBEROS ( KRB_USERNAME = … { KRB_USERPASSWORD = … [ ENCRYPTED ] \| KRB_KEYTAB = … } )`, or `USE_KERBEROS_AT_RUNTIME` / `USE_KERBEROS_AT_INTROSPECTION` next to `<credentials>` | *unverified: 9.5 documentation only* |
-| OAuth | `USE_OAUTH ( TOKEN_ENDPOINTURL … CLIENT_IDENTIFIER … CLIENT_SECRET … [ ENCRYPTED ] OAUTH_USER … OAUTH_PASSWORD … SCOPE … )` | *unverified: 9.5 documentation only* |
-| AWS IAM | `USE_AWS_IAM_CREDENTIALS ( AWS_ACCESS_KEY_ID … AWS_SECRET_ACCESS_KEY … [ ENCRYPTED ] [ AWS_IAM_ROLE_ARN … ] [ AWS_REGION … ] )` | *unverified: 9.5 documentation only* |
-| GCP | `GCP ( OAUTH_TYPE … PRIVATE_KEY … [ ENCRYPTED ] PROJECT_ID … SERVICE_ACCOUNT_EMAIL … )` | *unverified: 9.5 documentation only* |
-| Pass-through session credentials | `WITH PASS-THROUGH SESSION CREDENTIALS ( <options> )` — the querying user's own credentials go to the source | *unverified*: the empty form `( )` is a syntax error on 9.5.1, so the options are not optional in practice |
+
+A credentials vault, Kerberos, OAuth, AWS IAM, GCP service accounts and pass-through session
+credentials are set up in the Design Studio wizard, not here.
 
 The ciphertext comes from `scripts/denodo secret encrypt --env <env>` — never write the
 underlying `ENCRYPT_PASSWORD '<password>'` yourself, because the plaintext would land in a
@@ -105,7 +101,8 @@ snowflake-1.x spanner sqreamdb trino-4xx vdp-8.0 vdp-9 vertica-7 vertica-9
 ```
 
 Drivers Denodo may not redistribute (MySQL, IBM DB2, Teradata, BigQuery, Hive, Impala)
-have to be installed on the server first — that is an administrator's job, not VQL.
+have to be installed on the server first — an administrator's job in Design Studio
+(`File > Extensions management`), not VQL.
 The current list on any server: `ls <DENODO_HOME>/lib/extensions/jdbc-drivers`.
 
 `DATABASENAME` / `DATABASEVERSION` select the **adapter**: the dialect, the delegation
@@ -120,11 +117,7 @@ CREATE [ OR REPLACE ] WRAPPER JDBC <name>
     [ FOLDER = <literal> ]
     [ DESCRIPTION = <literal> ]
     DATASOURCENAME = <name>
-    {   [ CATALOGNAME = <literal> ] [ SCHEMANAME = <literal> ] RELATIONNAME = <literal>
-      | [ CATALOGNAME = <literal> ] [ SCHEMANAME = <literal> ] [ PACKAGENAME = <literal> ]
-        PROCEDURENAME = <literal>
-      | SQLSENTENCE = <literal>
-    }
+    [ CATALOGNAME = <literal> ] [ SCHEMANAME = <literal> ] RELATIONNAME = <literal>
     [ OUTPUTSCHEMA ( <field> [, <field> ]* ) ]
     [ ALIASES ( <literal> = <literal> [, … ] ) ]
     [ SOURCECONFIGURATION ( <property> [, … ] ) ]
@@ -142,9 +135,7 @@ CREATE [ OR REPLACE ] WRAPPER JDBC <name>
                     | SOURCETYPEDECIMALS | SOURCETYPERADIX
 <inline constraint> ::= [ NOT ] NULL | [ NOT ] UPDATEABLE
                     | { SORTABLE [ ASC | DESC ] | NOT SORTABLE }
-                    | ESCAPE | EXTERN | EXTERNWHEREEXPRESSION | IS_AUTOINCREMENT
-                    | ISCURSOR | ISPARAMETER | ISTABLE | MAXLEN = <integer>
-                    | PARAMINDEX = <integer> | SQLFRAGMENT
+                    | ESCAPE | IS_AUTOINCREMENT | MAXLEN = <integer>
 ```
 
 - Field types are **Java class names**: `java.lang.Long`, `java.lang.Integer`,
@@ -155,14 +146,6 @@ CREATE [ OR REPLACE ] WRAPPER JDBC <name>
   them queries fine. *verified: 9.5.1 (live, 2026-09-09)*
 - **A subset of the table's columns is fine** — unlike DF, a JDBC wrapper that lists three
   of eighteen columns returns rows normally. *verified: 9.5.1 (live, 2026-09-09)*
-- `SQLSENTENCE = 'SELECT …'` builds a wrapper over a query instead of a table — the query
-  runs **in the source's own dialect**, so an aggregate pushed down this way is computed
-  there. The output schema is written by hand or generated
-  (`GENERATE_VQL_TO_CREATE_JDBC_BASE_VIEW_FROM_QUERY`); the mapping names must match the
-  column labels the query returns, uppercased where the source uppercases them.
-  *verified: 9.5.1 (live, 2026-09-09) — a `GROUP BY` over Oracle returned its 20 rows*
-- `PROCEDURENAME` wraps a stored procedure; parameters are the fields marked `ISPARAMETER`
-  with `PARAMINDEX`. *unverified: 9.5 documentation only*
 - `SOURCECONFIGURATION` here controls delegation and write support:
   `ALLOWDELETE`, `ALLOWINSERT`, `ALLOWUPDATE`, `DELEGATESQLSELECTION`,
   `DELEGATESQLSENTENCEASSUBQUERY`, `DATAINORDERFIELDSLIST`,
@@ -179,7 +162,6 @@ PostgreSQL on 9.5.1 (live, 2026-09-09).
 | `GET_JDBC_DATASOURCE_TABLES` | `… WHERE input_datasource_name='<ds>' [ AND input_catalog_name='<cat>' ] [ AND input_schema_name='<schema>' ] [ AND input_table_name='<t>' ] [ AND input_type='TABLE' ]` | the reliable one: the filters are input parameters, so the server asks the source only about what you want |
 | `LIST_JDBC_DATASOURCE_TABLES` | `… WHERE data_source_name='<ds>'` | walks every catalog and schema. Fine on Oracle and PostgreSQL; **fails on SQL Server**, and filtering in `WHERE` does not help — the walk happens first |
 | `GENERATE_VQL_TO_CREATE_JDBC_BASE_VIEW` | `SELECT creation_vql FROM …() WHERE data_source_name='<ds>' [ AND catalog_name='<cat>' ] AND schema_name='<s>' AND table_name='<t>' AND base_view_name='<bv>' AND folder='<path>'` | returns **two rows**: the wrapper and the `CREATE TABLE`. `catalog_name` is required where the product has catalogs (SQL Server), omitted for Oracle |
-| `GENERATE_VQL_TO_CREATE_JDBC_BASE_VIEW_FROM_QUERY` | same, with the query instead of the table | *unverified: 9.5 documentation only* |
 | `GET_SOURCE_TABLE`, `GET_SOURCE_COLUMNS` | `… WHERE input_database_name='<db>' AND input_view_name='<view>'` | the other direction: which source table and columns an existing base view sits on — the way to answer "where does this column come from" |
 
 What generated VQL looks like, and what to change in it:

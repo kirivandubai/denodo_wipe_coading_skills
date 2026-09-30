@@ -443,6 +443,10 @@ Manager. Поэтому «минимальный шаблон» — это ми�
 **Два уровня детализации:** минимальный рабочий шаблон в `SKILL.md`, полный набор опций
 с пометками о том, что генерирует Design Studio, — в `references/`.
 
+A reference holds grammar only for what its skill has the agent build (T23): `datasources`
+sends every source type beyond its three templates to Design Studio, and its references stop
+at those three (roadmap, section 4.4).
+
 **Каждый шаблон несёт статус верификации:**
 
 ```sql

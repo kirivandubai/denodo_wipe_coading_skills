@@ -1,6 +1,6 @@
 ---
 name: datasources
-description: Use when connecting a source to Denodo 9.5 and turning it into base views — a delimited file or CSV (CREATE DATASOURCE DF), a JSON file or REST payload (CREATE DATASOURCE JSON), a relational database over JDBC (CREATE DATASOURCE JDBC), the wrapper over any of them, and the base view itself (CREATE TABLE … ADD SEARCHMETHOD). Also for "connect Oracle/Postgres", "onboard this CSV", "read that JSON export", "make base views over the source", introspecting a source's tables, and for a base view that was created fine but returns no rows or wrong values. Not for derived views over base views that already exist — that is /denodo:views.
+description: Use when connecting any source to Denodo 9.5 and turning it into base views — a delimited file or CSV (CREATE DATASOURCE DF), a JSON file (CREATE DATASOURCE JSON), a relational database over JDBC (CREATE DATASOURCE JDBC), the wrapper and the base view (CREATE TABLE … ADD SEARCHMETHOD) — and equally for a REST or HTTP API, Excel, XML, Parquet, Salesforce, SAP, OData, SOAP, MongoDB, a SaaS application, a base view over a SQL query or a database's stored procedure or function, or a base view whose source schema changed. Also for "connect Oracle/Postgres", "onboard this CSV", "make base views over the source", introspecting a source's tables, and a base view that was created fine but returns no rows or wrong values. Not for derived views over base views that already exist — that is /denodo:views.
 ---
 
 # Data sources, wrappers and base views
@@ -17,6 +17,121 @@ safety rule are `/denodo:vql`.
 **The dangerous part of this skill is not syntax — it is silent success.** Every template
 below has a way to be accepted by the server and still deliver nothing, or the wrong
 thing, with no error anywhere. The Verify section is not optional.
+
+## What you build, and what goes to Design Studio
+
+Three kinds of source have verified templates here, and those you build yourself:
+
+| Source | Template |
+|---|---|
+| A delimited file (CSV, TSV, pipe-separated) on the Denodo server's own filesystem | DF, below |
+| A JSON file on the Denodo server's own filesystem | JSON, below |
+| A table or view of a relational database, with a user name and password | JDBC, with introspection, below |
+
+**Everything else the human creates in Design Studio, and you continue from what they
+created.** Denodo's own guide says creating data sources in VQL "is prone to errors so we
+suggest you do it graphically": the wizard introspects the source, previews the rows and
+writes the search methods, pagination and credentials itself. Hand-written VQL for these
+guesses at clauses nothing here has verified, and the server accepts most guesses at
+creation and fails later, at query time. That covers:
+
+- a REST or HTTP API — JSON or XML behind a URL, an OpenAPI document — even when the
+  payload is "just JSON";
+- a file anywhere other than the server's own disk (S3, ADLS, HDFS, FTP/SFTP, a URL), a
+  compressed or encrypted file, Excel, XML, fixed-width, Parquet, Delta, Iceberg;
+- a delimited file whose records run over more than one line, or whose quoted values
+  contain the delimiter — the raw lines (**When you cannot see the file**) show it before
+  you write anything;
+- Salesforce, SAP, OData, SOAP, MongoDB, LDAP, a SaaS wizard, a custom wrapper;
+- a base view over a SQL query, or over a stored procedure or function, instead of a table;
+- a JDBC data source that logs in by Kerberos, OAuth, cloud IAM, a credentials vault or
+  pass-through, or needs a driver the server does not ship — **the data source only**: once
+  it answers `PING_DATA_SOURCE`, the base views over its tables are yours again;
+- an existing base view whose source changed under it — columns added, dropped, retyped.
+
+A request that mixes the two is split, not refused: build your part now and hand over the
+rest in the same message.
+
+### Handing it over
+
+The database and the folder are yours, not the wizard's: create them first if they do not
+exist yet (`/denodo:catalog`), and check that the names you are about to propose are free
+(`GET_ELEMENTS()`, below). Then one message, with these parts in this order:
+
+1. What goes to Design Studio, in one line, and why.
+2. Where to click, from the table below.
+3. What to enter so the result fits the project: the database, the folder
+   (`/01 - connectivity`), and the names the conventions give (`ds_…`, `bv_…` —
+   `/denodo:vql`).
+4. When the source needs a secret — a password, token, client secret, key: it is typed into
+   the wizard. Do not ask for it and do not offer to encrypt it; nothing of yours will use
+   it.
+5. What to tell you when it is done (the base view names), and what you will do then.
+
+| To create | In Design Studio |
+|---|---|
+| A data source of any type | `File > New > Data source`, then the type: a REST API is **REST API → JSON**, a delimited file **FILES → Delimited file (CSV)** |
+| The base views over it | open the data source → **Create base view** |
+| A base view over a SQL query | the JDBC data source → **Create base view** → **Create from query** |
+| A base view over a stored procedure or function | the JDBC data source → **Create base view**: the same dialog lists the stored procedures |
+| Folder and description | the **Metadata** tab of the same dialog |
+| A change to an existing data source or base view | double-click it in the Server Explorer → **Edit** |
+| A base view out of date with its source | open the base view → **Edit** → **Source Refresh**: it shows the differences and propagates them to the views that depend on it |
+
+*unverified: 9.5 documentation only* — the menu paths come from the Administration Guide,
+*Creating Data Sources and Base Views*.
+
+### When the human says it is done
+
+- Find what was created: `SELECT name, subtype, folder FROM GET_ELEMENTS() WHERE
+  input_database_name = '<db>' AND type = 'view'`, and read each base view with
+  `vql desc --env <env> "<db>.<bv>" --vql`. Read it; never apply it (`/denodo:execute`).
+- Run the **Verify** table below on it. A wizard-made base view fails silently in the same
+  ways yours does — a wrong row count, a column of `NULL`s, padded text. For an API, the
+  count to expect is the total the API itself reports.
+- If `SELECT` answers that some fields are obligatory, the base view has mandatory inputs (a
+  view over a procedure does): ask the human for one value they know the answer for, and
+  query with it in `WHERE`.
+- **Do not copy it into your files.** Your `.vql` holds only the objects you create, and a
+  comment at its top names the objects made in Design Studio that belong with them. The
+  `DESC VQL` output opens with `DROP … CASCADE`, and even without that line, re-applying a
+  copy overwrites the wizard's configuration and credentials with your transcription of
+  them. If you created nothing yourself, there is no file. Either way, your summary names
+  the objects that exist on the server only.
+- A change to such an object goes back to Design Studio too — not an `ALTER`, and not a
+  `CREATE OR REPLACE` from your file.
+- **Source Refresh on a base view that your own file declares** changes the server, not
+  the file, and your next apply would undo it. Bring the wrapper's `OUTPUTSCHEMA` and the
+  base view's field list in your file into line with `DESC VQL` after the refresh.
+
+### When a template does not work straight away
+
+The budget is this: apply the template, and for each failure make the one fix this skill
+names for that error or symptom — **Common mistakes**, **Verify**, the notes under each
+template — and re-apply. Stop at the first of:
+
+- an error or a wrong result this skill does not name;
+- a named error whose fix has nothing to change — what it tells you to check is already
+  right;
+- the same failure again after its named fix.
+
+Stopping means no clause of your own to try, no second reading pass to test a theory, and
+never `IGNOREMATCHINGERRORS = TRUE` to make the count come out. Hand the source over as
+above, and add what you learned: the header or sample you read, the exact error, what the
+named fix changed. Your objects already exist — say so, and let the human choose between
+opening your data source in Design Studio and fixing it against the wizard's preview, or
+having you drop them first (a drop is theirs to confirm). Take their statements out of your
+file as soon as the human takes the objects over — from then on a re-apply would undo the
+wizard's work. If the wizard cannot read the source either, the fix is in the export, and a
+cleaned file fits your template as it is.
+
+| Thought | Reality |
+|---|---|
+| "The human said try whatever it takes" | That is the outcome they want, not permission to experiment on their server. Design Studio's preview tests a setting in a click; you test it in an apply and a `SELECT` |
+| "One more clause might do it" | A clause this skill does not name is a guess, and the parser accepts most guesses |
+| "It is only JSON over HTTP" | It is a REST source: authentication, pagination and the connection settings are all the wizard's |
+| "A source on the server already does this; I can copy its `DESC VQL`" | A donor is a source of grammar for the three templates above. For anything else it is still Design Studio |
+| "The reference has the grammar for it" | The references hold the grammar of the three templates only |
 
 ## Templates
 
@@ -107,7 +222,7 @@ CREATE OR REPLACE TABLE bv_crm_customers I18N us_pst (
   `Error creating data source: destination folder '/x' not found`. Folders come first, and
   they are `/denodo:catalog`.
 
-### JSON file or endpoint
+### JSON file
 
 ```sql
 -- verified: 9.5.1 (live, 2026-09-17)
@@ -177,9 +292,8 @@ CREATE OR REPLACE TABLE bv_oms_orders I18N us_pst (
 - **A compound column needs a named type.** `CREATE TABLE` takes a type identifier, so a
   register or array column must be declared first with `CREATE OR REPLACE TYPE`
   (register first, then the array of it). Inline structures do not parse.
-- A JSON payload over HTTP swaps the `ROUTE` for
-  `ROUTE HTTP 'http.CommonsHttpClientConnection' GET '<uri>'` plus authentication and
-  pagination — `references/json.md`.
+- A JSON document behind a URL is a REST source, not this template with another `ROUTE`:
+  Design Studio (**What you build** above).
 - Reading a register field in `SELECT` needs parentheses: `(shipping).country`. Plain
   `shipping.country` is read as *view.column* and fails with `Field not found
   'shipping.country' in view 'shipping'`. Flattening arrays is `/denodo:views`.
@@ -428,8 +542,9 @@ arguments are kept in the session transcript.
   one by accident. Encrypt before writing the file, not after.
 - If the human typed a production password into the chat, say so plainly once and suggest
   rotating it; the transcript keeps it.
-- `CREDENTIALS_VAULT` / `FROM_VAULT` is the clean answer where a vault is configured —
-  `references/jdbc.md`. Development servers rarely have one, hence the flow above.
+- A source that should read its password from a credentials vault, or log in by Kerberos,
+  OAuth or cloud IAM, is created in Design Studio (**What you build** above); the base views
+  over its tables are still yours.
 
 **`CREATE OR REPLACE DATASOURCE` rewrites the credentials every time the file is applied,
 and omitting the clause erases them.** Re-applying the same data source without
@@ -445,18 +560,18 @@ is missing **in one message, with the defaults already proposed**, then build ev
 else yourself. Three or four lines, not an interview:
 
 > To connect it I need: the host (port 1521 unless you say otherwise), the service name or
-> SID, the Oracle version, and the login and password of the account Denodo should read
-> with. The password goes no further than this session — I encrypt it before it reaches
-> any file.
+> SID, the Oracle version, and the login of the account Denodo should read with. For its
+> password I will give you one command to run in your own terminal: only the encrypted
+> string reaches the file, and the password never reaches this chat.
 
 | Slot | Where it comes from |
 |---|---|
 | JDBC host, port, database / service / SID | **the human** — then you assemble `DATABASEURI` from the table above; never ask for a JDBC URL |
 | JDBC product and version | **the human** — it picks `DRIVERCLASSNAME`, `CLASSPATH` and the adapter; a wrong adapter changes what gets pushed down and the server will not complain |
 | JDBC login | **the human**; it goes into the file |
-| Any password | the human gives it to you in whatever form suits them; **you** encrypt it and only the ciphertext reaches the file (above). Ask for it last, after everything else is settled, so it spends as little time in the conversation as possible |
+| Any password | **the human**, through `secret encrypt` in their own terminal (**Passwords** above) — only the ciphertext reaches you and the file. Ask for it last, after everything else is settled |
 | JDBC schema, tables, columns, types | **the server** — `GET_JDBC_DATASOURCE_TABLES` and `GENERATE_VQL_TO_CREATE_JDBC_BASE_VIEW` after the source is up. Ask only which tables the human wants, and only if the schema has more than a handful |
-| File path / URI | **the human** — and it is **server-side**: the file must be readable by the Denodo server, not by you |
+| File path | **the human** — and it is **server-side**: the file must be readable by the Denodo server, not by you. A URL, a bucket or an FTP server is Design Studio (**What you build** above) |
 | Delimiter, header, charset | the human, or a sample of the file; `,` + `HEADER = TRUE` + `UTF-8` is the common case |
 | **Every column name of a file, in order** | the file header, verbatim and complete — the server does **not** introspect files. Three ways to get it, including one that needs nobody: **When you cannot see the file** above. Never infer it from the columns the human wants |
 | JSON shape | a sample of the document — nesting decides `REGISTER OF` / `ARRAY OF`, and you cannot guess it. Same three ways |
@@ -472,15 +587,14 @@ how a similar object is written here (`vql desc … --vql`), whether the source 
 
 ## Reference
 
-- `references/df.md` — full `CREATE DATASOURCE DF` / `WRAPPER DF`: route types (LOCAL,
-  HTTP, FTP, HDFS, S3, ABFS), filters, fixed-width and regex-parsed files, `NULLVALUE`,
-  interpolation variables.
-- `references/json.md` — full `CREATE DATASOURCE JSON` / `WRAPPER JSON`: HTTP routes,
-  authentication, pagination, NDJSON, OpenAPI 3, `CREATE TYPE`.
-- `references/jdbc.md` — full `CREATE DATASOURCE JDBC` / `WRAPPER JDBC`: the driver
-  directory names on the server, adapters, Kerberos / OAuth / vault / pass-through
-  credentials, connection pool, `SQLSENTENCE` and stored-procedure wrappers, introspection
-  procedures.
+- `references/df.md` — `CREATE DATASOURCE DF` / `WRAPPER DF` for a local delimited file:
+  delimiters, a directory of files, quoting, `NULLVALUE`, what the parser accepts in
+  `OUTPUTSCHEMA`, reading a file as raw lines, typing.
+- `references/json.md` — `CREATE DATASOURCE JSON` / `WRAPPER JSON` for a local JSON file:
+  `TUPLEROOT`, nested registers and arrays, `CREATE TYPE`, reading registers.
+- `references/jdbc.md` — `CREATE DATASOURCE JDBC` / `WRAPPER JDBC` over tables: the driver
+  directory names on the server, adapters, password credentials, the connection pool,
+  introspection procedures.
 - `references/base-view.md` — full `CREATE TABLE`: search methods and constraints, cache
   clauses, primary keys, tags, indexes, `ONSCHEMACHANGE`, VQL types.
 
@@ -505,10 +619,11 @@ the data back, every time:
 `database_name`, `name`, `type`, `subtype`, `folder` — the input columns carry the `input_`
 prefix, the output ones do not.
 
-**When a template does not cover your case, ask the server, not your memory.**
-`vql desc --env dev --database <db> <object> --type "datasource json" --vql` prints the
-server's own `CREATE` statement for any existing object of that type — the exact 9.5.1
-syntax, including the parts no documentation shows. For a file already onboarded, ask its
+**When a template does not cover a detail of one of the three sources, ask the server,
+not your memory.** `vql desc --env dev --database <db> <object> --type "datasource json" --vql`
+prints the server's own `CREATE` statement for any existing object of that type — the exact
+9.5.1 syntax, including the parts no documentation shows. A source of another kind is not
+a detail: it is Design Studio's (**What you build** above), whatever a donor shows. For a file already onboarded, ask its
 **base view** rather than its source: that answer carries the route, the parse clauses, the
 column list and the working types together (**When you cannot see the file** above, which
 also says what not to copy from it). All of this is read-only and allowed anywhere,
@@ -516,11 +631,15 @@ production included.
 
 ## Common mistakes
 
+Each row is a named fix. A failure that is not here, or that survives its fix, ends the
+attempt: **When a template does not work straight away**, above.
+
 | You wrote | What happens | Fix |
 |---|---|---|
 | DF `OUTPUTSCHEMA` with the columns the human asked for | `CREATE` succeeds, `SELECT` returns **0 rows** | list every column of the file; narrow in the base view |
 | DF `OUTPUTSCHEMA` with the right count but the wrong order | rows arrive with values under the wrong names | the mapping is positional — reorder to match the header |
 | DF source without `IGNOREMATCHINGERRORS = FALSE` | schema mismatches are dropped row by row, silently | add it; the mismatch becomes `[DF ROUTE] [PARSE_ERROR] Invalid line found at data file` |
+| `Different number of columns` while the wrapper's count and order already match the header | the records do not split one per line on the delimiter — a line break or a delimiter inside quoted values | nothing to fix in VQL: stop, Design Studio (**When a template does not work straight away**) |
 | `FOLDER = '/x'` where `/x` does not exist | `Error creating data source: destination folder '/x' not found` | create the folder first (`/denodo:catalog`) |
 | DF `OUTPUTSCHEMA` with types (`: 'java.util.Date'`) | `Syntax error … near '''` | DF wrappers take `name = 'mapping'` only, plus `(OPT)` / `NULLVALUE` |
 | Wrapper with no `OUTPUTSCHEMA` at all | creates, then `SELECT` fails: DF `[NO_CREATED_ACCESS] Unable to create xml raw access`, JSON `[JSON WRAPPER] [PROCESSING]` | the server does not introspect files — write the schema |
