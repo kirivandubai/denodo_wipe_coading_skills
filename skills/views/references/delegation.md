@@ -120,4 +120,5 @@ report:
   row_number is not executable`);
 - **keep it** — when the volume stays small, or the consumer never reads that column;
 - **two data sources** — nothing inside the view changes it. Moving the data into one place
-  (a cache, a copy in one database) is outside this skill.
+  is outside this skill: a full cache on both views, which delegates their join to the cache
+  database (documentation), is `/denodo:cache`; a copy in one database is Design Studio.

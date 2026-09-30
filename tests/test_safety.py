@@ -126,6 +126,58 @@ class SourceWriteTest(unittest.TestCase):
         self.assertIsNone(classify_vql("SELECT 'INSERT INTO t' AS s FROM DUAL()"))
 
 
+class CacheWriteTest(unittest.TestCase):
+    """A query whose CONTEXT loads or invalidates a view's cache is a write, although it
+    starts with SELECT: ``'cache_invalidate'`` deletes cached rows before the load, and a
+    ``'cache_preload' = 'true'`` without it appends a second copy of the rows (T27)."""
+
+    def test_preload_that_replaces_the_cache(self):
+        self.assertEqual(
+            classify_vql(
+                "SELECT * FROM web_return_line CONTEXT ('cache_preload' = 'true', "
+                "'cache_invalidate' = 'all_rows', 'cache_wait_for_load' = 'true', "
+                "'cache_return_query_results' = 'false')"
+            ),
+            "cache",
+        )
+
+    def test_preload_without_invalidation_appends(self):
+        self.assertEqual(
+            classify_vql("SELECT * FROM v WHERE id > 0 CONTEXT ('cache_preload' = 'true')"), "cache"
+        )
+
+    def test_invalidation_without_preload(self):
+        self.assertEqual(
+            classify_vql("SELECT * FROM v WHERE a = 1 CONTEXT ('cache_invalidate' = 'matching_rows')"), "cache"
+        )
+
+    def test_case_and_spacing(self):
+        self.assertEqual(classify_vql("select * from v context('CACHE_PRELOAD'='TRUE')"), "cache")
+
+    def test_leading_comment_is_skipped(self):
+        self.assertEqual(
+            classify_vql("-- nightly\nSELECT * FROM v CONTEXT ('cache_invalidate' = 'all_rows', 'cache_preload' = 'true')"),
+            "cache",
+        )
+
+    def test_reading_around_the_cache_is_not_a_write(self):
+        # 'cache' = 'off' reads the source instead of the cache: the check a preload is compared with
+        self.assertIsNone(classify_vql("SELECT COUNT(*) FROM v CONTEXT ('cache' = 'off')"))
+        self.assertIsNone(classify_vql("SELECT * FROM v CONTEXT ('cache_preload' = 'false')"))
+        self.assertIsNone(classify_vql("SELECT * FROM v CONTEXT ('cache_wait_for_load' = 'true')"))
+        self.assertIsNone(classify_vql("SELECT * FROM CACHE_CONTENT('d', 'v')"))
+
+    def test_parameter_names_inside_a_string_do_not_count(self):
+        # doubled quotes inside a literal are not a CONTEXT parameter
+        self.assertIsNone(
+            classify_vql("SELECT 'CONTEXT (''cache_preload'' = ''true'')' AS how FROM DUAL()")
+        )
+
+    def test_alter_view_cache_stays_alter(self):
+        self.assertEqual(classify_vql("ALTER VIEW v CACHE INVALIDATE"), "alter")
+        self.assertEqual(classify_vql("ALTER VIEW v CACHE FULL"), "alter")
+
+
 class StateChangingProcedureTest(unittest.TestCase):
     """Predefined procedures that change state are invoked with SELECT or CALL, so the
     leading keyword says nothing; the name does (T20)."""

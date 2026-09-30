@@ -1,6 +1,6 @@
 ---
 name: views
-description: Use when building on top of views that already exist in Denodo 9.5 — a derived view over base views (CREATE VIEW … AS SELECT: a join, an aggregate, a mart, a parameterised view, a UNION ALL of views of one entity, FLATTEN of an array such as JSON order lines into rows, NEST of rows into an array), an interface view as a contract whose implementation can be swapped (CREATE INTERFACE VIEW … SET IMPLEMENTATION), or an association between two views (CREATE ASSOCIATION … REFERENTIAL CONSTRAINT). Also before changing a view others depend on — "what uses this view", "can I drop this column", "where does this field come from" — for whether a mart over a database runs there or pulls every row into Denodo, for "make a mart", "combine these sources into one view", "expose this as a data product", and for a view created without an error that fails on SELECT or turns up INVALID. Not for connecting a source or making base views — /denodo:datasources; not for databases, folders or VDP tags — /denodo:catalog.
+description: Use when building on top of views that already exist in Denodo 9.5 — a derived view over base views (CREATE VIEW … AS SELECT: a join, an aggregate, a mart, a parameterised view, a UNION ALL of views of one entity, FLATTEN of an array such as JSON order lines into rows, NEST of rows into an array), an interface view as a contract whose implementation can be swapped (CREATE INTERFACE VIEW … SET IMPLEMENTATION), or an association between two views (CREATE ASSOCIATION … REFERENTIAL CONSTRAINT). Also before changing a view others depend on — "what uses this view", "can I drop this column", "where does this field come from" — for whether a mart over a database runs there or pulls every row into Denodo, for "make a mart", "combine these sources into one view", "expose this as a data product", and for a view created without an error that fails on SELECT or turns up INVALID. Not for connecting a source or making base views — /denodo:datasources; not for databases, folders or VDP tags — /denodo:catalog; not for a view's cache or materialization — /denodo:cache.
 ---
 
 # Derived views, interface views and associations
@@ -430,8 +430,9 @@ can then be written in VQL names. Unchanged either way: `decimal`, `float`, `boo
 | Grain after a flatten | the element (one row per line) or the parent (one row per order, with figures from its lines) — the human. The second joins the element figures, aggregated, to the parent's figures at the result's grain (`references/arrays.md`), never a `SUM` of the parent's measures over flattened rows |
 | Existing dependants | `USED_BY()` before touching anything that already exists; for a column that changes, "Before a column changes" below |
 
-Do not ask about cache, swap, statistics or indexes: they have server defaults, they are
-not part of creating these objects, and they are outside v1. Whether a view over a database
+Do not ask about cache, swap, statistics or indexes: they have server defaults, and they
+are not part of creating these objects. When the human asks for a cache, it is
+`/denodo:cache`, once the view exists and returns the right rows. Whether a view over a database
 runs in that database is not one of them — Verify checks it.
 
 ## When the request asks for something the data does not have
@@ -530,6 +531,10 @@ and `household_income_by_band` and the `household_income` contract with them.
 - When the change is made, it goes through the view's own file. The output of `DESC VQL`
   is not a file to edit and re-run: it opens with `DROP … CASCADE`, which removes the very
   dependants this section listed.
+- **A view with a full cache** (its `DESC VQL` ends with `ALTER VIEW … CACHE FULL`) comes back
+  from a changed column with an empty cache: 0 rows for it and everything on it, no error,
+  until its load runs again — *verified: 9.5.1 (live, 2026-09-30)*. The load, and the rest
+  of what a cache does to a change, is `/denodo:cache`.
 
 **"Where does this field come from"** is the question `COLUMN_DEPENDENCIES()` does answer:
 with `input_column_name` it walks one field down to the base view and the data source in one

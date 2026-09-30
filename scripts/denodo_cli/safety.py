@@ -12,10 +12,12 @@ the agent's own project — server settings, data in sources, objects of other d
 global objects. ``CREATE`` of a new object is not. The classifier is a deny list and never
 complete; a skill that teaches a state-changing statement extends it in the same change.
 
-VQL is classified by its leading keyword, and then by the name of the procedure it calls:
-the predefined procedures that change state (``DROP_REMOTE_TABLE``, ``CLEAN_CACHE_DATABASE``,
-``GENERATE_STATS`` …) are invoked with ``SELECT … FROM name(…)`` or ``CALL name(…)``, so the
-keyword alone lets them through (T20). HTTP calls are classified by method and path, never
+VQL is classified by its leading keyword, then by the name of the procedure it calls, then by
+its CONTEXT: the predefined procedures that change state (``DROP_REMOTE_TABLE``,
+``CLEAN_CACHE_DATABASE``, ``GENERATE_STATS`` …) are invoked with ``SELECT … FROM name(…)`` or
+``CALL name(…)`` (T20), and a query that loads or invalidates a view's cache is a ``SELECT``
+with ``'cache_preload'`` or ``'cache_invalidate'`` in its CONTEXT (T27) — the keyword alone
+lets both through. HTTP calls are classified by method and path, never
 by words in the body: the Data Marketplace has ``POST`` endpoints that overwrite whole sets
 (spike T11, section 6).
 """
@@ -72,6 +74,13 @@ _PROCEDURE_CALL = re.compile(
     re.IGNORECASE,
 )
 
+# A query that writes the cache of a view instead of reading it. 'cache_invalidate' deletes
+# cached rows (all of them with 'all_rows') before the result is stored; 'cache_preload' =
+# 'true' without it appends the result to what is cached, so a second run duplicates every
+# row. 'cache' = 'off' and the other cache parameters only change how the query reads. The
+# quoted name has to be followed by '=': a doubled quote inside a string literal does not match.
+_CACHE_WRITE = re.compile(r"'cache_invalidate'\s*=|'cache_preload'\s*=\s*'true'", re.IGNORECASE)
+
 # POST endpoints that replace a whole set instead of adding to it, or that delete what is
 # missing from the payload (T11 section 6; T8d re-checked them against the 9.5.1 API).
 _REPLACING_POSTS = (
@@ -97,7 +106,8 @@ _REPLACING_POSTS = (
 def classify_vql(statement: str) -> str | None:
     """``"drop"``, ``"alter"``, ``"delete"`` for destructive statements, ``"write"`` for a
     write into a source, ``"setting"`` for a change of server configuration, ``"procedure"``
-    for a call of a predefined procedure that changes state, else ``None``."""
+    for a call of a predefined procedure that changes state, ``"cache"`` for a query that
+    loads or invalidates the cache of a view, else ``None``."""
     body = _LEADING_NOISE.sub("", statement, count=1)
     match = re.match(r"([A-Za-z_]+)", body)
     if not match:
@@ -108,6 +118,8 @@ def classify_vql(statement: str) -> str | None:
     for call in _PROCEDURE_CALL.finditer(body):
         if call.group(1).upper() in STATE_CHANGING_PROCEDURES:
             return "procedure"
+    if _CACHE_WRITE.search(body):
+        return "cache"
     return None
 
 

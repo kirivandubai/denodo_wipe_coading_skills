@@ -125,6 +125,7 @@ phrasing; `/denodo:vql` is the entry point when the request is ambiguous.
 | `/denodo:views` | derived views, interface views, associations | VQL |
 | `/denodo:marketplace` | marketplace tags, categories, external elements, catalog synchronisation | REST |
 | `/denodo:procedures` | calling the server's predefined procedures, writing your own in VQL, importing a Java one from a JAR | VQL |
+| `/denodo:cache` | the full cache of a view: switching it on and off, loading it with all rows or the ones you name, clearing it; every other cache setting goes to Design Studio | VQL |
 
 **A "tag" alone does not say which server you mean.** Virtual DataPort tags
 (`CREATE TAG`, VQL) and Data Marketplace tags (REST) are different objects on different
@@ -136,15 +137,16 @@ servers; tags imported into the marketplace from VDP are read-only there. `catal
 In scope: the sixteen objects of the first six skills, everything needed to take a request
 from plain language to a mart a consumer can browse. `/denodo:procedures` sits outside that
 scope — stored procedures are not part of the mart scenario — and is there because it is
-useful on its own.
+useful on its own. So is `/denodo:cache`, for the full cache of a view only.
 
 Created in Design Studio, not by the agent: every data source beyond a delimited or JSON file
 on the server and a JDBC table with a password — REST APIs, Excel, XML, Salesforce, SAP, cloud
 storage, base views over a SQL query or a stored procedure, refreshing a base view whose source
 changed. `/denodo:datasources` tells the human what to create there and builds on the result.
 
-Deliberately out of scope: a full function reference; performance and caching (summary
-views, materialized tables, remote tables, MPP); security and publication (users, roles,
+Deliberately out of scope: a full function reference; performance beyond the full cache
+(partial cache, time to live, incremental loads, summary views, materialized tables, remote
+tables, MPP); security and publication (users, roles,
 privileges, row/column restrictions, REST/SOAP/GraphQL/OData services); Scheduler,
 Solution Manager and cross-environment deployment; Denodo versions other than 9.5.
 

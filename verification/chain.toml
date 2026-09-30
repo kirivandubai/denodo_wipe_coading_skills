@@ -1,8 +1,8 @@
 # verification/chain.toml
-# Verifies 16 of the templates end to end: catalog database, folders, the DF (CSV), JSON
+# Verifies 19 of the templates end to end: catalog database, folders, the DF (CSV), JSON
 # and JDBC data sources, a hand-written JDBC wrapper and base view, derived views, the union
-# and the array views, the interface view, the association, the column-impact queries, and tags
-# (vql channel), plus the
+# and the array views, the interface view, the association, the column-impact queries, the
+# full cache switched on, loaded and cleared, and tags (vql channel), plus the
 # Data Marketplace catalog
 # sync, a tag and a category (http channel). Bodies of the
 # "template" steps come from the skills themselves (address = file#section); "fixture"
@@ -421,6 +421,48 @@ check = "SELECT view_name FROM USED_BY() WHERE input_view_database_name = '{data
 # The third block of that skill — CREATE PROCEDURE ... CLASSNAME, the Java form — is
 # deliberately not a step. It needs a JAR imported into the server, which this chain has no
 # way to produce; its mark stays unverified and no run here will re-date it.
+
+# --- Full cache of iv_household_income: on, load, clear and off ------------------------------
+# The three blocks of skills/cache/SKILL.md, in the order the skill applies them, over the
+# derived view the views step created. They write outside the test database in one way only:
+# the cache table of that view lives in the server's cache data source, and it goes with the
+# view when [cleanup] drops the database (documentation, section "Freeing the space" of
+# skills/cache/references/full-cache.md). Each check asserts what the skill claims about its
+# block, not only that the server accepted it.
+
+[[step]]
+id = "cache-on"
+kind = "template"
+channel = "vql"
+address = "skills/cache/SKILL.md#Switch it on — in the view's own file"
+substitute = { sales_analytics = "{database}" }
+database = "{database}"
+# "From this statement until a load finishes, the view returns 0 rows to everyone."
+check = "SELECT COUNT(*) AS n FROM iv_household_income HAVING COUNT(*) = 0"
+
+[[step]]
+id = "cache-load"
+kind = "template"
+channel = "vql"
+address = "skills/cache/SKILL.md#Load it — a file of its own"
+substitute = { sales_analytics = "{database}" }
+database = "{database}"
+# Complete, and read through the view built on the cached one: household_income_by_band had
+# been queried before the load (derived-views), which is exactly the reader a NO_STATUS cache
+# leaves on a dropped table. Every household has an income band, so the per-band counts add
+# up to the households of the base view, which is not cached.
+check = "SELECT b.n FROM (SELECT SUM(household_count) AS n FROM household_income_by_band) b, (SELECT COUNT(*) AS m FROM bv_household_demographics) s WHERE b.n = s.m AND b.n > 0"
+
+[[step]]
+id = "cache-off"
+kind = "template"
+channel = "vql"
+address = "skills/cache/SKILL.md#Clear it, switch it off"
+substitute = { sales_analytics = "{database}" }
+database = "{database}"
+# INVALIDATE while the cache was on: the load date is gone, so a later CACHE FULL would not
+# bring the old rows back.
+check = "SELECT viewname FROM CACHE_CONTENT('{database}', 'iv_household_income') WHERE expirationdate IS NULL"
 
 [[step]]
 id = "tags"

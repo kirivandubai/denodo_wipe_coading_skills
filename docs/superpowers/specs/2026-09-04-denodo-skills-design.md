@@ -77,6 +77,7 @@ Virtual DataPort — основной адресат, но не единстве
 /denodo:views         derived views (joins, unions, FLATTEN/NEST), interface views, ассоциации; impact of a change, lineage, delegation
 /denodo:marketplace   Data Marketplace: теги, категории, external elements (REST)
 /denodo:procedures    хранимые процедуры: предопределённые, VQL, Java (вне v1)
+/denodo:cache         full cache of a view: on and off, load, clear (T27, beyond v1)
 ```
 
 The dialect has no skill of its own (section 9): it is a table in the body of `/denodo:vql`
@@ -131,9 +132,12 @@ denodo_skills/                        репозиторий = плагин = м
 │   ├── marketplace/
 │   │   ├── SKILL.md
 │   │   └── references/               tags, categories, external elements
-│   └── procedures/
+│   ├── procedures/
+│   │   ├── SKILL.md
+│   │   └── references/               predefined, vql-procedures, java-procedures
+│   └── cache/
 │       ├── SKILL.md
-│       └── references/               predefined, vql-procedures, java-procedures
+│       └── references/full-cache.md  every load parameter and ALTER VIEW … CACHE form, measured
 ├── scripts/
 │   ├── denodo                        launcher (только stdlib)
 │   └── denodo_cli/                   реализация
@@ -237,6 +241,13 @@ settings pass on any profile: the ODBC connection form `SET <property> TO …` (
 allow-listed shape, every other `SET` counts as the server), `ALTER SESSION SET …` (checked on
 9.5.1: the value shows in `GETSESSION` on the same connection and is gone on the next one), and
 `WEBCONTAINER STATUS`.
+
+**By CONTEXT (T27)**, a query that writes the cache of a view instead of reading it is flagged
+`cache`: `'cache_invalidate'` in any form (it deletes cached rows before the load — all of them
+with `'all_rows'`), and `'cache_preload' = 'true'` without it (it appends to what is cached, so
+a second run doubles every row). The statement starts with `SELECT`, so neither the keyword
+nor the procedure check sees it. `'cache' = 'off'`, the read that bypasses the cache, is not a
+write. `ALTER VIEW … CACHE …` is already `alter`.
 
 **Для HTTP-канала правило формулируется по методу и пути, а не по глаголу.** `DELETE`
 тега, категории (каскадно с потомками) и external tool server (со всеми его элементами)
@@ -363,8 +374,8 @@ scripts/denodo verify    --env dev            прогон шаблонов, с�
   ничего после неё, без отката, — так что клиентское разбиение ничего не меняет в
   семантике, но даёт точную диагностику. `CONNECT DATABASE` в файле работает, потому что
   сессия одна на весь прогон.
-- **Разрушительные операции помечаются в ответе** (`destructive: drop|alter|delete|procedure`
-  для VQL — по ключевому слову и по имени вызванной процедуры, `delete|replace` для HTTP —
+- **Разрушительные операции помечаются в ответе** (`destructive: drop|alter|delete|write|setting|procedure|cache`
+  для VQL — по ключевому слову и по имени вызванной процедуры, and by `CONTEXT` for a cache write (T27); `delete|replace` для HTTP —
   по методу и пути, раздел 6.3) и на профиле с
   `production = true` отклоняются до исполнения без флага `--allow-destructive`. Само
   подтверждение человеком остаётся правилом ядра: флаг лишь не даёт выполнить такое молча.
@@ -729,6 +740,12 @@ elements Data Marketplace), `query` в объёме минимальной де�
 себе. Добавлены тем же способом, что и остальные, — новым каталогом в `skills/`, без
 правки ядра и формата навыка. Слоя исполнения это стоило одной правки: тело VQL-процедуры
 несёт собственные `;`, и сплиттер научился держать его целым.
+
+**Also beyond v1, `/denodo:cache`** (T27, from the owner's roadmap review): the full cache of
+a view only — switching it on and off, loading it with the rows the human names, clearing
+it. Partial cache, time to live, incremental loads, cache indexes and scheduled refreshes
+stay in Design Studio and Scheduler. It cost the execution layer one classifier rule (the
+load query, section 6.3); its three templates run in the `verify` chain.
 
 ## 13. Риски и открытые вопросы
 

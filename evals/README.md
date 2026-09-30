@@ -94,6 +94,11 @@ comes from (`routing-views-lineage`), and whether a mart over a database runs in
 (`routing-views-delegation`). None of the three asks for anything to be created, so without
 them a description could lose these phrases and every other case would stay green.
 
+Two guard `/denodo:cache` (T27): putting a full cache on a view and loading it
+(`routing-cache`), and a cached view that returns no rows or every row twice
+(`routing-cache-empty-view`) — the second names no statement, only the symptom, which is how
+the silent failures of a full cache reach a human.
+
 **`discrimination`** — фразы на границах, где описания конкурируют. Каждый такой кейс несёт
 и положительный, и отрицательный грейдер, потому что проверяется именно выбор между двумя:
 
@@ -108,6 +113,7 @@ them a description could lose these phrases and every other case would stay gree
 | `discrimination-procedure-base-view` | `datasources` | `procedures` |
 | `discrimination-json-array` | `views` | `datasources` |
 | `discrimination-impact-not-procedures` | `views` | `procedures` |
+| `discrimination-cache-not-views` | `cache` | `views` |
 
 Первые две строки — тот самый риск, ради которого сьют и заводился: «тег» в VDP и «тег» в
 маркетплейсе — **разные объекты на разных серверах**, и перепутанный навык уйдёт корректным
