@@ -84,6 +84,10 @@ difference — creates no object, so no object skill owns it, and the table only
 `vql` fires on it. It passed on the descriptions as they were when the table was added (T24);
 no description was changed for it.
 
+`routing-views-union` guards the union half of `/denodo:views` (T25): combining views of one
+entity from several sources, with a one-source query reading one source, is a derived view,
+and the phrase names no view type at all.
+
 **`discrimination`** — фразы на границах, где описания конкурируют. Каждый такой кейс несёт
 и положительный, и отрицательный грейдер, потому что проверяется именно выбор между двумя:
 
@@ -96,6 +100,7 @@ no description was changed for it.
 | `discrimination-author-not-run` | `views` или `vql` | `execute` |
 | `discrimination-run-not-author` | `execute` | предметные навыки |
 | `discrimination-procedure-base-view` | `datasources` | `procedures` |
+| `discrimination-json-array` | `views` | `datasources` |
 
 Первые две строки — тот самый риск, ради которого сьют и заводился: «тег» в VDP и «тег» в
 маркетплейсе — **разные объекты на разных серверах**, и перепутанный навык уйдёт корректным

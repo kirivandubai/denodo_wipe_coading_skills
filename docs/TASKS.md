@@ -26,11 +26,8 @@
 
 **Волна 1 — `views`.**
 
-- **T25. `views`: семантика объединений, секционированные объединения, `FLATTEN`/`NEST`.**
-  `дальше`. SQL `UNION` против расширенного объединения по именам, секционированные
-  объединения и отсечение веток, разворачивание массива из JSON-представления
-  `datasources` в строки, `CONTEXT('formatted' = 'yes')`. `INTERSECT`/`MINUS` не берём.
-  Проверка на стенде над JSON-фикстурой с `ARRAY OF`. Р. 4.2.
+*T25 is done — under «Сделано» below.*
+
 - **T26. `views`: проверка делегирования и зависимости по колонкам.** `дальше`. В таблицу
   проверок: для витрины над JDBC — `GET_DELEGATED_SQLSENTENCE` или `DESC QUERYPLAN`, ушли ли
   соединение и агрегат в источник целиком, и какая функция помешала, если нет (сначала
@@ -39,6 +36,11 @@
   сравнивается через `LIKE`» — после проверки на стенде. Фразы «what uses this view / can I
   drop this column / where does this field come from» в `description` — eval-сьют. Тюнинг
   (статистика, CBO, хинты) не берём. Р. 4.5, 4.3.
+  *From T25:* `DESC QUERYPLAN` answers `ok` with no rows through the transport, `TRACE`
+  returns the plain result, `EXPLAIN` does not parse; `SELECT execution_plan FROM
+  GET_QUERY_EXECUTION_PLAN() WHERE input_query = '…'` returns the plan as text without running
+  the query (verified 9.5.1, 2026-09-30) — `views/references/unions.md` shows how to read it.
+  Start from it; `GET_DELEGATED_SQLSENTENCE` is still unchecked.
 
 **Волна 2 — новые навыки на VQL.**
 
@@ -104,7 +106,23 @@
   фактическую базу вызова: при `--database sales_analytics` в ответе остаётся `admin`
   (воспроизведено на живом стенде 9.5.1). Агенты в прогонах T6 дважды принимали это за
   признак того, что профиль смотрит не туда. Правка на стороне T5-кода, отдельной задачи
-  пока не заведено.
+  пока не заведено. *Update (T25, 2026-09-30):* `--database` is reflected now; what is not is
+  a `CONNECT DATABASE` inside the applied file — three of the five T25 runs read
+  `env.database = admin` as "my objects went to admin". `execute/SKILL.md` now says so; the
+  code still reports the profile's database.
+- JSON base views created from the `datasources` template before T25 (no `CONSTRAINTS …
+  NOS ZERO ()`) ignore every `WHERE` on their columns, and so does every view above them.
+  The template is fixed; existing ones are found only by the "a filter filters" check. The
+  fix is to re-apply the base view with the block — dependants stay valid and start
+  filtering (checked live).
+- Parsing an ISO-8601 instant (`2026-05-25T10:15:00Z`) is not in `vql/references/dialect.md`:
+  the quoting of `'T'` inside a pattern and the `Z` zone. T25 agents sidestepped it with
+  `SUBSTR(…, 1, 10)`; a `TO_TIMESTAMP('yyyy-MM-dd''T''HH:mm:ss''Z''', …)` parsed in one run,
+  unchecked beyond that.
+- Implicit `_register_…` / `_array_register_…` types that `NEST` and `REGISTER` create stay
+  after `DROP VIEW`, and a `REGISTER` view over another database's view creates its type in
+  **that** database (`views/references/arrays.md`). Whether `vql`'s write-only-your-own rule
+  should name it, and how cleanup should find orphan types, is open.
 - Повторный `-e` в `vql run` молча берёт последний: `denodo vql run -e "…" -e "…"` даёт
   `total: 1`, первый запрос исчезает без предупреждения (воспроизведено на стенде в T8c;
   один `-e` с `;` внутри отрабатывает оба выражения). Обычное поведение `argparse` без
@@ -160,6 +178,60 @@
 ---
 
 ## Сделано
+
+- **T25. `views`: unions, partitioned unions, `FLATTEN`/`NEST`, `CONTEXT ('formatted' =
+  'yes')`; and the JSON base view template of `datasources` stops ignoring `WHERE`.** The body
+  of `views` gains two templates — a union of sources with a constant per branch that prunes,
+  and `FLATTEN` to rows plus `NEST` back — with the silent traps next to them, rows in the
+  Verify and Common mistakes tables, and two references: `references/unions.md` (the three
+  spellings, how branches are matched and named, which union shapes prune and which do not,
+  `NULL` partition keys, overlapping sources, reading `GET_QUERY_EXECUTION_PLAN()`) and
+  `references/arrays.md` (`FLATTEN` in full, a parent summary that keeps every parent, `NEST`,
+  `REGISTER`, element access, the implicit types). Every `CREATE VIEW` template now ends with
+  `CONTEXT ('formatted' = 'yes')`. The union and array templates joined the `verify` chain;
+  the union step checks the plan, not just the creation (its filter returns no row on a union
+  that does not prune — checked). Eval: `routing-views-union` and `discrimination-json-array`
+  added, 20 of 20 cases pass.
+
+  **Measured on 9.5.1, none of it in the documentation:** `UNION ALL` matches by position and
+  names each column from whichever branch last used that name, so branches in a different
+  order give a view whose `SELECT qty` and `WHERE qty = 1` disagree; a constant column alone
+  never prunes, a `WHERE` on it around each branch does, and a function over the partition
+  column (`UPPER(channel)`) or a wrong-case literal defeats it (the second returns no rows);
+  rows with a `NULL` partition key fall into no branch; field properties are refused on a
+  union; `FLATTEN` keeps an empty or missing array as one all-`NULL` row and renames a
+  clashing element field `<array>_<field>`; two arrays in one `FLATTEN` multiply; `NEST` and
+  `REGISTER` create catalog types that outlive the view, and `REGISTER` over another database
+  writes its type there; `DESC QUERYPLAN` and `TRACE` give nothing through the transport,
+  `GET_QUERY_EXECUTION_PLAN()` does. Without `CONTEXT ('formatted' = 'yes')` the server stores
+  the `SELECT` on one line with aliases dropped.
+
+  **Found on the way, outside the task:** the JSON base view template of `datasources` —
+  marked verified since T8b — produced base views that silently ignore every `WHERE` on their
+  columns, through every view above them. Without a `CONSTRAINTS` block the server declares
+  each column `(any) OPT ANY`, hands the condition to the JSON wrapper, and the wrapper drops
+  it; Design Studio writes `NOS ZERO ()` instead. The template now carries `ADD <column> NOS
+  ZERO ()` for every column **and every register subfield** (`shipping.country` — without that
+  line the register filter is still ignored); `base-view.md`, which said the block was
+  optional for JSON, is corrected, and `datasources` Verify gains "a filter filters".
+
+  **Checked with subagents, baseline first.** Three baseline runs (Opus) over a fixture of the
+  three returns files and a JSON orders export with an `ARRAY OF` field: every final number
+  was right, but found by experiment — 73, 55 and 28 tool calls; the union run first shipped a
+  version that read every file, and the flatten run first shipped a mart whose country filter
+  returned all countries (the JSON bug). All three said `views` had nothing on unions or
+  arrays although `dialect.md` and `datasources` pointed there. With the change, five runs
+  (Opus): the same three scenarios and two on data the templates do not use (a date-split
+  union over overlapping store-returns sources with `NULL` keys, and a product JSON with two
+  arrays and clashing field names) — all answers right, no failed statement, 24–33 tool calls;
+  the two runs over the old, broken JSON base view caught it with the skill's one-row check
+  before building. Their reviews added the workaround for a base view that is not yours
+  (project the key through an expression: a plain alias still reaches the wrapper), the
+  parent-summary example, real-column splits without a subquery, the primary-key uniqueness
+  check, reading the plan by `BASE PLAN (` blocks, element access by index (which I had
+  written down as impossible), and the `CONTEXT` header caveats. After those edits, the union
+  and the flatten scenarios once more on Sonnet: both right, no failed statement, 21 and 12
+  tool calls. Unit tests 335 OK; `verify --env lab` green with the three new steps.
 
 - **T24. The dialect reference `vql/references/dialect.md` and the table of silent deltas in
   `vql`.** The reference holds about sixty rows in seven sections — text; numbers, casts and
