@@ -67,7 +67,7 @@ CREATE OR REPLACE TABLE bv_crm_customers I18N us_pst (
 | `TIMETOLIVEINCACHE DEFAULT` | **yes when `CACHE OFF` is followed by `ADD SEARCHMETHOD`** — otherwise `Syntax error … near 'ADD'`. *verified: 9.5.1 (live, 2026-09-09)* |
 | `ADD SEARCHMETHOD … WRAPPER (…)` | **yes** — without it the view has no source |
 | `I18N` *inside* the search method | no |
-| `CONSTRAINTS ( … )` | no — the server generates it in `DESC VQL` (`ADD <field> (any) OPT ANY` for DF/JDBC, `ADD <field> NOS ZERO ()` for JSON), and views created without it query normally. *verified: 9.5.1 (live, 2026-09-09)* |
+| `CONSTRAINTS ( … )` | **for JSON, yes**: `ADD <field> NOS ZERO ()` for every column and every register subfield (`shipping.country`). Left out, the server fills in `ADD <field> (any) OPT ANY` for every wrapper type; the DF and JDBC wrappers then filter what they are handed, the JSON wrapper ignores it, and every `WHERE` on a JSON base view returns all rows without an error. For DF and JDBC it can be left out. *verified: 9.5.1 (live, 2026-09-30)* |
 | `OUTPUTLIST` | in practice yes — it is the list of fields the search method returns |
 | The wrapper type in `WRAPPER (…)` | **yes**, and it must match: `df`, `json`, `jdbc` |
 

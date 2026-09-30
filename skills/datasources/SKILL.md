@@ -141,7 +141,7 @@ after a fix is safe — with one exception, the JDBC password, called out below.
 ### Delimited file (CSV) — DF
 
 ```sql
--- verified: 9.5.1 (live, 2026-09-17)
+-- verified: 9.5.1 (live, 2026-09-30)
 CONNECT DATABASE sales_analytics;
 
 CREATE OR REPLACE DATASOURCE DF ds_crm
@@ -212,8 +212,9 @@ CREATE OR REPLACE TABLE bv_crm_customers I18N us_pst (
   twenty-nine columns is fine, in the field list and in `OUTPUTLIST` together).
   *verified: 9.5.1 (live, 2026-09-09)*
 - `TIMETOLIVEINCACHE DEFAULT` is required between `CACHE OFF` and `ADD SEARCHMETHOD`.
-- The `CONSTRAINTS ( … )` block that the server prints in `DESC VQL` is optional; so is
-  `I18N` inside `ADD SEARCHMETHOD`. `I18N <map>` after the view name is not
+- The `CONSTRAINTS ( … )` block that the server prints in `DESC VQL` is optional for a
+  delimited file — the DF wrapper does filter what the server hands it — and so is `I18N`
+  inside `ADD SEARCHMETHOD`. For a JSON file it is not optional (**JSON file** below). `I18N <map>` after the view name is not
   (`LIST MAPS I18N` shows the 76 available; `us_pst` is the usual default).
 - The path is **on the Denodo server**, not on your machine. If it points to a directory,
   every file in it is read as one table — add `FILENAMEPATTERN = '.*\.csv'` and keep the
@@ -225,7 +226,7 @@ CREATE OR REPLACE TABLE bv_crm_customers I18N us_pst (
 ### JSON file
 
 ```sql
--- verified: 9.5.1 (live, 2026-09-17)
+-- verified: 9.5.1 (live, 2026-09-30)
 CONNECT DATABASE sales_analytics;
 
 CREATE OR REPLACE DATASOURCE JSON ds_oms
@@ -276,10 +277,33 @@ CREATE OR REPLACE TABLE bv_oms_orders I18N us_pst (
     CACHE OFF
     TIMETOLIVEINCACHE DEFAULT
     ADD SEARCHMETHOD wr_oms_orders (
+        CONSTRAINTS (
+            ADD order_id NOS ZERO ()
+            ADD customer_id NOS ZERO ()
+            ADD order_dt NOS ZERO ()
+            ADD status NOS ZERO ()
+            ADD total_amount NOS ZERO ()
+            ADD shipping NOS ZERO ()
+            ADD shipping.country NOS ZERO ()
+            ADD shipping.city NOS ZERO ()
+            ADD shipping.zip NOS ZERO ()
+            ADD lines NOS ZERO ()
+        )
         OUTPUTLIST ( order_id, customer_id, order_dt, status, total_amount, shipping, lines )
         WRAPPER (json wr_oms_orders)
     );
 ```
+
+- **`CONSTRAINTS` with `NOS ZERO ()` on every column and every register subfield is what
+  makes `WHERE` work.** Left out, the server declares each column `(any) OPT ANY` — "the
+  wrapper filters this itself" — and the JSON wrapper then ignores the condition: `WHERE
+  order_id = '…'` returns every order, with no error, and so does every view built on the
+  base view, `FLATTEN` included. `NOS ZERO ()` tells the server the wrapper filters nothing,
+  and the server filters instead. A register column needs a line per subfield as well
+  (`shipping.country`): without it `WHERE (shipping).country = 'DE'` is still ignored. The
+  fields of array elements need none — they are filtered after `FLATTEN` in the view above.
+  Design Studio writes `NOS ZERO ()` on the JSON base views it creates —
+  *verified: 9.5.1 (live, 2026-09-30)*.
 
 - **The whole record sits inside one `REGISTER OF` wrapper field.** `jsonfile = 'JSONFile'
   : REGISTER OF ( … )` is not decoration: a flat `OUTPUTSCHEMA` is accepted and then
@@ -325,7 +349,7 @@ self-signed certificate needs `;trustServerCertificate=true` appended, and that 
 question for the human, not a default you add silently.
 
 ```sql
--- verified: 9.5.1 (live, 2026-09-17) — created against an unreachable host, ciphertext included
+-- verified: 9.5.1 (live, 2026-09-30) — created against an unreachable host, ciphertext included
 CONNECT DATABASE sales_analytics;
 
 CREATE OR REPLACE DATASOURCE JDBC ds_orders_db
@@ -390,7 +414,7 @@ schema the human gives you — the DDL still parses and the objects still get cr
 columns** and works fine — that is the opposite of DF, where a subset returns zero rows:
 
 ```sql
--- verified: 9.5.1 (live, 2026-09-17) — created against an unreachable host
+-- verified: 9.5.1 (live, 2026-09-30) — created against an unreachable host
 CREATE OR REPLACE WRAPPER JDBC wr_orders_db_orders
     FOLDER = '/01 - connectivity'
     DATASOURCENAME = ds_orders_db
@@ -607,6 +631,7 @@ the data back, every time:
 |---|---|---|
 | Rows arrive | `vql run --env dev --database <db> -e "SELECT COUNT(*) FROM <bv>"` | `0` — a DF wrapper missing columns, or an empty/unreachable file |
 | The count is *right* | compare with what the human expects the source to hold | a JSON wrapper without the `REGISTER OF` wrapper inflates rows through nested arrays |
+| **A filter filters** | `SELECT COUNT(*) FROM <bv> WHERE <key> = '<one value>'`, and one on a register subfield if there is one | the whole table — a JSON base view without the template's `CONSTRAINTS … NOS ZERO ()`. Every consumer's `WHERE` is then ignored, and nothing else in this table notices |
 | Values are values | `SELECT * FROM <bv>` with `--max-rows 5`, look at every column | a whole column of `NULL` = the type in `CREATE TABLE` does not match the data (`cust_id:int` over `C-10472`) |
 | Text values have no padding | the same read-back — look at where each string **ends**, not just at what it says | `"0-500          "` — an export padded to a fixed width. Nothing fails, and then every `WHERE col = '0-500'` and every `GROUP BY` a consumer writes is wrong. `TRIM` it in the view above and say so in the `DESCRIPTION`; `NULLVALUE ''` (text columns only) handles the empty-string half of the same problem |
 | Schema is what you wrote | `vql desc --env dev --database <db> <bv>` | missing or extra columns |
@@ -645,6 +670,7 @@ attempt: **When a template does not work straight away**, above.
 | Wrapper with no `OUTPUTSCHEMA` at all | creates, then `SELECT` fails: DF `[NO_CREATED_ACCESS] Unable to create xml raw access`, JSON `[JSON WRAPPER] [PROCESSING]` | the server does not introspect files — write the schema |
 | JSON `OUTPUTSCHEMA` as a flat field list | `CREATE` succeeds, row count is wrong (arrays multiply rows) | wrap the fields in `<name> = 'JSONFile' : REGISTER OF ( … )` |
 | `CREATE TABLE … ( lines:ARRAY OF (…) )` | `Syntax error` | declare `CREATE OR REPLACE TYPE` first, use its name |
+| JSON base view without `CONSTRAINTS` | `CREATE` succeeds, `SELECT` works, and every `WHERE` on it returns all rows | the template's block: `ADD <column> NOS ZERO ()` for every column and every register subfield |
 | `CACHE OFF ADD SEARCHMETHOD` | `Syntax error … near 'ADD'` | `CACHE OFF TIMETOLIVEINCACHE DEFAULT ADD SEARCHMETHOD` |
 | `cust_id:int` over text keys | column comes back all `NULL`, no error | fix the type in `CREATE TABLE`, re-apply |
 | `DATABASENAME`/`DATABASEVERSION` without `CLASSPATH` | `error creating new data source: Cannot invoke "java.util.List.size()"` | add `CLASSPATH = '<driver directory>'` |
