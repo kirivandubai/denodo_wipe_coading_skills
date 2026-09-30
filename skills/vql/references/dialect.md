@@ -88,6 +88,11 @@ Java does.
 - `GROUP_CONCAT(sep1, sep2, a, b)` **drops the whole row when any of the fields is `NULL`**;
   `GROUP_CONCAT(false, sep1, sep2, a, b)` keeps it with `NULL` as empty. `STRING_AGG(x, ',')`
   and single-field `GROUP_CONCAT(x)` skip `NULL` values only.
+- **`MEDIAN(x)` computed by Denodo returns a `decimal` rounded half up to two places**, whatever
+  the input's scale: `{0.001, 0.002}` → `0.00`, `{1.0001, 1.0004, 1.0007}` → `1.00`, a
+  `double` `0.123456` → `0.12`. An even count gives the mean of the two middle values,
+  rounded the same way (`{1, 2}` → `1.50`); `NULL`s are skipped (*verified: 9.5.1 (live,
+  2026-09-30)*). Delegated, it is another function — see "Delegation changes the answer".
 - Empty input: `SUM`, `AVG` → `NULL`, `COUNT(*)` → `0`, as in standard SQL.
 - The documentation says `COUNT(field)` needs a `GROUP BY`; it does not — `COUNT(x)` over the
   whole view works.
@@ -116,13 +121,14 @@ Java does.
 | `CAST('2024-02-30' AS date)` | **corrected, not refused**: `2024-02-29`; `'2024-04-31'` → `2024-04-30`; `'2023-02-29'` → `2023-02-28`. Month `13` or another layout → `NULL`. The literal `DATE '2024-04-31'` is `NULL` too | `TO_LOCALDATE` when invalid dates must stay visible as `NULL` |
 | `date_col > '2024-03-01'` | works; by the documentation, the text is read with the date pattern of the query's i18n | `date_col > DATE '2024-03-01'` |
 | `TO_CHAR(d, 'YYYY-MM')` | does not exist | `FORMATDATE('yyyy-MM', d)` |
-| `DATE_TRUNC('month', d)` | does not exist | `TRUNC(d, 'MM')` or `FIRSTDAYOFMONTH(d)` |
+| `DATE_TRUNC('month', d)` | does not exist | `TRUNC(d, 'MM')` or `FIRSTDAYOFMONTH(d)` — over a timestamp `FIRSTDAYOFMONTH` **keeps the time of day**: `TIMESTAMP '2024-12-30 10:20:30'` → `2024-12-01T10:20:30`, so two rows of one month group apart (*verified: 9.5.1 (live, 2026-09-30)*). Over a timestamp, `TRUNC(d, 'MM')` or `CAST(FIRSTDAYOFMONTH(d) AS date)` |
 | `TRUNC(d, 'month')` | Oracle masks, **uppercase only**: `'MONTH'`, `'MM'`, `'Q'`, `'YYYY'` work; `'month'`, `'Mon'`, `'yyyy'` or a typo return **`d` unchanged** — every day stays its own group | uppercase masks; check one row. The first day of the quarter as a label: `FORMATDATE('yyyy-MM-dd', TRUNC(d, 'Q'))` |
 | `d + 1` | error | `d + INTERVAL '1' DAY`, `ADDDAY(d, 1)`, `ADDMONTH(d, 1)` (31 Jan + 1 month → 29 Feb) |
 | `d2 - d1` on dates | whole days as `long` — as in PostgreSQL | — |
 | `ts2 - ts1` on timestamps, for hours | **whole 24-hour periods, hours discarded**: 23:00 → 01:00 next day is `0`, 46 hours is `1`. `GETDAYSBETWEEN(ts1, ts2)` counts calendar days instead (`1` for the same pair) | hours: `(GETTIMEINMILLIS(ts2) - GETTIMEINMILLIS(ts1)) / 3600000.0` |
 | `GETDAYSBETWEEN(a, b)`, `GETMONTHSBETWEEN(a, b)` | positive when `a` is the earlier date — the reverse of `a - b` | earlier first |
 | `DATEADD`, `DATEDIFF`, `AGE`, `GETYEARSBETWEEN`, `ADD_MONTHS`, `MONTHS_BETWEEN`, `LAST_DAY`, `SYSDATE`, `GETDATE()`, `EXTRACT(EPOCH …)` | do not exist | `ADDDAY`/`ADDMONTH`/`+ INTERVAL`, `GETDAYSBETWEEN`, `GETMONTHSBETWEEN`, `LASTDAYOFMONTH`, `CURRENT_DATE`/`LOCALTIMESTAMP`, `GETTIMEINMILLIS(ts) / 1000` |
+| `YEAR(d)`, `MONTH(d)`, `DAY(d)` | `Function 'year' with arity 1 not found` (*verified: 9.5.1 (live, 2026-09-30)*) | `GETYEAR(d)`, `GETMONTH(d)`, `GETDAY(d)`, or `EXTRACT(YEAR FROM d)` |
 | `TIME '10:00' - TIME '08:30'` | milliseconds: `5400000` | divide explicitly |
 
 Two recipes that come up with every customer table, both checked:
@@ -199,6 +205,10 @@ source, a cache, or a change of source, the query plan and the answer move toget
 | `GETDAYOFWEEK`, `EXTRACT(DOW …)`, `FIRSTDAYOFWEEK` | the i18n of the connection | the database's own rule |
 | `SUBSTRING(s, 1, 3)` | `'bc'` | PostgreSQL: `'bc'` too — Denodo translates it (*delegated*) |
 | window functions | not executable | the database runs them (*delegated*) |
+| `MEDIAN(x)` | the mean of the two middle values, rounded to two places | PostgreSQL: `PERCENTILE_DISC(0.5)`, full precision and no mean — `107.5242857…` where Denodo says `107.53` over the same 62 874 rows (*delegated*); SQL Server does not take it at all |
+
+Whether an expression was delegated at all is in the query plan — `/denodo:views`,
+`references/delegation.md`.
 
 When a figure must not depend on the plan, write the expression that means the same everywhere:
 `UPPER(TRIM(…))` on both sides, `ROUND` instead of a `CAST`, days since a known Sunday

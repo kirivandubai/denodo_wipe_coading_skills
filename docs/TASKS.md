@@ -28,19 +28,7 @@
 
 *T25 is done — under «Сделано» below.*
 
-- **T26. `views`: проверка делегирования и зависимости по колонкам.** `дальше`. В таблицу
-  проверок: для витрины над JDBC — `GET_DELEGATED_SQLSENTENCE` или `DESC QUERYPLAN`, ушли ли
-  соединение и агрегат в источник целиком, и какая функция помешала, если нет (сначала
-  проверить, что обе команды отвечают через транспорт). Рядом с `USED_BY` —
-  `COLUMN_DEPENDENCIES`; ловушки «без прав процедура молча сужает ответ» и «`input_…`
-  сравнивается через `LIKE`» — после проверки на стенде. Фразы «what uses this view / can I
-  drop this column / where does this field come from» в `description` — eval-сьют. Тюнинг
-  (статистика, CBO, хинты) не берём. Р. 4.5, 4.3.
-  *From T25:* `DESC QUERYPLAN` answers `ok` with no rows through the transport, `TRACE`
-  returns the plain result, `EXPLAIN` does not parse; `SELECT execution_plan FROM
-  GET_QUERY_EXECUTION_PLAN() WHERE input_query = '…'` returns the plan as text without running
-  the query (verified 9.5.1, 2026-09-30) — `views/references/unions.md` shows how to read it.
-  Start from it; `GET_DELEGATED_SQLSENTENCE` is still unchecked.
+*T26 is done — under «Сделано» below. Wave 1 is closed.*
 
 **Волна 2 — новые навыки на VQL.**
 
@@ -101,6 +89,16 @@
 ---
 
 ## Открытые вопросы
+
+- **Privilege narrowing of the dependency procedures is documentation-only** (T26).
+  `USED_BY()` and `COLUMN_DEPENDENCIES()` are documented to drop what a non-administrator
+  may not see, silently; `views/references/dependencies.md` carries it as `unverified`. A
+  live check needs a second, non-administrator profile — the one T31 has to decide on anyway.
+- **Mart questions the T26 runs kept raising, outside its scope:** whether "for every store
+  and month" means a full grid or only the cells with data, and what primary key a line-grain
+  view gets when the source has no unique key (`views` templates always declare one). Five
+  runs decided each on their own, all the same way (cells with data; no key, said in the
+  `DESCRIPTION`); neither is in the skill.
 
 - `env.database` в JSON-конверте `scripts/denodo` показывает базу из профиля, а не
   фактическую базу вызова: при `--database sales_analytics` в ответе остаётся `admin`
@@ -178,6 +176,51 @@
 ---
 
 ## Сделано
+
+- **T26. `views`: impact of a column change, field lineage, and the delegation check.** The
+  body of `views` gains "Before a column changes" — four read-only steps (`USED_BY` depth 1,
+  the definition of each direct dependant, `GET_ASSOCIATIONS`, `USED_BY` of whatever breaks),
+  a template in the `verify` chain whose check asserts the section's claim, not just its
+  syntax — plus a Verify row and Silent failure 3 for delegation, rows in Common mistakes, and
+  two references: `references/dependencies.md` (the three dependency procedures, what each
+  cannot see, measured use by use; reading a field's lineage down to the source table with
+  `GET_SOURCE_COLUMNS`) and `references/delegation.md` (reading `GET_QUERY_EXECUTION_PLAN()`
+  for delegation, causes measured on SQL Server and PostgreSQL, the answer being per query,
+  what to put in front of the human). `vql` names the column-dropping `CREATE OR REPLACE` in
+  its safety table; `dialect.md` gains `MEDIAN` (rounded half up to two places when Denodo
+  computes it, `PERCENTILE_DISC` when delegated to PostgreSQL), `FIRSTDAYOFMONTH` keeping the
+  time, and `YEAR()`/`MONTH()` not existing; `procedures` stops calling
+  `GET_DELEGATED_SQLSENTENCE` the way to see what was pushed down. Eval: four cases added
+  (`routing-views-column-impact`, `routing-views-lineage`, `routing-views-delegation`,
+  `discrimination-impact-not-procedures`), 24 of 24 pass.
+
+  **Measured on 9.5.1:** `COLUMN_DEPENDENCIES` traces output columns only — a column a
+  dependant uses only in `ON`, `WHERE` or `GROUP BY` has no row, yet removing it turns the
+  dependant `INVALID`; views built on an `INVALID` view stay `OK` and fail on `SELECT`, and so
+  does a metric view that reaches the column through a now-invalid association (a metric view
+  naming the column directly goes `INVALID`); a REST web service drops the field from its
+  definition and does not take it back when the column returns. The dependency procedures
+  take exact, case-sensitive names and answer a pattern with an error (the roadmap's `LIKE`
+  pitfall is real only in `GET_ELEMENTS`/`GET_VIEWS`/`GET_VIEW_COLUMNS`); `USED_BY` lists
+  dependants in other databases but no associations and no web services. Delegation:
+  `noDelegationCauses` in the plan names the function; `GET_DELEGATED_SQLSENTENCE` returns the
+  delegated part without an error even when the aggregate stays in Denodo; views over two data
+  sources print no cause at all, and whether Denodo still pre-aggregates per join key
+  (`Aggregation Push-down`) shows only in the `SQLSentence`; a column a query does not select
+  is dropped from its plan, so a mart with `MEDIAN` is delegated for every query that does not
+  read the median.
+
+  **Checked with subagents, baseline first**, on the server's own SQL Server/PostgreSQL views
+  (read-only) and sandboxes: five baseline runs (three Opus, two Sonnet), six with the change
+  (two Opus, four Sonnet, one of them a re-run after the review edits), one on a domain no
+  template touches. The baselines reached right answers by experiment — the column-impact run
+  in 75 calls with a 15-object replica, after `COLUMN_DEPENDENCIES` had answered "nothing uses
+  it" for all five dependants that break. With the change: lineage 12 → 7 calls; the new-domain
+  impact run (Sonnet) found every broken view and the published web service in 16 calls,
+  without a replica; the delegation runs knew about `MEDIAN` before the first `CREATE`. One run
+  with the change swapped `MEDIAN` for an exact window-function rewrite without asking; the
+  wording now makes every option the human's call, and the Sonnet re-run kept `MEDIAN` and
+  reported the cost.
 
 - **T25. `views`: unions, partitioned unions, `FLATTEN`/`NEST`, `CONTEXT ('formatted' =
   'yes')`; and the JSON base view template of `datasources` stops ignoring `WHERE`.** The body

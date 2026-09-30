@@ -74,7 +74,7 @@ Virtual DataPort — основной адресат, но не единстве
 /denodo:execute       применение VQL к живому VDP, разбор ошибок
 /denodo:catalog       виртуальные базы, папки, теги VDP
 /denodo:datasources   источники, wrappers, base views
-/denodo:views         derived views (joins, unions, FLATTEN/NEST), interface views, ассоциации
+/denodo:views         derived views (joins, unions, FLATTEN/NEST), interface views, ассоциации; impact of a change, lineage, delegation
 /denodo:marketplace   Data Marketplace: теги, категории, external elements (REST)
 /denodo:procedures    хранимые процедуры: предопределённые, VQL, Java (вне v1)
 ```
@@ -127,7 +127,7 @@ denodo_skills/                        репозиторий = плагин = м
 │   │   └── references/               jdbc, json, xml, df, excel, odata, s3
 │   ├── views/
 │   │   ├── SKILL.md
-│   │   └── references/               derived, base, interface
+│   │   └── references/               derived, interface, associations, unions, arrays, dependencies, delegation
 │   ├── marketplace/
 │   │   ├── SKILL.md
 │   │   └── references/               tags, categories, external elements

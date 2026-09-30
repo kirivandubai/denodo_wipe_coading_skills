@@ -1,7 +1,8 @@
 # verification/chain.toml
-# Verifies 15 of the templates end to end: catalog database, folders, the DF (CSV), JSON
+# Verifies 16 of the templates end to end: catalog database, folders, the DF (CSV), JSON
 # and JDBC data sources, a hand-written JDBC wrapper and base view, derived views, the union
-# and the array views, the interface view, the association, and tags (vql channel), plus the
+# and the array views, the interface view, the association, the column-impact queries, and tags
+# (vql channel), plus the
 # Data Marketplace catalog
 # sync, a tag and a category (http channel). Bodies of the
 # "template" steps come from the skills themselves (address = file#section); "fixture"
@@ -247,6 +248,22 @@ address = "skills/views/SKILL.md#Association — the relationship, recorded"
 # Same reason as interface-view above: this block has no CONNECT DATABASE either.
 database = "{database}"
 check = "SELECT association_name FROM GET_ASSOCIATIONS() WHERE input_database_name = '{database}' AND input_type = 'views' AND valid = true"
+
+[[step]]
+id = "column-impact"
+kind = "template"
+channel = "vql"
+address = "skills/views/SKILL.md#Before a column changes: who uses it"
+# Read-only: the four statements only ask. Placed after derived-views, interface-view and
+# association because the block's example is exactly their objects — ib_income_band_sk is
+# used by iv_household_income only in its join's ON, and mapped by the association.
+substitute = { sales_analytics = "{database}" }
+database = "{database}"
+# The section's claim, not just its syntax: COLUMN_DEPENDENCIES does trace
+# iv_household_income back to bv_income_band, and none of those rows names the join key.
+# The row survives the HAVING only while both hold; a server that started listing join
+# keys would drop it and fail the step, which is the moment to rewrite the section.
+check = "SELECT view_name FROM COLUMN_DEPENDENCIES() WHERE input_view_database_name = '{database}' AND input_view_name = 'iv_household_income' AND view_name = 'iv_household_income' AND dependency_name = 'bv_income_band' GROUP BY view_name HAVING SUM(CASE WHEN dependency_column_name LIKE '%ib_income_band_sk%' THEN 1 ELSE 0 END) = 0"
 
 [[step]]
 id = "fixture-returns"

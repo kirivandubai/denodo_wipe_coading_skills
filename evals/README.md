@@ -88,6 +88,12 @@ no description was changed for it.
 entity from several sources, with a one-source query reading one source, is a derived view,
 and the phrase names no view type at all.
 
+Three more guard the checks `/denodo:views` runs around a view rather than the view itself
+(T26): whether a column can go and what uses it (`routing-views-column-impact`), where a field
+comes from (`routing-views-lineage`), and whether a mart over a database runs in the database
+(`routing-views-delegation`). None of the three asks for anything to be created, so without
+them a description could lose these phrases and every other case would stay green.
+
 **`discrimination`** — фразы на границах, где описания конкурируют. Каждый такой кейс несёт
 и положительный, и отрицательный грейдер, потому что проверяется именно выбор между двумя:
 
@@ -101,6 +107,7 @@ and the phrase names no view type at all.
 | `discrimination-run-not-author` | `execute` | предметные навыки |
 | `discrimination-procedure-base-view` | `datasources` | `procedures` |
 | `discrimination-json-array` | `views` | `datasources` |
+| `discrimination-impact-not-procedures` | `views` | `procedures` |
 
 Первые две строки — тот самый риск, ради которого сьют и заводился: «тег» в VDP и «тег» в
 маркетплейсе — **разные объекты на разных серверах**, и перепутанный навык уйдёт корректным
