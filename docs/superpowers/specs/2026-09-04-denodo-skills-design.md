@@ -215,6 +215,26 @@ Community KB), а не придуман: `ds_`, `bv_`, `iv_`, `a_`, `s_`, биз
 любое действие в среде с признаком прода — только после явного подтверждения человека.
 Для публичного плагина обязательно: его установят на боевые стенды.
 
+**Criterion for "destructive" (T22, owner review of the roadmap, item 2.1).** A statement is
+destructive when it destroys or overwrites something that exists, or changes state outside
+the agent's own project: server settings, data in sources, objects of other databases, global
+objects. `CREATE` of a new object in the agent's own database is not. A text classifier sees
+no ownership, so every `DROP` and `ALTER` stays destructive whatever it hits. The classifier is
+a deny list and never complete; the rule for growing it: a skill that teaches a
+state-changing statement or procedure extends the classifier in the same PR — both copies of
+the procedure list in one change.
+
+**By leading keyword** the tool flags `DROP`, `ALTER` (`drop`, `alter`), `DELETE`, `TRUNCATE`
+(`delete`), `INSERT`, `UPDATE` (`write`: a write through a view lands in the source; VQL 9.5
+has no `MERGE` — the 9.5.1 parser rejects it — and its merge form is
+`INSERT … ON DUPLICATE KEY UPDATE`), the server-wide `SET '<property>' = …` and `WEBCONTAINER`
+(`setting`: `SET` with a quoted property rewrites `VDBConfiguration.properties` and propagates
+to servers sharing an external metadata database; `= NULL` deletes the property). Session
+settings pass on any profile: the ODBC connection form `SET <property> TO …` (unquoted — an
+allow-listed shape, every other `SET` counts as the server), `ALTER SESSION SET …` (checked on
+9.5.1: the value shows in `GETSESSION` on the same connection and is gone on the next one), and
+`WEBCONTAINER STATUS`.
+
 **Для HTTP-канала правило формулируется по методу и пути, а не по глаголу.** `DELETE`
 тега, категории (каскадно с потомками) и external tool server (со всеми его элементами)
 — тот же `DROP`; но разрушительны и некоторые `POST`: `tags/vdp/synchronize` с неполным
