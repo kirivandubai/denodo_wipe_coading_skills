@@ -249,6 +249,8 @@ database — no external source needed. Only the delegation-dependent ones need 
 
 ### 4.2 `views` (extension)
 
+**Done in T25 (2026-09-30):** union and array templates in the body of `views`, the details in `views/references/unions.md` and `arrays.md`, `CONTEXT ('formatted' = 'yes')` on every `CREATE VIEW`; the JSON base view template of `datasources` gained the `CONSTRAINTS … NOS ZERO ()` block without which every `WHERE` on it was ignored. `docs/TASKS.md` has what was measured.
+
 **Owner review: P1, kept whole except `INTERSECT`/`MINUS` (see section 11).** Scope to add: both union semantics, partitioned unions with branch pruning, `FLATTEN` and `NEST` (a real gap inside v1: `datasources` already builds a JSON base view with an `ARRAY OF` field and nothing shows how to turn it into rows), `CONTEXT('formatted' = 'yes')`. Already in `views` and not to be redone: primary key and description on every view, `USING PARAMETERS`, and the dependants check (`USED_BY()` before, `GET_VIEWS(… invalid only)` after — "Silent failure 1"). The original proposal follows.
 
 **Scope added:** the two union semantics (SQL `UNION` versus Denodo's extended union that

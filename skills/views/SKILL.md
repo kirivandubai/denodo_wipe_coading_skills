@@ -1,6 +1,6 @@
 ---
 name: views
-description: Use when building on top of views that already exist in Denodo 9.5 — a derived view over base views (CREATE VIEW … FOLDER … AS SELECT, a join, an aggregate, a mart, a parameterised view), an interface view used as a stable contract whose implementation can be swapped (CREATE INTERFACE VIEW … SET IMPLEMENTATION), or an association that records how two views relate (CREATE ASSOCIATION … REFERENTIAL CONSTRAINT … ENDPOINT … ADD MAPPING). Also for changing a view that other views depend on, for "make a mart", "expose this as a data product", "link these two views", and for a view that was created without an error but fails on SELECT or turns up INVALID. Not for connecting a source or making base views — that is /denodo:datasources; not for databases, folders or VDP tags — /denodo:catalog.
+description: Use when building on top of views that already exist in Denodo 9.5 — a derived view over base views (CREATE VIEW … FOLDER … AS SELECT, a join, an aggregate, a mart, a parameterised view, a UNION ALL of views holding the same entity, FLATTEN of an array such as JSON order lines into rows, NEST of rows into an array), an interface view used as a stable contract whose implementation can be swapped (CREATE INTERFACE VIEW … SET IMPLEMENTATION), or an association that records how two views relate (CREATE ASSOCIATION … REFERENTIAL CONSTRAINT … ENDPOINT … ADD MAPPING). Also for changing a view that other views depend on, for "make a mart", "combine these sources into one view", "one row per item of this array", "expose this as a data product", "link these two views", and for a view that was created without an error but fails on SELECT or turns up INVALID. Not for connecting a source or making base views — that is /denodo:datasources; not for databases, folders or VDP tags — /denodo:catalog.
 ---
 
 # Derived views, interface views and associations
@@ -8,7 +8,8 @@ description: Use when building on top of views that already exist in Denodo 9.5 
 Three objects, all built **on top of views that already exist**: the derived view that
 transforms, the interface view that publishes a fixed contract, and the association that
 records how two views relate. Order in the chain: **base view → derived view → interface
-view → association**.
+view → association**. A derived view is also how several views of one entity become one
+(a union) and how an array becomes rows and back (`FLATTEN`, `NEST`).
 
 Sources, wrappers and base views are `/denodo:datasources`; databases, folders and VDP
 tags are `/denodo:catalog`. The SELECT inside `AS` has no skill of its own: the expressions
@@ -30,7 +31,7 @@ after a fix is safe.
 ### Derived view
 
 ```sql
--- verified: 9.5.1 (live, 2026-09-17)
+-- verified: 9.5.1 (live, 2026-09-30)
 CONNECT DATABASE sales_analytics;
 
 CREATE OR REPLACE VIEW iv_household_income
@@ -46,7 +47,8 @@ CREATE OR REPLACE VIEW iv_household_income
               ib.ib_upper_bound     AS income_upper_bound
        FROM bv_household_demographics hd
             INNER JOIN bv_income_band ib
-            ON hd.hd_income_band_sk = ib.ib_income_band_sk;
+            ON hd.hd_income_band_sk = ib.ib_income_band_sk
+    CONTEXT ('formatted' = 'yes');
 
 CREATE OR REPLACE VIEW household_income_by_band
     FOLDER = '/03 - business entities'
@@ -58,12 +60,23 @@ CREATE OR REPLACE VIEW household_income_by_band
               ROUND(AVG(dependents), 2) AS avg_dependents,
               ROUND(AVG(vehicles), 2)   AS avg_vehicles
        FROM iv_household_income
-       GROUP BY income_band_sk, income_lower_bound, income_upper_bound;
+       GROUP BY income_band_sk, income_lower_bound, income_upper_bound
+    CONTEXT ('formatted' = 'yes');
 ```
 
 Clause order: `FOLDER` → `DESCRIPTION` → `PRIMARY KEY` → `TAGS` → `( field properties )` →
-`AS SELECT`. Everything before `AS` is optional; put `FOLDER` in anyway, because a view
-without one lands at the root of the database.
+`AS SELECT` → `USING PARAMETERS` → `CONTEXT`. Everything before `AS` is optional; put
+`FOLDER` in anyway, because a view without one lands at the root of the database.
+
+- **Every `CREATE VIEW` ends with `CONTEXT ('formatted' = 'yes')`.** Without it the server
+  stores the `SELECT` re-serialised on one line — function names lower-cased, table aliases
+  dropped, `UNION ALL` rewritten as `SQL UNION ALL` — so `DESC VQL` and Design Studio show text
+  nobody wrote, and comparing the server with the file is noise. With it, everything after
+  `AS` is stored as written — *verified: 9.5.1 (live, 2026-09-30)*. The header is not:
+  `DESC VQL` gives back `DROP VIEW IF EXISTS … CASCADE; CREATE VIEW` with `FOLDER`,
+  `DESCRIPTION` and `PRIMARY KEY` on one line, and `--` comments never reach the server (the
+  tool strips them), so what a reviewer must read goes into the `DESCRIPTION`. Design Studio
+  sets the same marker when someone edits a view's VQL by hand.
 
 - **One view per grain.** The join lives in `/02 - integration` at the row grain of the
   entity; the aggregate is a second view in `/03 - business entities`. Stacking `GROUP BY`
@@ -120,10 +133,148 @@ without one lands at the root of the database.
   *verified: 9.5.1 (live, 2026-09-10)*. The tag itself is `/denodo:catalog` and must
   exist first.
 
+### Union — one entity from several views
+
+```sql
+-- verified: 9.5.1 (live, 2026-09-30)
+CONNECT DATABASE sales_analytics;
+
+CREATE OR REPLACE VIEW returns
+    FOLDER = '/03 - business entities'
+    DESCRIPTION = 'Return lines of every sales channel. One row per return line; channel names the source.'
+    PRIMARY KEY ( 'channel', 'item_sk', 'order_number' )
+    AS SELECT *
+       FROM ( SELECT 'store'             AS channel,
+                     sr_item_sk          AS item_sk,
+                     sr_ticket_number    AS order_number,
+                     sr_returned_date_sk AS returned_date_sk,
+                     sr_reason_sk        AS reason_sk,
+                     sr_return_quantity  AS return_quantity,
+                     sr_return_amt       AS return_amount
+              FROM bv_retail_store_returns ) store_returns
+       WHERE channel = 'store'
+       UNION ALL
+       SELECT *
+       FROM ( SELECT 'web'               AS channel,
+                     wr_item_sk          AS item_sk,
+                     wr_order_number     AS order_number,
+                     wr_returned_date_sk AS returned_date_sk,
+                     wr_reason_sk        AS reason_sk,
+                     wr_return_quantity  AS return_quantity,
+                     wr_return_amt       AS return_amount
+              FROM bv_retail_web_returns ) web_returns
+       WHERE channel = 'web'
+    CONTEXT ('formatted' = 'yes');
+```
+
+One branch per source, and a constant column that says which source a row came from.
+
+- **Every branch lists the same columns, in the same order, under the same aliases.**
+  `UNION ALL` matches branches by position, and the name a column ends up with can come from
+  any branch. A union whose second branch reads `reason, qty` against the first's
+  `qty, reason` is accepted, and then `SELECT qty` and `WHERE qty = 1` over it disagree about
+  which values `qty` holds — no error anywhere. A source that lacks a column gets a typed
+  `NULL` in its place (`CAST(NULL AS integer) AS store_sk`); a column whose type differs is
+  cast in the branch, or the union widens it silently (`int` under `text` becomes `text`).
+- **`UNION ALL`, not `UNION`.** `UNION` removes duplicate rows across the whole result — a
+  view of return lines loses identical lines — and stops the optimizer pushing a `GROUP BY` or
+  a join below the union.
+- **The constant does nothing for speed by itself.** A query `WHERE channel = 'web'` reads
+  every source unless each branch carries a `WHERE` on its own constant; then the branches
+  that contradict the query are removed from the plan and only one source is read. The
+  `WHERE` wraps a subquery because a condition cannot name an alias of its own `SELECT`
+  (`Field not found 'channel'`). The consumer's filter decides too: `=`, `IN`, `<>` prune;
+  `UPPER(channel) = 'WEB'` reads everything, and `channel = 'Web'` contradicts every branch
+  and returns no rows. The constant's values are part of the contract — name them in the
+  `DESCRIPTION`.
+- **When the split is a real column** — the current year in one database, earlier years in
+  another — each branch filters that column of its source directly, no subquery needed, and
+  **rows whose key is `NULL` fall into no branch and vanish**. Put `OR <key> IS NULL` into
+  the branch of the source that owns them. When the sources overlap (a copy never trimmed),
+  the ranges are also what keeps each row once.
+- Column descriptions cannot go on a union (`The field properties can only be specified for
+  derived fields`). When the consumer needs them, the union goes to `/02 - integration` as
+  `iv_…` and the `/03` view over it carries them; the pruning survives the layer.
+
+`references/unions.md` has the measurements behind each point and how to read the plan.
+
+### Arrays — `FLATTEN` to rows, `NEST` back
+
+```sql
+-- verified: 9.5.1 (live, 2026-09-30)
+CONNECT DATABASE sales_analytics;
+
+CREATE OR REPLACE VIEW iv_oms_order_lines
+    FOLDER = '/02 - integration'
+    DESCRIPTION = 'Order lines of the order management export. One row per order line; an order without lines has no row here.'
+    PRIMARY KEY ( 'order_id', 'line_no' )
+    AS SELECT o.order_id           AS order_id,
+              o.customer_id        AS customer_id,
+              (o.shipping).country AS shipping_country,
+              o.line_no            AS line_no,
+              o.sku                AS sku,
+              o.qty                AS qty,
+              o.price              AS price
+       FROM FLATTEN bv_oms_orders AS o ( o.lines )
+       WHERE o.line_no IS NOT NULL
+    CONTEXT ('formatted' = 'yes');
+
+CREATE OR REPLACE VIEW iv_customer_orders
+    FOLDER = '/02 - integration'
+    DESCRIPTION = 'One row per customer, with the array of their orders.'
+    PRIMARY KEY ( 'customer_id' )
+    AS SELECT customer_id                             AS customer_id,
+              NEST(order_id, order_dt, total_amount)  AS orders
+       FROM bv_oms_orders
+       GROUP BY customer_id
+    CONTEXT ('formatted' = 'yes');
+```
+
+`FLATTEN <view> AS <alias> ( <alias>.<array> )` gives one row per array element;
+`(o.shipping).country` reads a register (`/denodo:datasources` builds both from JSON).
+
+- **An empty or missing array is not dropped — it becomes one row with every element field
+  `NULL`.** A view of elements needs the template's `WHERE <element field> IS NOT NULL`, on a
+  field no real element leaves empty; without it `COUNT(*)` counts an order without lines as
+  a line.
+- **The parent's measures repeat on every element row.** `SUM(total_amount)` over the
+  flattened rows adds each order once per line. Aggregate the parent's measures from the
+  unflattened view and the element's from the flattened one, and join the two at the grain of
+  the result.
+- **Names.** The element's fields come out without a prefix and the array column is gone. An
+  element field named like a parent column is renamed `<array>_<field>` — a line's `status`
+  comes out as `lines_status`, while plain `status` is still the order's. Look at
+  `SELECT * FROM FLATTEN … LIMIT 1` before you write the projection.
+- **`NEST` is an aggregate:** one array per `GROUP BY` group, its elements named after the
+  listed columns (`NEST(x AS y)` is a syntax error — rename below it). The server creates the
+  array's type itself (`_array_register_<fields>`), and the type outlives the view. A `WHERE`
+  before `NEST` drops the parents left with no element; keep them with a `LEFT OUTER JOIN`
+  from the parent view, and the array is then `NULL`.
+- **A filter on the parent's fields is only as good as the JSON base view underneath.** One
+  created without `CONSTRAINTS ( ADD <field> NOS ZERO () … )` silently drops every `WHERE` on
+  its fields, and the loss reaches through `FLATTEN` and every view above — below a
+  `GROUP BY` too: `WHERE country = 'DE'` over an aggregate returns every country. Before
+  building on a JSON base view, run `SELECT COUNT(*) FROM <base view> WHERE <key> = '<one
+  value>'`: anything but one row means `/denodo:datasources` has to fix the base view first.
+  `DESC VQL` of the base view shows the cause directly: `ADD <column> (any) OPT ANY` where
+  `NOS ZERO ()` should be. **When the base view is not yours to fix**, tell its owner, and
+  meanwhile project every parent column a consumer will filter or group on through an
+  expression — `TRIM(o.order_id) AS order_id`, `TRIM((o.shipping).country) AS
+  shipping_country`, the same inside a `GROUP BY`: a condition on an expression is evaluated
+  by the server, a plain alias is still handed to the wrapper. `TRIM` also strips padding, so
+  look at the values first. Say in the `DESCRIPTION` why the `TRIM`s are there.
+- **Where the element view goes**: when the consumer reads the element rows, it is the
+  `/03 - business entities` object under its bare name — like a join with no aggregate —
+  even if another view is built on it too. When only other views read it, it is an `iv_` in
+  `/02 - integration`, as in the template.
+
+`references/arrays.md` has one row per parent with every parent kept (counts from the
+elements, a re-nested array), arrays inside registers, two arrays at once, and `REGISTER`.
+
 ### Interface view — a contract you can re-implement
 
 ```sql
--- verified: 9.5.1 (live, 2026-09-17)
+-- verified: 9.5.1 (live, 2026-09-30)
 CREATE OR REPLACE INTERFACE VIEW household_income (
         household_sk:int,
         income_band_sk:int,
@@ -191,7 +342,7 @@ not.
 ### Association — the relationship, recorded
 
 ```sql
--- verified: 9.5.1 (live, 2026-09-17)
+-- verified: 9.5.1 (live, 2026-09-30)
 CREATE OR REPLACE ASSOCIATION a_income_band_household REFERENTIAL CONSTRAINT
     FOLDER = '/06 - associations'
     ENDPOINT income_band bv_household_demographics (0,*)
@@ -262,7 +413,7 @@ can then be written in VQL names. Unchanged either way: `decimal`, `float`, `boo
 
 | Slot | Where it comes from |
 |---|---|
-| The views underneath | read them, do not assume: `vql desc --env dev --database <db> <view>` gives the exact column names and types. A misremembered column is the most common failure of the whole skill |
+| The views underneath | read them, do not assume: `vql desc --env dev --database <db> <view>` gives the exact column names and types. A misremembered column is the most common failure of the whole skill. A view of another database is read by its qualified name, `FROM other_db.bv_x` — *verified: 9.5.1 (live, 2026-09-30)* |
 | Grain of the result | the human — "per customer" or "per band" decides whether there is a `GROUP BY` and what the primary key is |
 | Which columns the consumer needs | the human. When the answer is "everything", say what everything is at the moment and let them cut |
 | Folder | `/02 - integration` for the joining and transforming layer, `/03 - business entities` for what consumers read, `/06 - associations` for associations — or `.denodo/conventions.md` if the project has one |
@@ -272,6 +423,9 @@ can then be written in VQL names. Unchanged either way: `decimal`, `float`, `boo
 | Association endpoints and multiplicity | the data, not the wish: `(1)` claims every child row has a parent, so a **nullable foreign key makes it `(0,1)`** — count the NULLs before choosing. Orphans (a key with no match) are a different question and rule out `REFERENTIAL CONSTRAINT`, not the multiplicity |
 | `REFERENTIAL CONSTRAINT` or not | yes for a real foreign key. The source guarantees the integrity, Denodo does not enforce it — declaring it where it does not hold gives wrong results, not errors |
 | Whether the measures are complete | `COUNT(*)` counts rows, `COUNT(<measure>)` counts rows where the measure is not null, and when they differ, `AVG` divides by the second while the consumer will divide by the first. Count the NULLs; if there are any, either publish both counts or say in the `DESCRIPTION` which one the average is over. Both notes have a place in the DDL: the per-column `( <column> ( description = '…' ) )` field property for what one column means, the view `DESCRIPTION` for the counts — with the date you measured them, because the next load changes them. The same NULLs decide `INNER JOIN` against `LEFT JOIN` |
+| Union branches | one per source of the same entity. Read each with `vql desc`: sources name, order and type their columns differently, and every branch lists them in the union's order, not its source's |
+| What the union is split on | what consumers filter by — a constant per source (`channel`) or a real column (a date). "Fast for one channel" or "only this year's data from the warehouse" is the request for a split |
+| Grain after a flatten | the element (one row per line) or the parent (one row per order, with figures from its lines) — the human. The second joins the element figures, aggregated, to the parent's figures at the result's grain (`references/arrays.md`), never a `SUM` of the parent's measures over flattened rows |
 | Existing dependants | `USED_BY()` before touching anything that already exists — see Verify |
 
 Do not ask about cache, swap, statistics or indexes: they have server defaults, they are
@@ -314,6 +468,12 @@ return *lines*. Publish both counts under names that say which is which
   `ALTER INTERFACE VIEW`, the states an interface view can be in and what each means.
 - `references/associations.md` — multiplicity in detail, role preconditions, composite
   mappings, `GET_ASSOCIATIONS()` columns, what an association changes for clients.
+- `references/unions.md` — `UNION`, `UNION ALL` and `EXTENDED UNION ALL`, how the branches'
+  columns are matched and named, which union shapes skip a branch and which do not, reading
+  `GET_QUERY_EXECUTION_PLAN()`, `NULL` partition keys, column descriptions over a union.
+- `references/arrays.md` — `FLATTEN` in full (empty arrays, renamed fields, arrays inside
+  registers, two arrays), a parent summary that keeps every parent, `NEST`, `REGISTER`, the
+  types they leave behind, element access by position, checking a flatten.
 
 ## Verify
 
@@ -322,7 +482,7 @@ the reason this skill exists.** After applying, always:
 
 | Question | Read-back |
 |---|---|
-| Did the objects land, and where | `SELECT name, type, subtype, folder FROM GET_ELEMENTS() WHERE input_database_name = '<db>' AND type = 'view'` — `subtype` is `base`, `derived` or `interface`; associations are `type = 'association'`, one query per value because input parameters take `=` only |
+| Did the objects land, and where | `SELECT name, type, subtype, folder FROM GET_ELEMENTS() WHERE input_database_name = '<db>' AND type = 'view'` — `subtype` is `base`, `derived` or `interface`; associations are `type = 'association'`. `type` is an output column and takes `IN`; the `input_…` parameters take `=` only |
 | **Is anything broken now** | `SELECT name, view_type, view_status FROM GET_VIEWS() WHERE input_database_name = '<db>' AND input_retrieve_invalid_views_only = true` — **empty is the only good answer.** `view_type` here is the same fact as `subtype` above in numbers: `0` base, `1` derived, `2` interface |
 | Does it carry rows | `SELECT * FROM <view> LIMIT 10`, and a count that can be checked against the input |
 | **Did the join keep every fact** | add the mart's row counters back up and compare with the fact it was built from: `SUM(<row count column>)` over the mart equals `COUNT(*)` of the input, minus exactly the rows you decided to drop. A join that quietly dropped the unmatched facts, or doubled them on a duplicated dimension key, passes every other check in this table |
@@ -332,6 +492,10 @@ the reason this skill exists.** After applying, always:
 | Are the associations still whole | `SELECT association_name, mappings, valid FROM GET_ASSOCIATIONS() WHERE input_database_name = '<db>' AND input_type = 'views'` — **`valid` must be `true`** |
 | One association in full | `vql desc --env dev --database <db> <name> --type association` — roles, multiplicities, mappings, principal side |
 | Who depends on this view | `SELECT view_name, used_by_name, depth FROM USED_BY() WHERE input_view_database_name = '<db>' AND input_view_name = '<view>'` — run it **before** a change, not after |
+| **Does each branch of a union arrive whole** | `SELECT channel, COUNT(*), SUM(<measure>) FROM <union> GROUP BY channel` — or `GROUP BY` a `CASE` of the branch conditions when the split is a real column — against `COUNT(*)` and `SUM` of each source view under its own branch condition. It catches a branch whose columns are out of order and the rows a `NULL` partition key lost — neither raises an error |
+| **Is the declared primary key unique** | `SELECT <key columns>, COUNT(*) FROM <view> GROUP BY <key columns> HAVING COUNT(*) > 1` — no rows. Denodo does not enforce a `PRIMARY KEY`; over overlapping union branches or a flatten, this is the proof nothing was counted twice |
+| **Does a one-source query read one source** | `SELECT execution_plan FROM GET_QUERY_EXECUTION_PLAN() WHERE input_query = '<the query, quotes doubled>'`: `optimizationsApplied = [Branch Pruning]`, and one `BASE PLAN (` block per source read, its `name = …` on the next line; no block at all means the query reads nothing. It plans without running the query, so an ad-hoc union can be checked before the view exists. `DESC QUERYPLAN` answers with nothing through the tool, and `TRACE` with the plain result |
+| **Did the flatten keep the right rows** | `COUNT(*)` of the element view against `COUNT(<element field>)` over `FLATTEN` of the source, and a filter on one parent key returning that parent's elements only |
 
 **Silent failure 1: a replaced view invalidates everything above it, without an error.**
 `CREATE OR REPLACE VIEW` that renames or drops a column is accepted; every derived and
@@ -374,6 +538,14 @@ through each dependant that matters.
 | `DROP ASSOCIATION a` when there is none | `error removing association: Error loading association 'a'.` | `DROP ASSOCIATION IF EXISTS` — it has no `CASCADE`, unlike the view drops |
 | `WHERE input_database_name = …` on `VIEW_DEPENDENCIES()` | `Field not found 'input_database_name'` | that one is `input_view_database_name`, like `USED_BY()` |
 | `WHERE input_type IN ('view','association')` on `GET_ELEMENTS()` | nothing — zero rows | input parameters take `=` only; run one query per value |
+| union branches listing the same columns in a different order | nothing — accepted; queries then disagree about which value is which | same columns, same order, same aliases in every branch |
+| `SELECT 'web' AS channel, … FROM x UNION ALL …` with no `WHERE` per branch | nothing — `WHERE channel = 'web'` still reads every source | wrap each branch: `SELECT * FROM ( … ) w WHERE channel = 'web'` |
+| `SELECT 'web' AS channel … WHERE channel = 'web'` | `Field not found 'channel' in view with schema …` | the `WHERE` outside, around a subquery |
+| `( col ( description = '…' ) )` on a union | `The field properties can only be specified for derived fields` | on a view over the union |
+| `UNION DISTINCT`, `EXTENDED UNION` | `Syntax error … near 'DISTINCT'` / `near 'SELECT'` | `UNION`; the extended union exists only as `EXTENDED UNION ALL` |
+| `COUNT(*)` over `FLATTEN` as the number of lines | nothing — each order without lines counts as a line | `COUNT(<element field>)`, or the template's `IS NOT NULL` |
+| `SELECT lines …` after `FLATTEN … ( o.lines )` | `Field not found 'lines' in view with schema …` | the array is gone; select its fields |
+| `NEST(line_no AS n, …)` | `Syntax error … near 'AS'` | rename in the view below |
 
 Dropping is the human's call — `/denodo:vql`. Before asking, show what goes with it:
 `USED_BY()` for a view, `GET_ASSOCIATIONS()` for the associations that hang off it.

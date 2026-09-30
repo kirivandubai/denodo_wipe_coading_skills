@@ -84,7 +84,7 @@ would be the alternative.
 | `ORDER BY … LIMIT n` | freezes an ordering and a row cap into the view | *verified: 9.5.1 (live, 2026-09-10)*. A consumer's own `ORDER BY` overrides the ordering but not the cap; a "top 100" view surprises whoever filters it |
 | `OFFSET` / `FETCH FIRST … ROWS ONLY` | the SQL-standard spelling of the same thing | same caveat |
 | `WITH CHECK OPTION` | rejects `INSERT`/`UPDATE` through the view that would not satisfy its own `WHERE` | *unverified: 9.5 documentation only*. Only meaningful for a writable view |
-| `CONTEXT ( … )` | pins execution options into the view definition | *verified: 9.5.1 (live, 2026-09-10)*. Design Studio emits `CONTEXT ('i18n' = 'es_euro')` on views it generates; do not copy it into hand-written VQL without a reason |
+| `CONTEXT ( … )` | pins execution options into the view definition | *verified: 9.5.1 (live, 2026-09-10)*. Design Studio emits `CONTEXT ('i18n' = 'es_euro')` on views it generates; do not copy it into hand-written VQL without a reason. The one every view carries is `CONTEXT ('formatted' = 'yes')`, which keeps the `SELECT` as written — `SKILL.md`, Derived view |
 | `CHECK_INDIRECT_ACCESS ON` | makes the server check the `INDIRECT_ACCESS` privilege for this view | *verified: 9.5.1 (live, 2026-09-10)*. Privileges are outside v1 |
 
 ## `ALTER VIEW`: what it cannot do
@@ -128,7 +128,7 @@ DROP { VIEW | INTERFACE VIEW | TABLE } [ IF EXISTS ] <name> [ CASCADE ]
 | Want | Statement |
 |---|---|
 | Schema and types | `vql desc --env dev --database <db> <view>` |
-| The exact VQL, including everything underneath | `vql desc --env dev --database <db> <view> --vql` — one row holding the whole dependency chain. The best syntax reference on any server, and **not something to apply as it stands**: it opens with `DROP … CASCADE` for every object in the chain |
+| The exact VQL, including everything underneath | `vql desc --env dev --database <db> <view> --vql` — one row holding the whole dependency chain **within the view's database**: a view that reads `other_db.bv_x` comes back without anything of `other_db` — *verified: 9.5.1 (live, 2026-09-30)*. The best syntax reference on any server, and **not something to apply as it stands**: it opens with `DROP … CASCADE` for every object in the chain |
 | Health | `SELECT name, view_type, view_status FROM GET_VIEWS() WHERE input_database_name = '<db>'` |
 | Dependants | `SELECT view_name, used_by_name, depth FROM USED_BY() WHERE input_view_database_name = '<db>' AND input_view_name = '<view>'` |
 | Dependencies (downwards) | `SELECT * FROM VIEW_DEPENDENCIES() WHERE input_view_database_name = '<db>' AND input_view_name = '<view>'` — note `input_view_database_name`, not `input_database_name` |

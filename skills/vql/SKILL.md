@@ -206,7 +206,7 @@ different figures depending on what Denodo pushes down to the source.
 |---|---|
 | Databases, folders, VDP tags | `/denodo:catalog` |
 | Data sources, wrappers, base views — JDBC tables, DF and JSON files; every other source type it hands to Design Studio | `/denodo:datasources` |
-| Derived views, interface views, associations | `/denodo:views` |
+| Derived views — joins, aggregates, unions, `FLATTEN` / `NEST` of arrays — interface views, associations | `/denodo:views` |
 | Marketplace tags, categories, external elements (REST) | `/denodo:marketplace` |
 | Stored procedures — calling one, or writing one | `/denodo:procedures` |
 | Running anything against a live server, reading its errors | `/denodo:execute` |

@@ -54,7 +54,7 @@ Java does.
 | You write | Denodo does | Write instead |
 |---|---|---|
 | `CAST(x AS integer)` to round | **truncates** when Denodo computes it: `2.9` → `2`, `-2.9` → `-2`. The same `CAST` **delegated** to PostgreSQL rounds: `2.75` → `3`. One view, two answers, depending on where the expression runs | `ROUND(x)`, `FLOOR(x)`, `TRUNC(x)` — whichever you mean, explicitly |
-| `CAST(text AS integer)` | garbage is not an error: `'12abc'` → `12`, `'2.9'` → `2`, `'abc'` → `NULL`, `' 12 '` → `12` | check the text first: `WHERE TRIM(s) REGEXP_LIKE '^-?[0-9]+$'` — without `TRIM` a padded value never matches — and count what does not match. A condition is not a column: `SELECT s REGEXP_LIKE … AS ok` is a syntax error; project `CASE WHEN … THEN 1 ELSE 0 END` |
+| `CAST(text AS integer)` | garbage is not an error: `'12abc'` → `12`, `'2.9'` → `2`, `'abc'` → `NULL`, `' 12 '` → `12` | check the text first: `WHERE TRIM(s) REGEXP_LIKE '^-?[0-9]+$'` — without `TRIM` a padded value never matches — and count what does not match. `LIKE` and `REGEXP_LIKE` are not columns: `SELECT s REGEXP_LIKE … AS ok` is a syntax error (a comparison or `IS NULL` projects fine); project `CASE WHEN … THEN 1 ELSE 0 END` |
 | `CAST(3000000000 AS integer)` | **wraps around**: `-1294967296` | `CAST(x AS bigint)`; `integer` holds ±2 147 483 647 |
 | `a + b` on `int` values past the range | **`NULL`** — no error: `2147483647 + 1`, a literal or a column. Multiplication past the range fails instead, with a bare `Error executing query` that names nothing | widen first: `CAST(a AS bigint) + b`, `CAST(a AS bigint) * b` |
 | `a / 0` | **`NULL`**, for integers and doubles alike — a broken denominator disappears into the result | `CASE WHEN b = 0 THEN … END` stating what zero means, and count those rows |
@@ -174,6 +174,7 @@ of a month into the next one.
 | `x NOT IN (1, NULL)`, `x = NULL` | never true — standard SQL | `IS NULL`; keep `NULL` out of `NOT IN` lists |
 | `GROUP BY 1`, `ORDER BY 1`, `WITH t AS (…)` | work as in PostgreSQL | — |
 | `UNION` | removes duplicates (since 8.0; older examples behave as `UNION ALL`) | `UNION ALL` unless you mean it |
+| `SELECT a, b … UNION ALL SELECT b, a …` | matched by **position**, and the names of the result can come from either branch: queries over it then disagree about which value is `a` — no error | the same columns, in the same order, under the same aliases in every branch (`/denodo:views`, `references/unions.md`) |
 | `ROW_NUMBER() OVER (…)` and every other window function | runs only when delegated to a database that has it; over a file source or `Dual()` — and by the documentation any source that cannot run it — `Function row_number is not executable` | window functions over JDBC views; otherwise aggregate and join back |
 | `"abc"` for a string | an identifier: `Field not found 'abc'` | single quotes; a quote inside is doubled: `'it''s'` |
 | `x contains 'a'` (old examples) | the `contains` family is removed | `LIKE`, `REGEXP_LIKE` |
