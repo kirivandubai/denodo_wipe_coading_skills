@@ -1,8 +1,8 @@
 # `CREATE VIEW` in full
 
-Everything `/denodo:views` leaves out of the minimal template. The SELECT itself is
-ordinary SQL; the dialect deltas worth knowing are in the aggregate table of
-`/denodo:views`.
+Everything `/denodo:views` leaves out of the minimal template. The expressions of the SELECT
+itself — where VQL returns a wrong value without an error — are the table in `/denodo:vql`
+and its `references/dialect.md`.
 
 ## Grammar (documentation 9.5)
 

@@ -78,6 +78,12 @@ Two more routing cases guard the half of `datasources` that creates nothing itse
 (`routing-datasources-schema-drift`). The skill sends both to Design Studio, and it can only
 do that if its description still fires on them.
 
+`routing-vql-expression` guards the table of silent expression deltas in `/denodo:vql`: a
+question about writing the expressions of a `SELECT` — a substring, a month label, a time
+difference — creates no object, so no object skill owns it, and the table only helps if
+`vql` fires on it. It passed on the descriptions as they were when the table was added (T24);
+no description was changed for it.
+
 **`discrimination`** — фразы на границах, где описания конкурируют. Каждый такой кейс несёт
 и положительный, и отрицательный грейдер, потому что проверяется именно выбор между двумя:
 

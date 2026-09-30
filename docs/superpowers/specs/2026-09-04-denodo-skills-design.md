@@ -1,7 +1,8 @@
 # Denodo Skills: набор навыков для создания объектов Denodo через ИИ-агентов
 
 **Дата:** 2026-09-04
-**Статус:** дизайн утверждён; реализация идёт — слой исполнения (раздел 7) сделан в T5, навык `execute` — в T7, ядро `/denodo:vql` (раздел 6) — в T6, доменные навыки `catalog` (T8a), `datasources` (T8b), `views` (T8c) и `marketplace` (T8d) — по разделу 8; впереди `query`
+**Статус:** дизайн утверждён; реализация идёт — слой исполнения (раздел 7) сделан в T5, навык `execute` — в T7, ядро `/denodo:vql` (раздел 6) — в T6, доменные навыки `catalog` (T8a), `datasources` (T8b), `views` (T8c) и `marketplace` (T8d) — по разделу 8. `query` was not built as a skill: the owner's roadmap review (2026-09-29) made the
+dialect a reference in `vql`, done in T24 — see section 9
 
 ---
 
@@ -76,14 +77,17 @@ Virtual DataPort — основной адресат, но не единстве
 /denodo:views         derived views, interface views, ассоциации
 /denodo:marketplace   Data Marketplace: теги, категории, external elements (REST)
 /denodo:procedures    хранимые процедуры: предопределённые, VQL, Java (вне v1)
-/denodo:query         диалект и выражения (в v1 — минимальная дельта)
 ```
+
+The dialect has no skill of its own (section 9): it is a table in the body of `/denodo:vql`
+and `vql/references/dialect.md`.
 
 Ядро не является оглавлением: карта навыков занимает в нём последние несколько строк, а
 тело составляют правила, которые не растут при добавлении новых доменных навыков.
 
-**Граница `query` ↔ `views` проходит по `AS`:** `views` отвечает за DDL-обёртку
-(`CREATE VIEW ... FOLDER ... AS`), `query` — за содержимое (SELECT, выражения, функции).
+**The boundary at `AS`:** `views` owns the DDL wrapper (`CREATE VIEW ... FOLDER ... AS`); the
+expressions inside it — and in every other `SELECT` — are the dialect table of `vql` and its
+`references/dialect.md`.
 
 **Граница `datasources` ↔ `views`:** base view создаётся вместе с источником и wrapper'ом
 и потому живёт в `datasources`; `views` отвечает за производные представления.
@@ -111,10 +115,9 @@ denodo_skills/                        репозиторий = плагин = м
 │   ├── plugin.json                   name: denodo
 │   └── marketplace.json              один плагин, source: "./"
 ├── skills/
-│   ├── vql/SKILL.md
-│   ├── query/
-│   │   ├── SKILL.md
-│   │   └── references/               datetime, string, nested, analytic, context, delegation
+│   ├── vql/
+│   │   ├── SKILL.md                  includes the table of silent dialect deltas
+│   │   └── references/dialect.md     text, numbers, dates, NULL and query shape, JSON, delegation
 │   ├── execute/
 │   │   ├── SKILL.md
 │   │   └── references/errors.md
@@ -476,7 +479,17 @@ tool server, затем interface view в VDP по контракту, кото�
 осторожнее и внимательнее проверяет результат. Заодно это даёт честный трекинг
 прогресса.
 
-## 9. Навык `/denodo:query`
+## 9. The SQL dialect: a reference in `vql`, not a skill
+
+**Decided in the roadmap review (2026-09-29), built in T24.** A skill fires on the user's
+phrase, and nobody says "mind the VQL dialect": the user asks for a mart or a number, and a
+separate `query` skill would load only through a cross-reference while its `description`
+competed with `views`. So the dialect is `vql/references/dialect.md` — every row checked on
+the server — plus a short table of the deltas that return a wrong value or `NULL` without an
+error, in the body of `vql`, which fires on questions about expressions (eval case
+`routing-vql-expression`). The reasoning below, written for a separate skill, still holds for
+the content — a delta from standard SQL, not a function reference — and no longer for the
+form.
 
 **Отдельный навык, не в ядре и не внутри `views`:**
 
@@ -693,6 +706,7 @@ REPLACE` разрушительным не считается (раздел 6.3)
 `datasources` (источники JDBC, DF и JSON с их wrappers и базовыми представлениями),
 `views` (derived, interface, ассоциации), `marketplace` (теги, категории, external
 elements Data Marketplace), `query` в объёме минимальной дельты, верификация и eval-сьют.
+(The dialect ended up as `vql/references/dialect.md`, T24 — section 9.)
 
 Полный перечень — шестнадцать объектов с командами, каналами и способом верификации
 каждого — вынесен в отдельный документ: [объём v1](2026-09-04-denodo-v1-scope.md). Там же

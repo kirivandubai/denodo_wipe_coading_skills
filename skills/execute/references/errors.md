@@ -58,7 +58,7 @@ gave up, which is usually *after* the real mistake. Known causes, by token:
 | `'IF'` | `CREATE … IF NOT EXISTS` | VQL has no `IF NOT EXISTS`; use `CREATE OR REPLACE` |
 | `'ADD'` | `CREATE TABLE … CACHE OFF ADD SEARCHMETHOD` | `TIMETOLIVEINCACHE DEFAULT` is required between `CACHE OFF` and `ADD SEARCHMETHOD` |
 | `''` (empty) after `ALTER TAG … ADD_TO (…)` | `ADD_TO` without `REMOVE_FROM` | both blocks are mandatory: `ADD_TO ( VIEWS (…) COLUMNS () ) REMOVE_FROM ( VIEWS () COLUMNS () )` |
-| `'one'` | `SELECT 1 AS one` | `one` is a reserved word; pick another alias |
+| `'one'`, `'full'`, `'user'` | `SELECT 1 AS one`, `… AS full`, `… AS user` | a reserved word used as an alias or a column name; quote it (`AS "full"`) or pick another. The list of reserved words is in the VQL Guide's syntax conventions — `left`, `right`, `row`, `hash`, `view`, `table`, `offset`, `limit`, `context` are among them |
 | `'TABLE'` / `'WRAPPER'` / `'/'` | `DESC TABLE x`, `DESC WRAPPER x`, `DESC FOLDER /x` | base views are `DESC VIEW x`; wrappers and datasources carry their type (`wrapper df`, `datasource df`); folder paths are quoted (`--type folder "'/x'"`) |
 | `'RELATIONSHIP'` | `CREATE ASSOCIATION … ADD RELATIONSHIP` | the clause is `ADD MAPPING a = b`; endpoints need cardinality: `ENDPOINT x v PRINCIPAL (0,1) ENDPOINT y w (0,*)` |
 | a keyword | misspelled keyword (`VIEWW`) | fix the spelling |

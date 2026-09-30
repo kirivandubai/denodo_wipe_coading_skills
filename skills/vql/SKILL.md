@@ -166,6 +166,40 @@ is exempt, and on a `production` profile the tool refuses it regardless — see
 writing `--allow-destructive`; `env.production` is `true`; you are removing something you
 did not create in this session; you are "cleaning up" anything.
 
+## Expressions: VQL is not PostgreSQL
+
+Most of a `SELECT` is the SQL you know; the expressions are where it is not. Every row
+below **runs without an error and returns a wrong value or `NULL`**, and a view or a report
+built on it reads like real data. The loud differences, the functions that do not exist and
+what replaces them, and the rest of the silent ones are in `references/dialect.md` — read
+it before writing a text, date or cast expression you have not written in VQL before.
+
+**An expression new to you gets one run on `Dual()` with an input whose answer you know**,
+before it goes into a view or a report:
+`vql run --env dev -e "SELECT SUBSTR('abcdef', 1, 3) AS want_abc FROM Dual()"`. Choose
+the input so the wrong reading shows: `'abcdef'` for a substring, `2024-12-30` for a year,
+`2.9` for a cast. After a parse or a cast over real rows, count the `NULL`s it produced.
+
+*verified: 9.5.1 (live, 2026-09-30)*
+
+| You write | Denodo gives | Write instead |
+|---|---|---|
+| `SUBSTRING(s, 1, 3)` | `'bc'` — the comma form is 0-based and its third argument is an end index. `INSTR` is 0-based (`-1` when absent), `POSITION` 1-based | `SUBSTR(s, 1, 3)` or `LEFT(s, 3)`; never mix the 0-based and 1-based functions in one expression |
+| `s = 'abc'`, `num_col > '9'` | exact: case and trailing spaces count, and file sources pad text to the column width. A comparison mixing text and a number compares as text — `day > '9'` finds nothing. Delegated to SQL Server, case and spaces are ignored instead | `UPPER(TRIM(s)) = 'ABC'`; numbers compared as numbers |
+| `CAST(x AS integer)` | truncates, `2.9` → `2` — yet rounds when the cast runs in PostgreSQL. `'12abc'` → `12`; past the range it wraps around | `ROUND`, `FLOOR` or `TRUNC`, whichever you mean; check text with `TRIM(s) REGEXP_LIKE '^-?[0-9]+$'` before casting it |
+| `a / 0`, `int + int` past 2 147 483 647 | `NULL`, no error | guard the denominator; `CAST(a AS bigint)` before adding |
+| `SUM(int_col)` | stays `int`: past 2 147 483 647 it returns `NULL` or a wrong number that looks real | `SUM(CAST('long', x))` — for `int` only: over a `decimal` the same cast truncates every row. `decimal` and `double` need nothing |
+| `MAX(a, b)` (there is no `GREATEST`), `CONCAT(a, b)`, `GROUP_CONCAT(';', ':', a, b)` | `NULL` when any argument is `NULL`; `GROUP_CONCAT` drops the whole row | `COALESCE` each argument |
+| `TO_LOCALDATE('YYYY-MM-DD', s)`, `FORMATDATE('YYYY-MM', d)` | Java patterns, pattern first. `YYYY` is the week year (30 Dec → next year), `DD` day of year, `mm` minutes, `hh` 1–12, `yy` 2000–2099; `MMM` month names are read in the language of the i18n. A wrong letter gives a wrong date or `NULL` | `yyyy-MM-dd HH:mm:ss`; a language argument for names: `TO_LOCALDATE('dd-MMM-yyyy', s, 'en')` |
+| a date parsed from text | malformed → `NULL`; but `CAST('2024-02-30' AS date)` → `2024-02-29`, silently corrected | `TO_LOCALDATE`, then count the `NULL`s against the non-empty inputs |
+| `TRUNC(d, 'month')`, `ts2 - ts1` | Oracle masks, uppercase only: `'month'` returns `d` unchanged. A timestamp minus a timestamp is whole days: the hours are dropped | `TRUNC(d, 'MM')`; hours from `GETTIMEINMILLIS(ts2) - GETTIMEINMILLIS(ts1)` |
+| `GETDAYOFWEEK(d)`, `EXTRACT(DOW FROM d)` | Sunday is `1` or `7`, `0` or `6`, by the i18n of the database you are connected to — the documentation's "Sunday is always 0" is wrong | `FORMATDATE('EEEE', d, 'us_pst') = 'Sunday'`, or `MOD(GETDAYSBETWEEN(DATE '1900-01-07', d), 7)`: `0` is Sunday |
+
+Also silent, and in the reference: `LIKE` treats `$` as its escape character; `1.1` is a
+`double`; `LOG(value, base)` takes the base second; `NULL`s sort last on `DESC` too; a
+`timestamptz` formats to a different day under another i18n; and the same view can return
+different figures depending on what Denodo pushes down to the source.
+
 ## Where to go from here
 
 | Objects | Skill |
@@ -177,10 +211,9 @@ did not create in this session; you are "cleaning up" anything.
 | Stored procedures — calling one, or writing one | `/denodo:procedures` |
 | Running anything against a live server, reading its errors | `/denodo:execute` |
 
-There is no skill for the `SELECT` itself: it is ordinary SQL. The dialect deltas that cost
-data rather than merely surprising you live where they bite — aggregate result types and
-what survives a `GROUP BY` in `/denodo:views`, the server's own error texts in
-`/denodo:execute`.
+There is no skill for the `SELECT` itself — an ad-hoc question, a report, the body of a
+view: it is the SQL you know, with the expression deltas above and in
+`references/dialect.md`. The server's own error texts are in `/denodo:execute`.
 
 VDP tags (`CREATE TAG`, VQL, Virtual DataPort) and Data Marketplace tags
 (`POST /public/api/tags`, REST) are different objects on different servers. "Tag" alone
