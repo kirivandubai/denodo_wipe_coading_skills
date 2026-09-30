@@ -94,7 +94,8 @@ would be the alternative.
 with the whole statement, which is why the template is the whole statement in a file.
 
 What `ALTER VIEW` does change: cache configuration (`CACHE`, `TIMETOLIVEINCACHE`,
-`CACHE_TABLE_NAME`, `ONSCHEMACHANGE`), swapping (`SWAP`, `SWAPSIZE`, `MAXRESULTSIZE`),
+`CACHE_TABLE_NAME`, `ONSCHEMACHANGE` — the full cache is `/denodo:cache`, the rest Design
+Studio), swapping (`SWAP`, `SWAPSIZE`, `MAXRESULTSIZE`),
 `DECLARE CACHE INDEX`, `DATAMOVEMENTPLAN`, the primary key, `DELEGATESTATSQUERY`,
 `CHECK_INDIRECT_ACCESS`, `LAYOUT`, and the name:
 

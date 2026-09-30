@@ -118,6 +118,7 @@ it just means the verification is yours to do, with `DESC` and a `SELECT`.
 | Session settings: `SET QUERYTIMEOUT TO …`, `ALTER SESSION SET 'querytimeout' = …` | `INSERT`, `UPDATE` — the rows land in the source behind the view |
 | — | `SET '<property>' = …`, `WEBCONTAINER SET / STOP / START / RELOAD` — the whole server's configuration, not your session |
 | — | `CREATE OR REPLACE` of an existing view that drops or renames a column other objects use — the server accepts it and breaks them without an error (`/denodo:views`, "Before a column changes") |
+| — | loading, reloading or clearing the cache of a view you did not create in this session — `SELECT … CONTEXT ('cache_preload' = 'true', …)`, `ALTER VIEW … CACHE` (`/denodo:cache`) |
 | — | a predefined procedure that changes state, however it is spelled: `SELECT * FROM DROP_REMOTE_TABLE(…)`, `CALL CLEAN_CACHE_DATABASE(…)`, `GENERATE_STATS(…)` — the list is in `/denodo:procedures` |
 | `GET` calls to the marketplace | every destructive marketplace call (below) |
 | — | **any change at all on a profile with `production: true`, `CREATE` included** |
@@ -211,6 +212,7 @@ different figures depending on what Denodo pushes down to the source.
 | Derived views — joins, aggregates, unions, `FLATTEN` / `NEST` of arrays — interface views, associations | `/denodo:views` |
 | Marketplace tags, categories, external elements (REST) | `/denodo:marketplace` |
 | Stored procedures — calling one, or writing one | `/denodo:procedures` |
+| The full cache of a view — switching it on or off, loading it, clearing it; where every other cache setting lives | `/denodo:cache` |
 | Running anything against a live server, reading its errors | `/denodo:execute` |
 
 There is no skill for the `SELECT` itself — an ad-hoc question, a report, the body of a

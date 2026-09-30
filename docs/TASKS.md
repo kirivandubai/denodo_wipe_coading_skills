@@ -32,14 +32,8 @@
 
 **Волна 2 — новые навыки на VQL.**
 
-- **T27. Навык `cache`: только FULL.** `дальше`. Отдельный навык сразу, чтобы расти без
-  переноса текста. Объём: включить и выключить FULL-кэш у своего представления, заполнить
-  тем, что назовёт человек (всё или его фильтр — `WHERE` предзагрузки это решение, а не
-  умолчание), стереть таблицы кэша. Ядро навыка — тихие ловушки FULL: без предзагрузки 0
-  строк, без `cache_invalidate` дубли, без `cache_wait_for_load` не видно падения, без
-  `cache_return_query_results = 'false'` все строки в транскрипт. `cache_invalidate` — в
-  классификатор (правило T22). Рабочее допущение: кэш своих представлений — свой объект.
-  PARTIAL, TTL, инкремент, индексы, расписание — не сейчас. Р. 4.6.
+*T27 is done — under «Сделано» below.*
+
 - **T28. Навык `semantics`: VDP-половина.** `дальше`. Аудит базы: представления без описания,
   описаний полей, первичного ключа, ассоциаций, тега видимости для MCP — и дописывание.
   Описания выводятся из данных (профиль значений), не придумываются по имени колонки, и
@@ -90,6 +84,19 @@
 
 ## Открытые вопросы
 
+- **The physical cache tables were not observed** (T27). The auto-mode classifier refused
+  `DROP_NONACTIVE_CACHE_TABLES` even in preview mode, and the cache database has no
+  credential the session may read, so "the empty table stays until the view is dropped" is
+  documentation-only in `cache`. The `NO_STATUS` runs of T27 swapped cache tables several
+  times; any table left behind is in the server's cache data source under a `C_WRL_NS…` or
+  `C_WEB_RETURN_LINE…` name. A preview of `DROP_NONACTIVE_CACHE_TABLES` by the owner would
+  show both.
+- **A delimiter inside quoted values parses** (T27, two subagents independently over a demo
+  item file: 18,000 rows, values in the right columns, the unchanged DF template), while
+  `datasources` sends such files to Design Studio as unverified. A line break inside quotes
+  is still unchecked. Splitting the rule needs its own check, not a subagent's.
+- **`ds_<source system>` for a lone file** with no system name (T27): the run invented one.
+  The naming table has no default for it.
 - **Privilege narrowing of the dependency procedures is documentation-only** (T26).
   `USED_BY()` and `COLUMN_DEPENDENCIES()` are documented to drop what a non-administrator
   may not see, silently; `views/references/dependencies.md` carries it as `unverified`. A
@@ -176,6 +183,68 @@
 ---
 
 ## Сделано
+
+- **T27. The `cache` skill: the full cache of a view.** A new skill, `skills/cache/`, with the
+  owner's first scope: switch a full cache on and off, load it with all rows or the ones the
+  human names, clear it. Its body: three reads before touching a cache (is it enabled for
+  the database, who reads the view, what is loaded and how), who applies what (a view created
+  in this session and read only by the agent's own views — the agent; any other — only after
+  a yes to the statements, in a given message shape, with a rationalization table from the
+  baseline), three templates (`ALTER VIEW … CACHE FULL WITH_STATUS` in the view's own file;
+  the load in a file of its own; `INVALIDATE` → `CLEAN_CACHE_DATABASE(db, view)` → `OFF`),
+  loading a subset as a decision between two options, Verify, ten silent failures and the
+  loud errors. `references/full-cache.md` holds every load parameter, every `ALTER VIEW …
+  CACHE` form and what survives re-applying a file, measured. Everything else about a cache
+  — partial, time to live, incremental, indexes, schedules — goes to Design Studio and
+  Scheduler. The classifier gains `destructive: cache` for a query whose `CONTEXT` has
+  `'cache_invalidate'` or `'cache_preload' = 'true'` (the owner's decision named only the
+  first; a preload without it doubles every row, so it is flagged too). The three templates
+  run in the `verify` chain, each check asserting the block's claim (0 rows before the load,
+  the load complete through the view above it, the load date gone after clearing). `vql`
+  maps the skill and names cache writes in its safety table; `views`, `datasources`,
+  `procedures` and `execute` point to it. Eval: `routing-cache`, `routing-cache-empty-view`,
+  `discrimination-cache-not-views` added; 27 of 27 pass.
+
+  **Measured on 9.5.1, against the documentation where they differ:** a bare `CACHE FULL`
+  created a table with the status column although the documentation names `NO_STATUS` the
+  default since 9.4; with `NO_STATUS` every `'all_rows'` load swaps the cache table and every
+  view above that had been queried fails with `Invalid object name` until re-created
+  (minutes, through further loads) — so the skill always writes `WITH_STATUS`; leaving
+  `'cache_wait_for_load'` out waits and reports a failed load (the roadmap's pitfall is real
+  only for an explicit `'false'`, which answers `ok`); `CACHE OFF` keeps the rows valid and
+  the next `CACHE FULL` serves them at once (the maintenance-task page says they are
+  invalidated); `INVALIDATE` and `CLEAN_CACHE_DATABASE` after `OFF` are accepted and do
+  nothing; re-applying `CREATE OR REPLACE VIEW` without the `ALTER` line switches the cache
+  off, with a changed column empties it, unchanged or with a new description keeps it; a
+  load over a view built on the cached one, or over a view whose cache is off, answers `ok`
+  and loads nothing; a failed load keeps the previous content; the cached view answers with
+  the cache database's rules (a case-insensitive collation turned 0 rows into 1,988, `NULL`s
+  sort first, `decimal` gains 20 places). A base view carries its cache in its own `CREATE
+  TABLE`; `ALTER VIEW` on it is refused.
+
+  **Found on the way, outside the task:** a DF base view that lists fewer columns than its
+  wrapper answers an equality `WHERE` with the rows of another column — the condition reaches
+  the wrapper by position (`item_sk = 29` gave the rows whose second file column is 29). The
+  `datasources` text said narrowing in the base view was fine and verified. It now narrows in
+  a derived view, or gives a narrow base view `NOS ZERO ()` for each column (checked: right
+  counts; the `(any) OPT ANY` block does not help); Verify and Common mistakes gain the case.
+
+  **Checked with subagents, baseline first**, on a fixture of the returns CSVs with a view
+  above the cached one. Three baseline runs (Opus): all three syntaxes came from the
+  documentation on the internet (43–73 tool calls); two stopped for a yes on their own; the
+  third, told the dashboard refreshed in 15 minutes, applied `ALTER` against the core rule —
+  "the request named the exact view and mode", "dev", "reversible" — and chose `NO_STATUS`,
+  which broke the view above twice; none knew whether `OFF` keeps the rows. With the skill,
+  four runs (Opus), one on a new file with no suggested schema: none read the documentation
+  for the cache; the three on the team's view stopped with the files and the message; the one
+  on its own view applied, verified 9,000 = 9,000 and found silent failure 9 on its own data.
+  Their reviews fixed two errors of mine (`USED_BY` read through the wrong column; `DESC VQL`
+  does not show the status mode) and added the clean-before-off order, the Scheduler default,
+  the second option's catch, and failure 10. After those edits, three of the scenarios once
+  more on Sonnet: the same decisions, 8, 8 and 24 tool calls against 43–73 in the baseline,
+  no documentation read, no failed statement; their reviews added where `CONTEXT` goes and
+  that a cast has to wrap the final value. Unit tests 343 OK; `verify --env lab` green with
+  the three new steps.
 
 - **T26. `views`: impact of a column change, field lineage, and the delegation check.** The
   body of `views` gains "Before a column changes" — four read-only steps (`USED_BY` depth 1,

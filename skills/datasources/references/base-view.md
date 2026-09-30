@@ -67,7 +67,7 @@ CREATE OR REPLACE TABLE bv_crm_customers I18N us_pst (
 | `TIMETOLIVEINCACHE DEFAULT` | **yes when `CACHE OFF` is followed by `ADD SEARCHMETHOD`** — otherwise `Syntax error … near 'ADD'`. *verified: 9.5.1 (live, 2026-09-09)* |
 | `ADD SEARCHMETHOD … WRAPPER (…)` | **yes** — without it the view has no source |
 | `I18N` *inside* the search method | no |
-| `CONSTRAINTS ( … )` | **for JSON, yes**: `ADD <field> NOS ZERO ()` for every column and every register subfield (`shipping.country`). Left out, the server fills in `ADD <field> (any) OPT ANY` for every wrapper type; the DF and JDBC wrappers then filter what they are handed, the JSON wrapper ignores it, and every `WHERE` on a JSON base view returns all rows without an error. For DF and JDBC it can be left out. *verified: 9.5.1 (live, 2026-09-30)* |
+| `CONSTRAINTS ( … )` | **for JSON, yes**: `ADD <field> NOS ZERO ()` for every column and every register subfield (`shipping.country`). Left out, the server fills in `ADD <field> (any) OPT ANY` for every wrapper type; the DF and JDBC wrappers then filter what they are handed, the JSON wrapper ignores it, and every `WHERE` on a JSON base view returns all rows without an error. For JDBC it can be left out, and for DF when the base view lists the wrapper's columns in the wrapper's order. **A DF base view with fewer columns needs it** (`NOS ZERO ()` for each of its columns): without it an equality is handed to the wrapper by position and filters another column of the file. *verified: 9.5.1 (live, 2026-09-30)* |
 | `OUTPUTLIST` | in practice yes — it is the list of fields the search method returns |
 | The wrapper type in `WRAPPER (…)` | **yes**, and it must match: `df`, `json`, `jdbc` |
 
@@ -113,10 +113,17 @@ DECLARE VIEW INDEX idx_customer_country ON ( country ASC )
 
 ## Cache, swap, MPP
 
-`CACHE PARTIAL/FULL`, `BATCHSIZEINCACHE`, `CACHE_TABLE_NAME`, `CREATE_TABLE_TEMPLATES`,
+A full cache on a base view is `CACHE FULL WITH_STATUS` in place of `CACHE OFF` in this
+statement — `/denodo:cache` has what it does and how it is loaded. It lives here, not in an
+`ALTER`: re-applying this file with `CACHE OFF` switches an existing cache off without a
+word, and the loaded rows come back stale if it is ever switched on again — *verified: 9.5.1
+(live, 2026-09-30)*. Read `DESC VQL` before re-applying a base view file someone else may
+have cached.
+
+`CACHE PARTIAL`, `BATCHSIZEINCACHE`, `CACHE_TABLE_NAME`, `CREATE_TABLE_TEMPLATES`,
 `SWAP`, `MAXRESULTSIZE`, `ONSCHEMACHANGE`, `DELEGATESTATSQUERY` and the
 `SMART_ONLY` / `SMART_THEN_ATSOURCE_THROUGH_VDP` / `ATSOURCE_THROUGH_VDP_ONLY` group are
-performance and lifecycle features. They are out of v1 scope: get the view returning
+performance and lifecycle features. They are out of scope: get the view returning
 correct rows first. When the source's schema drifts under a base view, the base view is
 refreshed in Design Studio (**Source Refresh**, `SKILL.md`), not rewritten by hand.
 

@@ -24,7 +24,9 @@ denodo_skills/
 │   ├── catalog/             databases, folders, VDP tags
 │   ├── datasources/         data sources, wrappers, base views + references/
 │   ├── views/               derived views, interface views, associations + references/
-│   └── marketplace/         marketplace tags, categories, external elements + references/
+│   ├── marketplace/         marketplace tags, categories, external elements + references/
+│   ├── procedures/          predefined, VQL and Java stored procedures + references/
+│   └── cache/               the full cache of a view + references/
 ├── scripts/
 │   ├── denodo               launcher — standard library only
 │   └── denodo_cli/          the implementation behind it

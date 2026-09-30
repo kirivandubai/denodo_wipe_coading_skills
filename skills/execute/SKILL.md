@@ -148,13 +148,15 @@ predefined procedure that changes state — `GENERATE_STATS`, `CREATE_REMOTE_TAB
 `DROP_REMOTE_TABLE`, `CLEAN_CACHE_DATABASE`, `DROP_NONACTIVE_CACHE_TABLES`,
 `CREATE_SCHEMA_ON_SOURCE`, `DROP_SCHEMA_ON_SOURCE`, `REMOVE_ICEBERG_VIEW_SNAPSHOTS`,
 `ROLLBACK_ICEBERG_VIEW_TO_SNAPSHOT` (the list, with what each
-one destroys, is in `/denodo:procedures`, `references/predefined.md`); HTTP `DELETE`, and
+one destroys, is in `/denodo:procedures`, `references/predefined.md`); a query whose
+`CONTEXT` loads or invalidates a view's cache — `'cache_preload' = 'true'` or any
+`'cache_invalidate'` (`/denodo:cache`); HTTP `DELETE`, and
 the marketplace `POST`s that replace a whole set or delete what is missing from the payload
 — `tags/vdp/synchronize`,
 `element-management/{all,DATABASES,VIEWS,WEBSERVICES,EXTERNAL_ELEMENTS}/synchronize`, the
 `external-tool-servers/synchronize` family, `views/{id}/tags` and
 `category-management/views/{id}/categories`. Every result carries a `destructive` field: the
-kind (`drop`, `alter`, `delete`, `write`, `setting`, `procedure`, `replace`) when it is one of
+kind (`drop`, `alter`, `delete`, `write`, `setting`, `procedure`, `cache`, `replace`) when it is one of
 these, and `null` — not `false` — when it is not. Session settings come back `null` and pass on
 any profile: `SET QUERYTIMEOUT TO …` (property name unquoted) and `ALTER SESSION SET
 'querytimeout' = …` last until the connection closes; a quoted property after a bare `SET` is
@@ -185,8 +187,8 @@ When refused:
 **Red flags — stop and ask the human:** you are typing `--allow-destructive`; the
 previous result had `error.kind: "refused"`; `env.production` is `true` and the VQL
 contains `DROP` or `ALTER`, writes with `INSERT` or `UPDATE`, sets a server property with
-`SET '…'`, or calls a procedure whose name starts with `DROP_`, `CLEAN_`, `REMOVE_`,
-`ROLLBACK_`.
+`SET '…'`, loads a cache with `'cache_preload'` or `'cache_invalidate'`, or calls a procedure
+whose name starts with `DROP_`, `CLEAN_`, `REMOVE_`, `ROLLBACK_`.
 
 ### Error in the middle of a file
 
@@ -212,6 +214,6 @@ rows — the SELECT is what catches it.
 
 Writing the VQL or choosing where an object lives: `/denodo:vql` (conventions,
 safety, idempotency) and the domain skills `/denodo:catalog`, `/denodo:datasources`,
-`/denodo:views`, `/denodo:marketplace`. Trigger phrase confusion: VDP tags
+`/denodo:views`, `/denodo:marketplace`, `/denodo:procedures`, `/denodo:cache`. Trigger phrase confusion: VDP tags
 (`CREATE TAG`, VQL) and marketplace tags (`POST /public/api/tags`, REST) are
 different objects on different servers; the tool does not translate between them.

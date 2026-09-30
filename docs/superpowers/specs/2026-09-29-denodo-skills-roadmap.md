@@ -373,6 +373,13 @@ the transport.
 preload and invalidation through `CONTEXT`, incremental loads (`@LAST_REFRESH_DATE`), cache
 indexes, `GET_CACHE_*` and `CACHE_CONTENT` for inspection.
 
+**Built in T27** (`skills/cache/`). Checked on 9.5.1 against the list below: the first,
+second, third and last pitfalls hold; the fourth holds only for an explicit
+`'cache_wait_for_load' = 'false'` — left out, the load waits and reports the failure; PARTIAL
+and the UI labels are Design Studio's. New ones, in the skill: `NO_STATUS` breaks the views
+above on every full reload, `CACHE OFF` keeps the rows and serves them again on the next
+`CACHE FULL`, re-applying the view without its `ALTER` switches the cache off.
+
 **Silent pitfalls:**
 
 - A FULL cache without a preload returns 0 rows.
