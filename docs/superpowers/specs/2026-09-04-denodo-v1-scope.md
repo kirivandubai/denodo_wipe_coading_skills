@@ -56,6 +56,11 @@ Marketplace — **разные объекты в разных серверах**
 сценарий, JSON — вложенную схему и HTTP-источник. Порядок создания — `datasource →
 wrapper → base view` — фиксируется в самом навыке.
 
+*Changed 2026-09-30 (T23): the HTTP half of JSON left v1.* A JSON document behind a URL is a
+REST source, and `datasources` now sends it to Design Studio together with every other source
+type beyond the three templates (roadmap, section 4.4 and item 4 of section 11). v1 keeps the
+JSON file on the server's own disk.
+
 Файловые источники ценны ещё и тем, что замыкают сценарий целиком на пустом стенде: без
 них любая приёмка требует внешней СУБД.
 

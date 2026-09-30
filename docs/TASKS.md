@@ -22,14 +22,6 @@
 
 **Волна 0 — ядро и существующие навыки.**
 
-- **T23. `datasources` отправляет источники вне v1 в Design Studio.** `дальше`. Проверенные
-  шаблоны v1 (CSV, JSON-файл, JDBC-таблица) агент делает сам; REST API, базовое
-  представление из SQL-запроса или процедуры, дрейф схемы, Excel, XML, Salesforce, custom
-  wrappers — навык рекомендует создать в Design Studio, затем агент читает созданное
-  (`DESC VQL`) и продолжает. Базовые представления агент делает сам, где выходит сразу; не
-  вышло — стоп и Design Studio вместо перебора. Решить в задаче: что делать с
-  `unverified`-разделами про HTTP, `SQLSENTENCE` и креденшелы в `references/json.md` и
-  `references/jdbc.md`. Меняется `description` — eval-сьют. Р. 4.4.
 - **T24. Справочник диалекта `vql/references/dialect.md`.** `дальше`. Все дельты VQL против
   PostgreSQL/Oracle, каждая проверена `SELECT … FROM Dual()`; в тело `vql` или `views` —
   таблица из 8–10 самых опасных тихих дельт (даты, подстроки, NULL в агрегатах, `CAST`,
@@ -37,6 +29,9 @@
   `views/SKILL.md`. Закрывает прежний открытый вопрос «заводить `/denodo:query` или
   расселять дельту по месту»: навыка нет, дельта — справочником. Заодно проверить, отвечает ли `HELP <команда>` через транспорт: если да
   — одна строка в `vql` рядом с правилом про `DESC VQL`, если нет — снять (р. 2.5). Р. 4.1.
+  *Checked during T23 (2026-09-30, live 9.5.1):* `HELP`, `HELP CREATE VIEW` and
+  `HELP CREATE DATASOURCE JSON` answer `ok` over the transport with no columns and no rows —
+  `HELP` gives nothing over ODBC, so the 2.5 line is dropped and T24 needs no further check.
 
 **Волна 1 — `views`.**
 
@@ -174,6 +169,43 @@
 ---
 
 ## Сделано
+
+- **T23. `datasources` sends every source beyond the three templates to Design Studio.** The
+  agent still builds a delimited or JSON file on the server's own disk and a JDBC table with a
+  password; REST APIs, Excel, XML, cloud or FTP files, multi-line or quoted-delimiter files,
+  Salesforce/SAP/OData/SOAP, base views over a SQL query or a stored procedure, JDBC logins
+  other than a password (the data source only — its tables are the agent's again), and schema
+  drift (Source Refresh) go to the human in Design Studio. The skill gains a section with the
+  boundary, a five-part handover message and a table of Design Studio menu paths (from the
+  9.5 Administration Guide, marked unverified), what to do once the human is done, and a
+  budget for templates that do not work straight away: one named fix per failure, then stop.
+
+  **Decisions taken with the owner.** (1) The grammar of everything beyond the three
+  templates is removed from `references/json.md`, `df.md` and `jdbc.md` — HTTP routes,
+  pagination, OpenAPI, FTP/S3/HDFS routes, filters, fixed-width and regex parsing,
+  `PROCEDURENAME`, vault/Kerberos/OAuth/IAM/pass-through credentials, and the verified
+  `SQLSENTENCE` too; kept grammar would read as "an unverified template is still worth using".
+  (2) Objects created in Design Studio are not copied into the project's files: `DESC VQL`
+  opens with `DROP … CASCADE`, and a re-applied transcription would overwrite the wizard's
+  configuration and credentials. The file holds the agent's objects and a comment naming the
+  Design Studio ones; the summary says they exist on the server only.
+
+  **Checked with subagents, baseline first.** Without the change, four scenarios failed as
+  expected: a REST API was hand-built from the unverified `json.md` grammar (four applies, two
+  failed, pagination guessed from parser errors, the skill's connection class did not match
+  the server's, no row ever read); a query and a function base view were written from
+  `SQLSENTENCE` and memory; a file that would not parse drew diagnostics, an
+  `ENDOFLINEDELIMITER` guess and a server-side cleaning script, never Design Studio; and both
+  agents that did hand something over planned to copy `DESC VQL` back into the file. With the
+  change, five scenarios passed on the live server, including a leftover hand-built REST
+  source sitting on the server as a donor (not copied) and a control that must *not* be
+  handed over (JDBC tables built with a donor's ciphertext, 500,000 rows, in the same request
+  as a query view that was handed over). The subagents' reviews added the third stop
+  condition, the "the database and folder are yours" line, mandatory inputs, and fixed an
+  older contradiction: the slots table invited a password into the chat, against the
+  `secret encrypt` flow. The eval suite gets `routing-datasources-rest-api`,
+  `routing-datasources-schema-drift` and `discrimination-procedure-base-view`; all 17 cases
+  pass.
 
 - **T22. The classifier catches server settings and writes to sources.** `classify_vql` gets
   two new kinds. `write`: a leading `INSERT` or `UPDATE` — a write through a view lands in the

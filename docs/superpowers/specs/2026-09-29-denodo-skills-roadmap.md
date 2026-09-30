@@ -293,7 +293,7 @@ dependency propagation gap in `views`.
 2. Everything beyond them — REST APIs, a base view from a SQL query or a database procedure, schema drift, Excel, XML, Salesforce, custom wrappers and every other source type — the skill recommends creating in Design Studio; the agent then reads what was created (`DESC VQL`) and continues from there.
 3. Base views: the agent creates them where it works; when creation does not succeed straight away, it stops iterating and sends the human to Design Studio.
 
-What becomes of the `unverified` HTTP, `SQLSENTENCE` and credential sections already in `references/json.md` and `references/jdbc.md` is decided in the task that adds the routing. The same decision drops items 16 (`connectors`), 17 (`datasources` files) and 25 (`sap`). The original proposal follows.
+What became of the `unverified` HTTP, `SQLSENTENCE` and credential sections in the references was decided in T23 with the owner: the grammar of everything beyond the three templates was removed from `references/json.md`, `references/df.md` and `references/jdbc.md` — the verified `SQLSENTENCE` included, since a base view over a query goes to Design Studio too — and each reference now names the Design Studio rule instead. Kept grammar would read as "an unverified template is still worth using" (`vql`), which is the opposite of the routing. Objects created in Design Studio are not copied into the project's files. The same decision drops items 16 (`connectors`), 17 (`datasources` files) and 25 (`sap`). The original proposal follows.
 
 **Scope added:**
 

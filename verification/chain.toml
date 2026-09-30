@@ -111,7 +111,7 @@ check = "SELECT name FROM GET_ELEMENTS() WHERE input_database_name = '{database}
 id = "json-source"
 kind = "template"
 channel = "vql"
-address = "skills/datasources/SKILL.md#JSON file or endpoint"
+address = "skills/datasources/SKILL.md#JSON file"
 substitute = { sales_analytics = "{database}" }
 database = "{database}"
 # Same shape as df-source above and for the same reason: the file this block names does not

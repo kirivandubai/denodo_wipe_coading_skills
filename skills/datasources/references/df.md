@@ -1,8 +1,14 @@
-# DF data sources and wrappers — full syntax
+# DF data sources and wrappers — a local delimited file
 
-Delimited text: CSV, TSV, pipe-separated, fixed-width, and anything a Java regular
-expression can parse into groups. Source of the grammar: VQL Guide 9.5, *DF Data Sources*
-and *DF Wrappers*. Facts marked `verified:` were run on a 9.5.1 server.
+Delimited text on the Denodo server's own filesystem: CSV, TSV, pipe-separated. Source of
+the grammar: VQL Guide 9.5, *DF Data Sources* and *DF Wrappers*. Facts marked `verified:`
+were run on a 9.5.1 server.
+
+A file that lives anywhere but the server's disk (S3, ADLS, HDFS, FTP/SFTP, a URL), arrives
+compressed or encrypted, or needs more than a delimiter to parse — fixed widths, a regular
+expression splitting each line, a data area bounded by markers — is created in Design
+Studio, not from this grammar (`SKILL.md`, **What you build, and what goes to Design
+Studio**).
 
 ## CREATE DATASOURCE DF
 
@@ -10,18 +16,13 @@ and *DF Wrappers*. Facts marked `verified:` were run on a 9.5.1 server.
 CREATE [ OR REPLACE ] DATASOURCE DF <name>
     [ FOLDER = <literal> ]
     [ IGNOREMATCHINGERRORS = { TRUE | FALSE } ]
-    ROUTE <route> [ CHARSET = <literal> ] [ FILTER ( <filter> [, <filter> ]* ) ]
+    ROUTE LOCAL 'LocalConnection' <server-side path> [ FILENAMEPATTERN = <literal> ] [ CHARSET = <literal> ]
     {   COLUMNDELIMITER = <literal>
-      | TUPLEPATTERN = <literal> [ HEADERPATTERN = <literal> ]
-      | COLUMNWIDTHS = '<int>[,<int>]' [ PADCHARACTER = <literal> ]
-            [ REPLACECHARACTER = <literal> ] [ ALIGNMENT = { LEFT | RIGHT } ]
+      | TUPLEPATTERN = '(.*)'          -- only to read the file as raw lines, below
     }
     [ ENDOFLINEDELIMITER = <literal> ]
-    [ BEGINDELIMITER = { <literal> | VAR <variable> } [ ISDATA ] ]
-    [ ENDDELIMITER = <literal> [ ISDATA ] ]
     [ HEADER = <boolean> ]
     [ MULTI_CHARACTER_DELIMITER = <boolean> ]
-    [ TRANSFER_RATE_FACTOR = <double> ]
     [ DESCRIPTION = <literal> ]
 ```
 
@@ -32,48 +33,18 @@ existing object, so `/denodo:vql` applies — prefer `CREATE OR REPLACE`.
 |---|---|
 | `COLUMNDELIMITER` | `\t` for tab. More than one character means *any of them* separates values (`,\|` = comma or pipe) unless `MULTI_CHARACTER_DELIMITER = true`, which makes the whole string one delimiter |
 | `ENDOFLINEDELIMITER` | default `\n`; set it for files with `\r\n` that must not be trimmed |
-| Quoted values | handled without any clause: a file whose header and values are wrapped in `"` comes back unquoted. *verified: 9.5.1 (live, 2026-09-09)* |
+| Quoted values | handled without any clause: a file whose header and values are wrapped in `"` comes back unquoted. *verified: 9.5.1 (live, 2026-09-09)*. A delimiter or a line break **inside** the quotes is not verified — such a file is Design Studio's |
 | `HEADER` | `TRUE` = first tuple of the data area holds field names. It does **not** make the server introspect the file — you still write `OUTPUTSCHEMA` yourself. *verified: 9.5.1 (live, 2026-09-09)* |
 | `IGNOREMATCHINGERRORS` | default `TRUE`: rows whose column count does not match the wrapper's schema are skipped **silently** — that is the whole mechanism behind "the base view returns zero rows". `FALSE` makes the same case fail loudly with `[DF ROUTE] [PARSE_ERROR] Invalid line found at data file. Different number of columns`. Put `FALSE` in every source you onboard. *verified: 9.5.1 (live, 2026-09-09)* |
-| `TUPLEPATTERN` | Java regex matching the **whole** line; capturing groups become the fields. `HEADERPATTERN` only when the header parses differently |
-| `COLUMNWIDTHS` | fixed-width files, sizes in bytes; `PADCHARACTER`/`REPLACECHARACTER` escape as Java strings (`á`) |
-| `BEGINDELIMITER` / `ENDDELIMITER` | Java regex bounding the data area; `ISDATA` keeps the matched text as data |
-| `TRANSFER_RATE_FACTOR` | relative link speed, `1` = 100 Mbps LAN; affects planning only |
+| `TUPLEPATTERN` | here only as `'(.*)'` with `HEADER = FALSE`, to read the file as raw lines (below). A pattern whose capturing groups split a line into fields is a regex-parsed file: Design Studio |
 | `DESCRIPTION` | last clause |
 
-### Routes
-
-```sql
-LOCAL { 'LocalConnection' | 'VariableConnection' } <path> [ FILENAMEPATTERN = <literal> ] [ CHARSET = <literal> ]
-HTTP 'http.CommonsHttpClientConnection' { GET | POST } <uri>
-     [ POSTBODY <body> [ MIME <type> ] ] [ HEADERS ( <name> = <value>, … ) ]
-     [ CHECKCERTIFICATES ] [ <authentication> ] [ <proxy> ]
-     [ HTTP_ERROR_CODES_TO_IGNORE ( <int>, … ) ]
-FTP 'ftp.FtpClientConnectionAdapter' <uri> <login>
-     { <password> [ ENCRYPTED ] | SSH_KEY = <base64> [ ENCRYPTED ] [ SSH_KEY_PASSWORD = <literal> [ ENCRYPTED ] ] }
-     [ FILENAMEPATTERN = <literal> ] [ PASSIVE = <boolean> ] [ EXPLICIT = <boolean> ]
-HDFS 'hdfs.HdfsConnection' <uri> [ FILENAMEPATTERN = <literal> ] [ <hdfs auth> ]
-     [ HADOOP_CUSTOM_PROPERTIES ( <literal> = <literal>, … ) ]
-S3   'hdfs.S3Connection'   <uri> [ FILENAMEPATTERN = <literal> ] [ <s3 auth> ]
-ABFS 'hdfs.AbfsConnection' <uri> [ FILENAMEPATTERN = <literal> ] [ <azure auth> ]
-```
+### The path
 
 - `LOCAL` paths are **on the Denodo server**. A directory reads every file in it as one
   table; `FILENAMEPATTERN` is a regular expression over file names. All files must share a
   schema. *verified: 9.5.1 (live, 2026-09-09) — directory + `FILENAMEPATTERN = '.*\.csv'`*
-- `VariableConnection` is for paths built from interpolation variables at query time
-  (`@{var}`); the wrapper marks those fields `EXTERN`, and `URIPARAM` when the value is a
-  URL query parameter. *unverified: 9.5 documentation only*
 - `FILENAMEPATTERN` is DF-only — JSON and XML sources do not take it.
-- Any password in an FTP or cloud route follows the same rule as JDBC: `ENCRYPTED` only,
-  never a literal in a file that goes into git (`references/jdbc.md`).
-
-### Filters
-
-`FILTER ( UNZIP )`, `GUNZIP`, `DECRYPT`, `DECRYPTAES256 PASSWORD = <literal> [ ENCRYPTED ]`,
-or `CUSTOM [ JARS … ] CLASSNAME = <literal> <param> = <literal> [ ENCRYPTED ] [ HIDDEN ]`.
-Applied to the byte stream before parsing, so a `.csv.gz` needs `FILTER ( GUNZIP )` and
-nothing else changes. *unverified: 9.5 documentation only*
 
 ## CREATE WRAPPER DF
 
@@ -86,10 +57,10 @@ CREATE [ OR REPLACE ] WRAPPER DF <name>
     [ SOURCECONFIGURATION ( DATAINORDERFIELDSLIST = { DEFAULT | ( <field> { ASC | DESC }, … ) } ) ]
 
 <field> ::= <name> [ = <mapping:literal> ] [ ( { OBL | OPT } ) ]
-            [ ( DEFAULTVALUE <literal> ) ] [ EXTERN ] [ <inline constraint> ]*
+            [ ( DEFAULTVALUE <literal> ) ] [ <inline constraint> ]*
 <inline constraint> ::= [ NOT ] NULL | [ NOT ] UPDATEABLE
                       | { SORTABLE [ ASC | DESC ] | NOT SORTABLE }
-                      | NULLVALUE <literal> | URIPARAM
+                      | NULLVALUE <literal>
 ```
 
 What the 9.5.1 parser actually accepts, against the grammar above:
