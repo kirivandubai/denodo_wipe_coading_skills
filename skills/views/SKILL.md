@@ -1,6 +1,6 @@
 ---
 name: views
-description: Use when building on top of views that already exist in Denodo 9.5 — a derived view over base views (CREATE VIEW … AS SELECT: a join, an aggregate, a mart, a parameterised view, a UNION ALL of views of one entity, FLATTEN of an array such as JSON order lines into rows, NEST of rows into an array), an interface view as a contract whose implementation can be swapped (CREATE INTERFACE VIEW … SET IMPLEMENTATION), or an association between two views (CREATE ASSOCIATION … REFERENTIAL CONSTRAINT). Also before changing a view others depend on — "what uses this view", "can I drop this column", "where does this field come from" — for whether a mart over a database runs there or pulls every row into Denodo, for "make a mart", "combine these sources into one view", "expose this as a data product", and for a view created without an error that fails on SELECT or turns up INVALID. Not for connecting a source or making base views — /denodo:datasources; not for databases, folders or VDP tags — /denodo:catalog; not for a view's cache or materialization — /denodo:cache.
+description: Use when building on top of views that already exist in Denodo 9.5 — a derived view over base views (CREATE VIEW … AS SELECT: a join, an aggregate, a mart, a parameterised view, a UNION ALL of views of one entity, FLATTEN of an array such as JSON order lines into rows, NEST of rows into an array), an interface view as a contract whose implementation can be swapped (CREATE INTERFACE VIEW … SET IMPLEMENTATION), or an association between two views (CREATE ASSOCIATION … REFERENTIAL CONSTRAINT). Also before changing a view others depend on — "what uses this view", "can I drop this column", "where does this field come from" — for whether a mart over a database runs there or pulls every row into Denodo, for "make a mart", "combine these sources into one view", "expose this as a data product", and for a view created without an error that fails on SELECT or turns up INVALID. Not for connecting a source or making base views — /denodo:datasources; not for databases, folders or VDP tags — /denodo:catalog; not for a view's cache or materialization — /denodo:cache; not for KPIs defined once for every tool as a metric view — /denodo:metrics.
 ---
 
 # Derived views, interface views and associations
@@ -13,7 +13,9 @@ view → association**. A derived view is also how several views of one entity b
 
 Sources, wrappers and base views are `/denodo:datasources`; databases, folders and VDP
 tags are `/denodo:catalog`. Describing, keying and tagging views that already exist — an
-audit of a database for people and AI consumers — is `/denodo:semantics`. The SELECT inside
+audit of a database for people and AI consumers — is `/denodo:semantics`. Metric views —
+KPIs declared once over a fact and its dimensions, and the views built on them — are
+`/denodo:metrics`; a mart of one fixed grain stays here. The SELECT inside
 `AS` has no skill of its own: the expressions
 where VQL returns a wrong value without an error — substrings, casts, date patterns, `SUM`
 over `int` — are the table in `/denodo:vql` and its `references/dialect.md`. Applying files
@@ -378,6 +380,11 @@ household has exactly one band `(1)`.
   accepted and silently ignored, and JDBC/ODBC clients never see the relationship —
   *verified: 9.5.1 (live, 2026-09-10)*. Leave it out only for a link that is genuinely
   not a foreign key.
+- **`(1)` on the principal end is a promise that every row of the other view has a match.**
+  A metric view over the association keeps that promise for you: rows without a match are
+  dropped from every grouped figure, even with `RIGHT` written — *verified: 9.5.1 (live,
+  2026-10-01)*. When some rows have a `NULL` or unknown key, write `(0,1)`
+  (`/denodo:metrics`).
 - The `PRINCIPAL` endpoint must be `(1)` or `(0,1)`. Two `PRINCIPAL`s is
   `In a 1:N association, the principal endpoint must have multiplicity 1 or 0..1`.
 - Multiplicity is written `(0,*)`, `(1)`, `(0,1)`, `(1,*)`, `(*)`. The `0..1` from the

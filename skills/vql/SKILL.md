@@ -1,6 +1,6 @@
 ---
 name: vql
-description: Use when doing anything with Denodo — creating or changing a database, folder, tag, data source, wrapper, base view, derived view, interface view, association, or a Data Marketplace object; writing or fixing VQL; deciding where an object lives and what to name it; "build a mart", "connect a source", "vibe-code on Denodo". Start here when the request is ambiguous: this skill holds the working loop, the naming conventions, the safety rule and the map of the other Denodo skills.
+description: Use when doing anything with Denodo — creating or changing a database, folder, tag, data source, wrapper, base view, derived view, interface view, metric view, association, or a Data Marketplace object; writing or fixing VQL; deciding where an object lives and what to name it; "build a mart", "connect a source", "vibe-code on Denodo". Start here when the request is ambiguous: this skill holds the working loop, the naming conventions, the safety rule and the map of the other Denodo skills.
 ---
 
 # Working with Denodo
@@ -59,6 +59,7 @@ singular nouns, no environment name anywhere in an object name (`sales`, never
 | Base view | `bv_<source system>_<entity>` |
 | Derived view, integration layer | `iv_<what it does>` |
 | Business entity view / interface view | the entity itself: `customer` |
+| Metric view | the subject and `_metrics`: `sales_metrics`; the selection views over it say what they hold, `sales_by_region` |
 | Association | `a_<principal>_<related>` |
 | Summary | `s_<name>` |
 | Tag | the concept: `pii`, `gdpr` |
@@ -69,7 +70,7 @@ Layers are folders, and every object gets a `FOLDER =`:
 |---|---|
 | `/01 - connectivity` | data sources, wrappers, base views |
 | `/02 - integration` | derived views that combine and transform |
-| `/03 - business entities` | canonical views and interface views for consumers |
+| `/03 - business entities` | canonical views, interface views, metric views and the views over them — what consumers read |
 | `/06 - associations` | associations |
 
 Create the layers you actually fill, not the whole table: a mart over two files needs
@@ -119,6 +120,7 @@ it just means the verification is yours to do, with `DESC` and a `SELECT`.
 | — | `SET '<property>' = …`, `WEBCONTAINER SET / STOP / START / RELOAD` — the whole server's configuration, not your session |
 | — | `CREATE OR REPLACE` of an existing view that drops or renames a column other objects use — the server accepts it and breaks them without an error (`/denodo:views`, "Before a column changes") |
 | — | loading, reloading or clearing the cache of a view you did not create in this session — `SELECT … CONTEXT ('cache_preload' = 'true', …)`, `ALTER VIEW … CACHE` (`/denodo:cache`) |
+| — | `CREATE OR REPLACE METRIC VIEW` over a metric view you did not create in this session — a changed join type, filter or metric changes every figure built on it, with no column dropped (`/denodo:metrics`) |
 | — | the description, field descriptions, primary key or tags of a view you did not create in this session — by `ALTER VIEW`, `ALTER TAG`, or by re-declaring the view with `CREATE OR REPLACE`: the human approves the texts; naming a view to be made visible to an agent is the yes for its tag (`/denodo:semantics`) |
 | — | a predefined procedure that changes state, however it is spelled: `SELECT * FROM DROP_REMOTE_TABLE(…)`, `CALL CLEAN_CACHE_DATABASE(…)`, `GENERATE_STATS(…)` — the list is in `/denodo:procedures` |
 | `GET` calls to the marketplace | every destructive marketplace call (below) |
@@ -214,6 +216,7 @@ different figures depending on what Denodo pushes down to the source.
 | Marketplace tags, categories, external elements (REST) | `/denodo:marketplace` |
 | Stored procedures — calling one, or writing one | `/denodo:procedures` |
 | The full cache of a view — switching it on or off, loading it, clearing it; where every other cache setting lives | `/denodo:cache` |
+| KPIs defined once for every tool — metric views (`CREATE METRIC VIEW`), `evaluate_metric`, the views built on them | `/denodo:metrics` |
 | What people and AI consumers read about existing views — descriptions, primary keys, associations, the tag the MCP Server shows views by; "why does the agent not see this view" | `/denodo:semantics` |
 | Running anything against a live server, reading its errors | `/denodo:execute` |
 

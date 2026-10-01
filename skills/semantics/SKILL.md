@@ -112,6 +112,10 @@ will read:
   that passes a column through unchanged shows the description of the column below. `DESC
   VQL` shows only the view's own. Base views: their field descriptions reach every view
   above that passes the column through, so one description there can cover many views.
+- **A metric view** (`subtype = 'metric'`) is described like any view, field by field —
+  its dimensions and metrics. A view built over it inherits the descriptions of the
+  dimensions it passes through and none of the metrics: its `evaluate_metric` columns need
+  their own (`/denodo:metrics`).
 
 ## 2. Profile — what the data says
 

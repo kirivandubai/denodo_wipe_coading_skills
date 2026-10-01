@@ -26,7 +26,7 @@ tool reads host, user and password from `~/.denodo/profiles.toml` itself.
 | Read stdin | `vql run --env dev -` |
 | Another database | add `--database <db>` (or put `CONNECT DATABASE <db>;` first in the file) |
 | Schema of an object | `vql desc --env dev bv_orders` (`--type view` is the default and covers base views too — there is no `DESC TABLE`) |
-| Server-generated VQL | `vql desc --env dev bv_orders --vql` — read it, do not apply it: it opens with `DROP … CASCADE` and rebuilds the object **together with what it depends on** in its own database — dependencies in another database are left out — never with what depends on it. Which object you ask therefore decides what you get: a base view returns source, wrapper and `CREATE TABLE` in one answer; the source alone returns only itself, without the column list. A name can be qualified — `vql desc --env dev "other_db.bv_orders" --vql` reads another database without switching yours — *verified: 9.5.1 (live, 2026-09-12)* |
+| Server-generated VQL | `vql desc --env dev bv_orders --vql` — read it, do not apply it: it opens with `DROP … CASCADE` and rebuilds the object **together with what it depends on** in its own database — dependencies in another database are left out, except under a metric view of another database: the metric view is left out and its source views come back unqualified, as if they were in yours — never with what depends on it. Which object you ask therefore decides what you get: a base view returns source, wrapper and `CREATE TABLE` in one answer; the source alone returns only itself, without the column list. A name can be qualified — `vql desc --env dev "other_db.bv_orders" --vql` reads another database without switching yours — *verified: 9.5.1 (live, 2026-09-12)* |
 | Other types | `--type database`, `--type "datasource df"`, `--type "wrapper df"`, `--type tag`, `--type association`, `--type "interface view"`; folders take a quoted path: `vql desc --env dev "'/sales'" --type folder --vql` |
 | Marketplace call | `api get --env dev /public/api/tags` |
 | … with a body | `api post --env dev /public/api/tags --json '{"name":"pii","description":"…","descriptionType":"TEXT"}'` |
@@ -214,6 +214,6 @@ rows — the SELECT is what catches it.
 
 Writing the VQL or choosing where an object lives: `/denodo:vql` (conventions,
 safety, idempotency) and the domain skills `/denodo:catalog`, `/denodo:datasources`,
-`/denodo:views`, `/denodo:marketplace`, `/denodo:procedures`, `/denodo:cache`, `/denodo:semantics`. Trigger phrase confusion: VDP tags
+`/denodo:views`, `/denodo:marketplace`, `/denodo:procedures`, `/denodo:cache`, `/denodo:semantics`, `/denodo:metrics`. Trigger phrase confusion: VDP tags
 (`CREATE TAG`, VQL) and marketplace tags (`POST /public/api/tags`, REST) are
 different objects on different servers; the tool does not translate between them.

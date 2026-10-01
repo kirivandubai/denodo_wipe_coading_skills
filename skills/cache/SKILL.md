@@ -266,6 +266,7 @@ Each runs without an error — *verified: 9.5.1 (live, 2026-09-30)*.
 | a load while the database's cache is off | `Operation not allowed because the cache is disabled or not correctly configured` | the administrator enables it; stop |
 | a text value longer than the cache column (4000 on SQL Server) | `Error loading cache: … String or binary data would be truncated` | the previous content is still served; show the human the value |
 | a view on a `NO_STATUS` cache, after a load | `Invalid object name '<catalog>.<schema>.C_<VIEW>…'` | `ALTER VIEW <cached view> CACHE FULL WITH_STATUS;` (keeps the rows), then re-apply the failing view's file |
+| `ALTER VIEW <metric view> CACHE FULL` | `Metric views do not support cache mode` | cache its source views, or a summary in Design Studio (`/denodo:metrics`) |
 | `ALTER VIEW v CACHE RECREATE` to clear | nothing: the view is empty, but `CACHE_CONTENT` keeps the old load's date | `CACHE INVALIDATE` |
 
 ## Reference

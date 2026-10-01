@@ -569,6 +569,21 @@ second, non-admin profile. It rises to P1 if the audience includes data-product 
 
 **Owner's rule for the skill:** the only thing built on top of a metric view is a selection view; facts and dimensions are joined to that selection view, never to the metric view itself. To be confirmed live like every other rule before it carries a `verified:` mark.
 
+**Built in T29** (`skills/metrics/`). The owner's rule is confirmed on 9.5.1 and is the core of
+the skill: a metric view joined to another view in the same `FROM` runs until the query
+timeout, over a few thousand rows too, while the same join over a selection view
+answers at once; `evaluate_metric(a) * k` and `ROUND(evaluate_metric(a), n)` silently return
+`a`, `evaluate_metric(a) / evaluate_metric(b)` returns no rows, `evaluate_metric` over any other
+view returns `NULL`. Against the pitfalls listed below: a query without any dimension is
+accepted and gives the grand total (the Data Marketplace page says otherwise); conditions on
+metrics do go to `HAVING` and sorting does need projected fields; metric views do have lineage —
+`USED_BY()` lists them. Not in the documentation at all: which fact rows survive is decided by
+the association — `RIGHT` keeps facts without a dimension row only when the dimension endpoint
+is `(0,1)`, `LEFT` keeps dimension members and drops those facts, and with a `(1)` endpoint
+every type runs as `INNER`; a `HAVING` grouped by the key of a dimension view with no declared
+primary key returns no rows; a `FILTER ( … )` clause exists (written by the wizard) and breaks
+some queries.
+
 Metric views, new in 9.5: `CREATE METRIC VIEW`, `EVALUATE_METRIC`, dimensions and metrics,
 associations and cardinalities as prerequisites. At least one dimension is required; conditions
 on metrics go to `HAVING` and on dimensions to `WHERE`; sorting only by projected fields; no data
