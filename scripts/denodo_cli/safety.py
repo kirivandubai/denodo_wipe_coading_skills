@@ -100,6 +100,9 @@ _REPLACING_POSTS = (
     # The additive twins are /tags/{id}/views and /category-management/add/views/{id}/categories.
     re.compile(r"^/public/api/views/[^/]+/tags$"),
     re.compile(r"^/public/api/category-management/views/[^/]+/categories$"),
+    # the same "set" semantics on a view's property groups, and a group left out of the body
+    # takes the view's values for its properties with it (T30, checked live on 9.5.1)
+    re.compile(r"^/public/api/property-management/views/[^/]+/groups$"),
 )
 
 

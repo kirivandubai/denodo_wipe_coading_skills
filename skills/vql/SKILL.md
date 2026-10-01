@@ -146,8 +146,8 @@ destructive as a `DROP`, and none of them contains the word:
 | `DELETE /public/api/category-management/categories/{id}` | the category **and all its children** |
 | `DELETE /public/api/external-tool-servers/{id}` | the server and **every element it imported** |
 | `POST /public/api/tags/vdp/synchronize` | every imported VDP tag missing from the list you send |
-| `POST /public/api/element-management/{all,DATABASES,VIEWS,…}/synchronize` | everything the marketplace holds that VDP no longer has — `changes.localElements` is that list, and it goes whatever `proceedWithConflicts` says; `"SERVER"` additionally overwrites descriptions edited in the marketplace |
-| `POST /public/api/views/{id}/tags`, `.../categories` | the view's previous assignments — this is "set", not "add" |
+| `POST /public/api/element-management/{all,DATABASES,VIEWS,…}/synchronize` | everything the marketplace holds that VDP no longer has — `changes.localElements` is that list, and it goes whatever `proceedWithConflicts` says; `"SERVER"` additionally overwrites descriptions edited in the marketplace. A view renamed in VDP is on that list under its old name, with everything people attached to it, unless the pair is matched in the call (`/denodo:marketplace`) |
+| `POST /public/api/views/{id}/tags`, `.../categories`, `/public/api/property-management/views/{id}/groups` | the view's previous assignments — this is "set", not "add"; a property group left out takes its values with it |
 
 Sending a *complete* list to a `synchronize` call is not a substitute for asking: you are
 still replacing a set you did not read out to the human.
@@ -160,6 +160,7 @@ still replacing a set you did not read out to the human.
 | "There's no `DROP` in this call" | The rule is method and path. `POST …/synchronize` deletes. |
 | "Cleanup of my own probe objects doesn't count" | It is a `DROP` on a shared server. Same rule. |
 | "I'll list what I removed in the summary" | Disclosure after the fact is not consent. |
+| "The radius is clean — the pair is matched, nothing gets removed — and waiting costs them" | A `synchronize` still rewrites a catalog everybody shares. Leave the body in a file and say what waiting risks; the human sends it or says yes. |
 
 **One named exception, and only this one:** the first
 `POST /public/api/external-tool-servers/synchronize` on an external tool server you created

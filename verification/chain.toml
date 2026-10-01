@@ -1,12 +1,13 @@
 # verification/chain.toml
-# Verifies 27 of the templates end to end: catalog database, folders, the DF (CSV), JSON
+# Verifies 28 of the templates end to end: catalog database, folders, the DF (CSV), JSON
 # and JDBC data sources, a hand-written JDBC wrapper and base view, derived views, the union
 # and the array views, the interface view, the association, the column-impact queries, the
 # full cache switched on, loaded and cleared, tags, the metadata audit, profile and
 # write, and the metric view with the views over it, its reads and the totals check (vql
 # channel), plus the
 # Data Marketplace catalog
-# sync, a tag and a category (http channel). Bodies of the
+# sync, a tag, a category, an external element and a renamed view that keeps its element
+# (http channel). Bodies of the
 # "template" steps come from the skills themselves (address = file#section); "fixture"
 # steps carry their own body and verify nothing — they only make the next template
 # reachable. Design spec, section 11.1.
@@ -728,3 +729,51 @@ marketplace = true
 # 217 is the server id captured above, and it occurs in both the path of 2 and the body of 3.
 calls = [2, 3]
 substitute = { "217" = "{tool_server_id}" }
+
+# --- Renamed view keeps its marketplace element ----------------------------------------
+#
+# The rename block's claim is that the element survives: the same id under the new name,
+# because the pair is matched in the synchronize call. Three steps, because the rename itself
+# is VQL and sits between the block's first call and the rest: 0 reads the element before the
+# rename and captures its id, the fixture renames the view in VDP, then 1-3 read the radius,
+# synchronise with the pair matched and read the element back — and expect_body fails the run
+# unless the new name answers with the id captured before. A server that ignored the pair
+# would hand out a new id, and the step would otherwise stay green.
+#
+# household_income_by_band is renamed last on purpose: everything that reads it has run, and
+# nothing-invalid above has already checked the database. The cleanup's DROP DATABASE and the
+# two re-syncs take the renamed view and its element out like any other.
+#
+# Like the external-element steps, each of these runs a subset of the block's calls, so none
+# of them re-dates its mark under --update-marks.
+
+[[step]]
+id = "marketplace-rename-before"
+kind = "template"
+channel = "http"
+address = "skills/marketplace/SKILL.md#A view in the marketplace is renamed, recreated or moved"
+marketplace = true
+# 0 = view-details on the old name, before anything changes.
+calls = [0]
+capture = { renamed_view_id = "id" }
+substitute = { sales_analytics = "{database}" }
+
+[[step]]
+id = "marketplace-rename-vdp"
+kind = "fixture"
+channel = "vql"
+marketplace = true
+database = "{database}"
+vql = "ALTER VIEW household_income_by_band RENAME household_income_per_band;"
+check = "SELECT name FROM GET_VIEWS() WHERE input_database_name = '{database}' AND name = 'household_income_per_band'"
+
+[[step]]
+id = "marketplace-rename-match"
+kind = "template"
+channel = "http"
+address = "skills/marketplace/SKILL.md#A view in the marketplace is renamed, recreated or moved"
+marketplace = true
+# 1 = changes, 2 = synchronize with the pair matched, 3 = view-details on the new name.
+calls = [1, 2, 3]
+substitute = { sales_analytics = "{database}" }
+expect_body = { id = "{renamed_view_id}" }

@@ -41,11 +41,7 @@ property groups, sync pitfalls) is still to come, as a `marketplace` extension.*
 
 **Волна 3 — маркетплейс.**
 
-- **T30. `marketplace`: метаданные переименованного представления переезжают.** `дальше`.
-  Сначала спайк по OpenAPI стенда: как сопоставляются элементы при синхронизации. Если REST
-  это умеет — агент переносит теги, категории и описания со старого элемента на новый. Если
-  нет — вернуться к владельцу с запасным вариантом (предупреждение в `views` перед
-  переименованием и диалог синхронизации в UI). Р. 4.8.
+*T30 is done — under «Сделано» below. Wave 3 is closed.*
 
 **Волна 4 — навыки, которым сначала нужно решение или установка.**
 
@@ -77,6 +73,35 @@ property groups, sync pitfalls) is still to come, as a `marketplace` extension.*
 ---
 
 ## Открытые вопросы
+
+- **A matched-rename synchronisation is still the human's yes — should it be?** (T30, for the
+  owner.) A `VIEWS/synchronize` whose only `localElements` entry is the old name of a pair it
+  matches, and whose `modifiedElements` are only marketplace-edited descriptions, removes
+  nothing and keeps everything; one GREEN run of T30, under an earlier wording of the skill,
+  ran it alone for a human who was away with a deadline, and the outcome was right. The skill
+  now keeps the `vql` rule — every `synchronize` waits for a yes, and when asking is
+  impossible the body goes into a file — so the analysts in that scenario wait for the human.
+  A second named exception, beside the first import of a new tool server, would change that.
+- **Two answers to "may the agent synchronise"** (T30, found by a GREEN review, older than
+  T30). `vql` puts every `synchronize` under the human's yes; `marketplace`'s slot table asks
+  the human only "if `changes` shows anything under `localElements` or a modified element that
+  is not yours", which reads as "otherwise go" — the case of synchronising so that a new view
+  gets an id for a tag. T30 aligned only its own rename text with `vql`.
+- **A yes given in advance** (T30, raised by a GREEN review). `vql` defines the confirmation as
+  a yes "after you have shown the exact statements or calls"; it does not say whether a yes
+  that names the operations up front ("create it there, drop it here, synchronise") from a
+  human who will not be reachable counts. The GREEN run that had one treated it as enough,
+  each synchronisation only after its radius held nothing but its own view — reasonable, and
+  not written anywhere.
+- **Moves across databases in the marketplace UI** (T30): the REST call ignores a pair whose
+  databases differ, silently, twice. Whether the UI's drag-and-drop accepts such a pair, and
+  what it does then, was not tried. Renamed web services (`WEBSERVICES/synchronize` with a
+  pair) were not tried either.
+- **Grants after `ALTER VIEW … RENAME`** (T30, raised by a GREEN review): whether privileges
+  granted on the view follow it to the new name was not checked.
+- **`PUT /public/api/views/fields/logical-name` answers `200` and stores nothing** (T30, one
+  try): `logicalName` stayed `null`. Probably the marketplace personalisation has logical names
+  off; it belongs to the marketplace half of `semantics`, still to come.
 
 - **Metric views: three behaviours measured, not explained** (T29). (1) An association between
   the fact and the base view under a dimension view turns the metric view's `RIGHT` into
@@ -217,6 +242,70 @@ property groups, sync pitfalls) is still to come, as a `marketplace` extension.*
 ---
 
 ## Сделано
+
+- **T30. `marketplace`: a renamed, recreated or moved view keeps what people put on it.** The
+  spike answered the task's question in the server's OpenAPI: `POST
+  …/element-management/{type}/synchronize` takes `matchedElements` — pairs of an old name
+  (`localElement`) and a new one (`serverElement`), the REST form of the "Renamed elements"
+  drag-and-drop of the UI's sync dialog. So the fallback (a warning plus the UI dialog) was not
+  needed. A new section of `marketplace`, "A view in the marketplace is renamed, recreated or
+  moved", carries a five-step template (`view-details` saved before the change, the rename,
+  `changes`, the matched synchronisation, the read-back) with its rules, the recreate and move
+  cases, and the re-apply table for moves; plus rows in its slot, verify and common-mistakes
+  tables. `views` gains a paragraph — before renaming or moving a view, ask the marketplace;
+  clients that read the old name and the view's own file go into the report — and a
+  common-mistakes row; `references/derived.md` points from `ALTER VIEW … RENAME` to it. `vql`
+  names the renamed view in its `synchronize` row, lists the set-replacing property-group call,
+  and gains a rationalization row. The tool classifies `POST
+  /property-management/views/{id}/groups` as `replace` (`safety.py`); `execute` lists it and
+  shows `--json-file`. `references/categories.md` no longer tells the reader to pass `serverId`.
+  The `verify` chain runs the template at the end of its marketplace tail — before, the rename
+  in VDP, and the matched call — and a new step field, `expect_body`, fails the run unless the
+  renamed view answers with the id it had before (spec, section 11.1). Eval: two routing cases
+  (`routing-marketplace-rename`, `routing-marketplace-rename-symptom`); 38 of 38 pass. Both
+  pass on the old description as well, so the description was left as it was and the cases
+  guard against a regression only.
+
+  **Measured on 9.5.1.** Matched, a renamed view keeps its element whole — the same id with
+  tags, categories, the description and field descriptions edited in the marketplace, custom
+  property values and endorsements; three live runs, one of them a rename by "a colleague"
+  with nothing saved beforehand. Unmatched, the old element is removed with all of it and the
+  new one arrives empty. Any `type` in a pair (`View`, `VIEW`, `view` — the OpenAPI lists it)
+  fails the call with `400 "Invalid input JSON"`; the UI's own bundle sends the two names only.
+  The response never names the pair, matched or ignored. A pair across databases is ignored
+  silently, twice: nothing inserted or removed, both names left pending. `DROP` then `CREATE`
+  under the same name before any synchronisation keeps the element. From the moment VDP has no
+  view of the old name the element drops out of its tag's and category's listings, while reads
+  by the element's id still answer. An element whose descriptions were edited in the
+  marketplace is listed under `modifiedElements` with `DESCRIPTION,FIELD_DESCRIPTION` on every
+  reading, and `SERVER_WITH_LOCAL_CHANGES` keeps the edits. `POST
+  /property-management/views/{id}/groups` replaces the view's groups and the dropped group's
+  values go with it; a value before its group is `500 "Incorrect number of updated tuples"`; an
+  interpolable property keeps its template in `visualValueToEdit`, while `visualValue` has
+  `$element_name` filled in. `VIEWS/changes` on a server that never carried the database lists
+  its views under `serverElements` too.
+
+  **Runs.** RED, Opus, the skills of `main`: a rename request (22 calls) found the
+  marketplace element only by choosing to read `marketplace`, stopped for the `ALTER`'s yes,
+  and planned a plain synchronisation plus manual re-attach — losing the id and the
+  endorsement; "no skill mentions the marketplace when a view is renamed". A colleague's rename
+  with the human away (48) found `matchedElements` in the OpenAPI and the docs, did not run it
+  (unverified), and left a body with `"type":"View"` that would have failed. A move across
+  databases with the yes in advance (118 tool calls, 15 minutes) got there through the OpenAPI
+  and the UI's JavaScript bundle, hitting both the `type` error and the ignored pair. GREEN,
+  Opus: 21, 27 and 61 calls, no OpenAPI or docs; the rename proposal named both halves for one
+  yes, the colleague's rename was matched and read back (see the open question on whether it
+  should have waited), the move built the new element before dropping the old one — the order
+  the skill now gives — and left the endorsement to the human. Sonnet after the edits: a
+  rename of a view the marketplace never imported (16 calls) checked both servers, renamed and
+  did not synchronise; a rename with the yes in advance on another domain (19) matched the pair
+  and read back the old id, no docs and no trial and error; the colleague's rename again (9)
+  left the correct body in a file and did not send it. `verify --with-marketplace`: 36 of 36,
+  the catalog clean afterwards. The GREEN reviews corrected four of
+  my lines (field descriptions are in `schema[]`, interpolable values, the order of a move, a
+  sentence that read as a second exception to the `synchronize` rule), and a reviewer's
+  suggestion that `changes` on the profile's server can replace the round of `view-details`
+  turned out wrong when checked.
 
 - **T29. The `metrics` skill: metric views, the views over them, and the rules for querying
   them.** A new skill, `skills/metrics/`, for the 9.5 object the model does not know. Its core

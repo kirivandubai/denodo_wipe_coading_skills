@@ -553,6 +553,25 @@ call, with the expression wherever the value is computed. The query, how to read
 its rows, and the step from a base view to the table and column in the database are in
 `references/dependencies.md`.
 
+**Renaming a view, or moving it to another database,** is the same question one level up:
+`ALTER VIEW <old> RENAME <new>` (`references/derived.md`) breaks every dependant that names the
+view, so step 1 above first, for the view itself. And one consumer no catalog query sees: the
+Data Marketplace. When the profile has a `marketplace_url`, ask it **before** the change — `api
+get … /public/api/view-details --param databaseName=… --param viewName=…`
+(`/denodo:marketplace`). `id` not null and `inLocal: true` means the view is an element there,
+with whatever people attached to it — tags, categories, descriptions, endorsements — and the
+next synchronisation removes that element unless the rename is matched in it; a move to another
+database cannot be matched at all. Then the rename is not finished without the marketplace
+half: `/denodo:marketplace`, "A view in the marketplace is renamed, recreated or moved", and
+one yes from the human has to cover both halves — ask for them together. A `DROP` and a
+`CREATE` under the same name keep the element only when both run in one go. What no query lists
+goes into the report as the list cannot see it: every client that reads the view by name —
+reports, JDBC and ODBC queries, its REST and OData URLs (`view-details` names them,
+`connectionUris`). And the view's own file: rename the `CREATE OR REPLACE VIEW` there in the
+same change, or the next time the file is applied it brings the old name back as a second view.
+A view moved to another database is a new object there: the grants on the old one do not come
+along.
+
 ## Reference
 
 - `references/derived.md` — the full `CREATE VIEW` grammar, field properties,
@@ -668,6 +687,7 @@ still say `OK`.
 | `ADD MAPPING a = b` with a column that does not exist | `Field not found 'v.b' in view 'v'` | read the columns first |
 | `ENDPOINT … PRINCIPAL` without `REFERENTIAL CONSTRAINT` | nothing — accepted | add `REFERENTIAL CONSTRAINT`, or it is not a foreign key |
 | `CREATE OR REPLACE VIEW` renaming a column | nothing — accepted | check `GET_VIEWS(… invalid only)`; either keep the old name or map it in the dependants |
+| `ALTER VIEW … RENAME` of a view the Data Marketplace lists | nothing — accepted | the next synchronisation removes its marketplace element, with every tag, category and endorsement on it: `view-details` before the rename, and the marketplace half from `/denodo:marketplace` |
 | `SET IMPLEMENTATION` over a mismatched view | nothing — accepted | `SELECT` through the contract; map the fields |
 | `DROP VIEW v` with dependants | `error removing view: There are some elements that depend on this one` | `USED_BY()` first, then ask the human — `CASCADE` takes the dependants with it |
 | `DROP ASSOCIATION a` when there is none | `error removing association: Error loading association 'a'.` | `DROP ASSOCIATION IF EXISTS` — it has no `CASCADE`, unlike the view drops |

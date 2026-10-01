@@ -37,7 +37,9 @@ names the server it means — *verified: 9.5.1 (live, 2026-09-10)*. So before co
 "needs synchronising", repeat the `view-details` call against the other registered servers:
 if one of them answers `inLocal: true`, you had the wrong id and nothing needs
 synchronising. Getting this backwards means changing a shared catalog to fix a query
-parameter.
+parameter. `VIEWS/changes` does not shortcut the round: a server that never carried the
+database lists its views under `serverElements` too, as views it would import —
+*verified: 9.5.1 (live, 2026-10-01)*.
 
 ## Name the server: `serverId`
 
@@ -182,6 +184,11 @@ api post --env dev /public/api/element-management/VIEWS/synchronize \
   is the one that quietly destroys other people's work.
 - `localElements` in `changes` is the list of things that will be **removed** from the
   marketplace because VDP no longer has them. Non-empty means show the human before running.
+  **A view renamed in VDP is in that list under its old name** — the next template.
+- A `modifiedElements` entry with `reason: "DESCRIPTION,FIELD_DESCRIPTION"` is usually an
+  element whose descriptions were edited in the marketplace: it is listed on every reading,
+  and `SERVER_WITH_LOCAL_CHANGES` keeps those edits — *verified: 9.5.1 (live, 2026-10-01)*.
+  Such an entry loses nothing in the call — say so when you show the human the radius.
 - **The radius is a reading, not a promise, and there is no scope.** `changes` describes the
   moment you asked; anything created between then and the call comes along too, and the call
   cannot be narrowed to one database — it synchronises the whole server. On a shared server
@@ -193,6 +200,112 @@ api post --env dev /public/api/element-management/VIEWS/synchronize \
 - The user running it needs `METADATA` on the whole VDP catalog. Under a narrower account
   the marketplace treats what it cannot see as deleted and **removes it** —
   *unverified: documentation 9.5 (Synchronize with Virtual DataPort)*.
+
+### A view in the marketplace is renamed, recreated or moved
+
+What people add in the marketplace — tags, categories, descriptions edited there, custom
+property values, endorsements — belongs to its **element**, and an element is found by
+database and view name. A synchronisation sees a renamed view as one element gone
+(`localElements`, old name) and one new (`serverElements`, new name), and acts on exactly
+that: the old element is removed with everything on it, the new one arrives empty under a new
+id. Nothing in either response says "renamed".
+
+**Match the pair in the `synchronize` call and the element survives whole** — the same id,
+and every tag, category, description, field description, property value and endorsement on
+it — *verified: 9.5.1 (live, 2026-10-01)*. It is the REST form of the "Renamed elements"
+drag-and-drop in the marketplace's own synchronisation dialog. The rename itself is
+`/denodo:views`.
+
+```bash
+# verified: 9.5.1 (live, 2026-10-01)
+
+# 0. BEFORE the rename: is the view in the marketplace, and what is on it?
+#    id not null and inLocal: true → this template applies. Save the whole answer to a file:
+#    it is the only copy of the element's metadata if anything goes wrong.
+#    id null on every registered server (the two causes, above) → no element, nothing to
+#    carry: rename, do not synchronise, and say so — the next synchronisation imports it
+api get --env dev /public/api/view-details \
+    --param databaseName=sales_analytics --param viewName=household_income_by_band
+# → {"id":7446,"inLocal":true,"tags":[…],"categories":[…],"endorsements":[…], …}
+
+# 1. the rename, in VDP (/denodo:views):
+#    ALTER VIEW household_income_by_band RENAME household_income_per_band;
+
+# 2. the radius: the old name under localElements, the new one under serverElements
+api get --env dev /public/api/element-management/VIEWS/changes
+
+# 3. synchronise with the pair matched — localElement is the OLD name (what the marketplace
+#    has), serverElement the NEW one (what VDP has now). Nothing else goes in the pair
+api post --env dev /public/api/element-management/VIEWS/synchronize --json '{
+    "proceedWithConflicts":"SERVER_WITH_LOCAL_CHANGES",
+    "matchedElements":[{
+        "localElement": {"databaseName":"sales_analytics","elementName":"household_income_by_band"},
+        "serverElement":{"databaseName":"sales_analytics","elementName":"household_income_per_band"}}]}'
+# → the pair is in neither "inserted" nor "removed"; everything else pending is
+
+# 4. read back under the new name: the id from step 0, with its tags, categories, endorsements
+api get --env dev /public/api/view-details \
+    --param databaseName=sales_analytics --param viewName=household_income_per_band
+```
+
+- **No `type` in the pair.** The server's OpenAPI lists `type` (`View`, `Web service`, …) and
+  `reason` in it, and any `type` — `View`, `VIEW`, `view` — fails the whole call with
+  `400 "Invalid input JSON"` — *verified: 9.5.1 (live, 2026-10-01)*. The marketplace UI sends
+  the two names and nothing else.
+- **The response does not confirm the match.** A matched pair is simply absent from
+  `inserted` and `removed` — and so is a pair the server ignored (moved views, below). Step 4
+  is the confirmation: the old id under the new name.
+- **Rename and matched synchronisation belong together, one right after the other.** Until
+  step 3 runs, any synchronisation by anyone — the "Sync with VDP" button, a deployment that
+  synchronises, a script — removes the old element and imports the new one empty. After that
+  the step 0 file is all that is left. Even before that, from the moment VDP has no view of
+  the old name, the element drops out of its tag's and its category's listings — consumers
+  browsing by them no longer find it — *verified: 9.5.1 (live, 2026-10-01)*. The rename is
+  an `ALTER`, so it waits for the human's yes (`/denodo:vql`) — a request that names the
+  rename is the task, not that yes. Ask for both in one go: the `ALTER` and the step 3 call,
+  each written out.
+- **Matched, the old name is not a removal — but the call is still a `synchronize`, and that
+  is the human's yes (`/denodo:vql`).** Show them the pair and the rest of the radius. When
+  you cannot ask — the rename was a colleague's and the human is away — leave the body in a
+  file and say in the message what an unmatched synchronisation by anyone would cost
+  meanwhile; do not send it.
+- **A pair is a rename only when you know it is one** — you renamed it, or the human says a
+  colleague did. An old name under `localElements` beside a new one under `serverElements` in
+  the same database is a hint, not proof. Matching two different views would hand one view's
+  certification to another.
+- Renamed by someone else, there is no step 0 to read: once VDP has no view of that name,
+  `view-details` answers `404`, and the tag's and the category's own listings no longer show
+  the element. The names are all the match needs; step 4 then shows what came across.
+- What breaks outside the marketplace — every client reading the old name, and the view's own
+  file bringing the old name back — is `/denodo:views`, "Renaming a view"; the human needs to
+  hear both, whoever did the rename.
+
+**Recreated under the same name — `DROP VIEW` then `CREATE VIEW` — needs nothing.** As long as
+no synchronisation runs between the two, the marketplace never sees the gap: the element keeps
+its id and everything on it — *verified: 9.5.1 (live, 2026-10-01)*. So the `DROP` and the
+`CREATE` go in one file, applied in one run. `CREATE OR REPLACE` never leaves a gap at all.
+
+**Moved to another database, the match is silently ignored.** A pair whose two
+`databaseName`s differ changes nothing: neither name appears in `inserted` or `removed`, the
+response says nothing, the old element stays under `localElements` and the new view is not
+imported — *verified: 9.5.1 (live, 2026-10-01), twice*. The next synchronisation without the
+pair removes the old element and imports the new one empty. No REST call keeps an element
+across databases, so tell the human **before** the move what it costs, and if they go ahead,
+build the new element before removing the old one: step 0's file; create the view in the
+target database; a plain synchronisation (previous template) — it only inserts; re-apply to
+the new id what can honestly be re-applied, from the table below, and read it back; only then
+drop the old view and synchronise again — that one only removes. Two synchronisations instead
+of one, and in return the view never drops out of its tag and category, and the old element
+stays whole until the new one is proven — *verified: 9.5.1 (live, 2026-10-01)*.
+
+| What | Call — *verified: 9.5.1 (live, 2026-10-01)* | Note |
+|---|---|---|
+| marketplace tags | `POST /public/api/tags/{tagId}/views` with `[<newId>]` | adds |
+| categories | `POST /public/api/category-management/categories/{id}/views` with `[<newId>]` | adds |
+| description edited in the marketplace | `PUT /public/api/views` with `{"id":<newId>,"description":"…","descriptionType":"TEXT"}` | |
+| field descriptions edited there | `PUT /public/api/views/fields` with `{"databaseName","viewName","fieldName","fieldDescription"}` | one call per field; step 0 has them under `schema[].description` — under `field.allFields` the same fields read empty |
+| custom property values | `POST /public/api/property-management/views/{newId}/groups` with `[<groupId>, …]`, then `PUT /public/api/views/property-values` with `[{"propertyId","elementId":<newId>,"visualValue"}]` | the first call **replaces** the view's set of groups, and a group left out loses its values: send every group step 0 shows (`propertyInfo`; there is no `GET` for a view's groups — `405`). A value before its group is assigned is `500 "Incorrect number of updated tuples"`. Send what step 0 has under `visualValueToEdit`, not `visualValue`: an interpolable property shows `$element_name` already filled in there, and copying that freezes the old name |
+| endorsements, warnings, deprecations | `POST /public/api/endorsement-management/views/{newId}/endorsements` with `{"comment":"…"}`; `…/warnings` and `…/deprecations` take the same body — *unverified: 9.5 OpenAPI only* | the human's call, not a default: each is somebody's statement, and a copy is yours, dated today — even under the same account, it claims a check made now on a view that just moved. List them, and re-create only the ones the human asks for once they have seen the list — "keep everything" said before anyone looked is not that |
 
 ### External element — a dashboard, job or contract from another tool
 
@@ -353,8 +466,10 @@ that does not match it, and only the `SELECT` shows it (`/denodo:views`).
 | Tag or category name, description | the human. Both are shown to consumers browsing the marketplace, so they read as labels, not as identifiers |
 | A new category's parent | `GET …/categories/tree` first. A live marketplace's tree is a taxonomy somebody designed — hang the new category inside the branch it belongs to. A **new top-level** category is a question for the human, not a default: it adds an axis to what everybody browsing sees. (`GET …/categories/{id}/potential-parent` is for moving an existing one) |
 | Every numeric id | never a template, never memory: a `GET` in this session. Ids differ per installation and per server |
-| View ids to assign to | `GET /public/api/view-details?databaseName=…&viewName=…`; `id:null` means synchronise first. Project `id`, `inLocal` and `inVDP` out of the answer — it carries the view's whole field list and its connection URIs, and truncating it instead is how the three fields get missed |
+| View ids to assign to | `GET /public/api/view-details?databaseName=…&viewName=…`; `id:null` means synchronise first. Save the answer to a file and read `id`, `inLocal` and `inVDP` out of it with a script — it carries the view's whole field list and its connection URIs, and truncating it instead is how the three fields get missed |
 | Whether the catalog may be synchronised | the human, if `changes` shows anything under `localElements` or a modified element that is not yours — it is a shared catalog |
+| Whether a view about to be renamed, recreated or moved is in the marketplace | `view-details` on it **before** the change — `id` not null and `inLocal: true`. The answer is also what to keep: it is the only copy of the element's metadata |
+| Which removed element is which new one | you renamed it, or the human says so. The same database and the same columns are a hint, not proof |
 | For an external element: the type | `GET /public/api/external-elements-types` — 24 built in; invent one only if none fits |
 | For an external element: id, name, url, timestamps | the source tool. `updated_at` is what drives updates — an element whose `updated_at` does not move is never refreshed |
 | Which views the element links to | the human, plus their exact `database.view` — an association naming a view the marketplace does not know fails the whole import |
@@ -390,6 +505,7 @@ other side where there is one.
 | … from the category's side | `GET /public/api/category-management/categories/{id}/views` — **`offset` and `limit` are mandatory**, without them it is `400 MISSING_REQUEST_PARAMETER` |
 | … from the view's side | `GET /public/api/views/{viewId}/tags` · `GET /public/api/category-management/views/{viewId}/categories` |
 | Is the view in the catalog at all | `GET /public/api/view-details?databaseName=…&viewName=…` → `id`, `inLocal`, `inVDP` |
+| Did a renamed view keep its element | `view-details` on the new name → the `id` the old name had, with its tags, categories and endorsements. The `synchronize` response cannot tell you: a matched pair and an ignored one look the same there |
 | What a synchronisation would change | `GET /public/api/element-management/{DATABASES\|VIEWS}/changes` — **before**, not after |
 | Did the import create what you meant | the `synchronize` response names each element: `externalElementsAdded/Updated/Deleted` with `originalExternalElementId` |
 | Is the element visible to a consumer | `GET /public/api/external-elements/{id}/details` — type, server, url, and its lineage |
@@ -418,9 +534,14 @@ other side where there is one.
 | drop an element from a non-empty snapshot | `200`, and the element is **deleted** with its tags and categories | that is the contract: the interface view is the full picture, not a delta |
 | empty the snapshot entirely to clear elements | `200`, nothing deleted | an empty result is treated as "no data", not "delete everything" — *verified: 9.5.1 (live, 2026-09-10)* |
 | `DELETE` an external tool server to tidy up | `200` | every element it imported disappeared with it, tags and categories included |
+| rename a view in VDP, then synchronise without `matchedElements` | `200`, old name under `removed`, new under `inserted` | the element went with every tag, category, description and endorsement on it; the new one is empty. Match the pair in the same call — and if it already ran, only a `view-details` saved before the rename can say what to re-apply |
+| `"type":"View"` (or any `type`) in a matched pair | `400 "Invalid input JSON"` | the pair is `localElement` and `serverElement`, nothing else |
+| match a view moved to another database | `200`, the pair in neither `inserted` nor `removed` | ignored, not applied: nothing happened. Re-apply from the saved `view-details` after a plain synchronisation |
+| `POST /property-management/views/{id}/groups` to add one group | `200` | it **replaces** the view's groups, and the values of the ones left out are gone |
 
 Destructive here is decided by method and path, not by the word in it: `DELETE` of a
 category (with its children), `DELETE` of a tool server (with its elements),
 `POST /tags/vdp/synchronize` (see `references/tags.md`), `POST …/synchronize` with
-`proceedWithConflicts: "SERVER"`, and `POST /views/{id}/tags`, which replaces rather than
-adds. All of them are the human's call — `/denodo:vql`.
+`proceedWithConflicts: "SERVER"`, `POST …/synchronize` after a rename with the pair left
+unmatched, and `POST /views/{id}/tags` and `POST /property-management/views/{id}/groups`,
+which replace rather than add. All of them are the human's call — `/denodo:vql`.

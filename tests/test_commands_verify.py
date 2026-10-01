@@ -910,6 +910,96 @@ substitute = { "\\"pii\\"" = "\\"verify_pii\\"" }
         self.assertEqual(doc["values"]["tag_id"], "4242")
 
 
+class ExpectBodyTest(unittest.TestCase):
+    """``expect_body`` asserts on the last response instead of only recording it.
+
+    ``capture`` remembers a field for later steps and never judges it. A template whose whole
+    point is that a field survives a change — the marketplace rename block: the element keeps
+    its id when the pair is matched — needs the run to compare, or a run where the server
+    ignored the pair and handed out a new id would still report the step green.
+    """
+
+    def setUp(self):
+        FakeVql.instances.clear()
+        HttpStepTest.FakeRest.calls.clear()
+        self.root = Path(tempfile.mkdtemp())
+        (self.root / "skills" / "marketplace").mkdir(parents=True)
+        (self.root / "skills" / "marketplace" / "SKILL.md").write_text(
+            "### Tag\n\n```bash\n" + BASH_BLOCK + "```\n", encoding="utf-8")
+        self.manifest = self.root / "chain.toml"
+
+    def _run(self, expect_body: str, values: str = ""):
+        self.manifest.write_text(f"""
+[values]
+database = "denodo_skills_test"
+{values}
+[[step]]
+id = "mp-tag"
+kind = "template"
+channel = "http"
+address = "skills/marketplace/SKILL.md#Tag"
+marketplace = true
+calls = [0, 1]
+expect_body = {expect_body}
+""", encoding="utf-8")
+        return run_chain(profile(marketplace_url="http://x/y"), load_chain(self.manifest),
+                         root=self.root, vql_factory=FakeVql,
+                         rest_factory=HttpStepTest.FakeRest, with_marketplace=True)
+
+    def test_a_matching_field_passes(self):
+        doc, code = self._run('{ id = "4242" }')
+        self.assertEqual(code, 0, doc)
+        self.assertTrue(doc["steps"][0]["ok"])
+
+    def test_the_expected_value_is_rendered_from_values(self):
+        # The rename chain compares against an id an earlier step captured, so the expected
+        # value is a placeholder, not a literal.
+        doc, code = self._run('{ id = "{earlier_id}" }', values='earlier_id = "4242"')
+        self.assertEqual(code, 0, doc)
+
+    def test_a_different_value_fails_the_step_and_says_both(self):
+        doc, code = self._run('{ id = "{earlier_id}" }', values='earlier_id = "7446"')
+        self.assertEqual(code, 1)
+        error = doc["steps"][0]["error"]
+        self.assertEqual(error["kind"], "expect_body")
+        self.assertIn("7446", error["message"])
+        self.assertIn("4242", error["message"])
+        self.assertIn("mp-tag", error["message"])
+
+    def test_a_missing_field_fails_the_step(self):
+        doc, code = self._run('{ nope = "x" }')
+        self.assertEqual(code, 1)
+        self.assertEqual(doc["steps"][0]["error"]["kind"], "expect_body")
+        self.assertIn("nope", doc["steps"][0]["error"]["message"])
+
+    def test_it_is_rejected_on_a_vql_step(self):
+        self.manifest.write_text("""
+[[step]]
+id = "x"
+kind = "fixture"
+channel = "vql"
+vql = "CONNECT DATABASE d;"
+expect_body = { id = "1" }
+""", encoding="utf-8")
+        with self.assertRaises(ChainError) as ctx:
+            load_chain(self.manifest)
+        self.assertIn("expect_body", str(ctx.exception))
+
+    def test_it_must_be_a_table(self):
+        self.manifest.write_text("""
+[[step]]
+id = "x"
+kind = "template"
+channel = "http"
+address = "skills/marketplace/SKILL.md#Tag"
+marketplace = true
+expect_body = "id"
+""", encoding="utf-8")
+        with self.assertRaises(ChainError) as ctx:
+            load_chain(self.manifest)
+        self.assertIn("expect_body", str(ctx.exception))
+
+
 DESTRUCTIVE_BASH_BLOCK = """# verified: 9.5.1 (live, 2026-09-10)
 api delete --env lab /public/api/tags/999 --param serverId=306
 """

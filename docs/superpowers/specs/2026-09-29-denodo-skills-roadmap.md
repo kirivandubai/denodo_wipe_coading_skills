@@ -438,6 +438,13 @@ and "Denodo AI SDK" manuals.
 
 ### 4.8 `marketplace` (extension) — safe synchronisation
 
+**Done in T30 (2026-10-01).** The spike found the match in the API: `matchedElements` in the
+body of `POST …/element-management/{type}/synchronize`, the REST form of the UI's "Renamed
+elements" drag-and-drop. Matched, a renamed view keeps its element — the same id with every
+tag, category, description, property value and endorsement — so the fallback was not needed.
+Across databases the server ignores the pair silently, and there the skill re-applies the
+metadata from a snapshot taken before the move. Details in `docs/TASKS.md`, T30.
+
 **Owner review: P1, as proposed (see section 11).** The agent carries the metadata of a renamed or recreated view over to its new element through REST. Starts with a spike on the server's OpenAPI: find how elements are matched during synchronisation. If the API has no such call, fall back to a warning in `views` before the rename and a pointer to the synchronisation dialog of the marketplace UI — and bring that back to the owner. Today `marketplace` already stops on a non-empty `localElements`, so the loss is not silent, but the human is not told that the "removed" element is the same view under its old name. The original proposal follows.
 
 **Scope.** Renaming or recreating a view that already exists in the marketplace. Synchronisation

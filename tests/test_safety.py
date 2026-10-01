@@ -255,6 +255,12 @@ class ClassifyHttpTest(unittest.TestCase):
         self.assertEqual(classify_http("POST", "/public/api/views/42/tags"), "replace")
         self.assertEqual(classify_http("POST", "/public/api/category-management/views/42/categories"), "replace")
 
+    def test_view_property_groups_set_replaces_them(self):
+        # T30, live on 9.5.1: assigning [211] to a view that had [212] dropped 212 and the
+        # values of its properties. Reading the groups back is not a POST at all (405).
+        self.assertEqual(classify_http("POST", "/public/api/property-management/views/7452/groups"), "replace")
+        self.assertIsNone(classify_http("PUT", "/public/api/views/property-values"))
+
     def test_per_type_catalog_synchronize_is_destructive_too(self):
         # it removes from the marketplace whatever VDP no longer has, exactly like the "all" form
         for element_type in ("DATABASES", "VIEWS", "WEBSERVICES", "EXTERNAL_ELEMENTS"):

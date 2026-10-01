@@ -2,8 +2,8 @@
 
 A category is a folder for consumers browsing the marketplace: a tree, not a flat list, and
 a view or external element may sit in several of them. Categories are the one family here
-that is **not** scoped to a VDP server — they answer without `serverId` — but pass it anyway
-so every call in a file looks the same.
+that is **not** scoped to a VDP server — they answer without `serverId`, and whatever the
+profile adds is ignored.
 
 ## The surface
 

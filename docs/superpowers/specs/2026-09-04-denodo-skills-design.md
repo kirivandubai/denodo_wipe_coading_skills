@@ -666,6 +666,17 @@ rows"` — для проверок вида «сломанного нет», н�
 Базовый прогон обязан оставаться безопасным. Шаг HTTP-канала умеет захватить
 идентификатор из ответа (`capture`): следующий шаг и уборка иначе не знают, что удалять.
 
+**An http step can also assert on its last response (`expect_body`, T30).** `capture` only
+records; it never judges. The rename template's whole claim is that a field survives — the
+marketplace element keeps its id when the old and new names are matched in the
+`synchronize` call — and a run in which the server ignored the pair would hand out a new id
+and still report every call `2xx`. `expect_body = { id = "{renamed_view_id}" }` compares a
+top-level field of the last call's body with a value rendered from `[values]` (including
+what earlier steps captured) and fails the step, naming both, when they differ or the field
+is missing. It is a comparison, not a branch: the step model still cannot "read, then
+decide", for the reason given below. It is refused on a vql step, which has no response body
+to compare.
+
 **Хвост маркетплейса не идемпотентен, и это принятое свойство, а не пробел.** Шаг тега
 исполняет lookup и create безусловно, у шага категории lookup-вызова нет вовсе, а модель
 шага не умеет «прочитать, потом решить»: ветка по ответу превратила бы манифест в
