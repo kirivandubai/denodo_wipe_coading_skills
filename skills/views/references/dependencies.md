@@ -8,7 +8,7 @@ from the server stops.
 
 | Procedure | Walks | Takes | One row per |
 |---|---|---|---|
-| `USED_BY()` | down: the views built on this one, at every depth and in every database | `input_view_database_name`, `input_view_name`, optional `input_max_depth` | a view and one of its dependants; `depth = 1` names this view in its own definition |
+| `USED_BY()` | down: the views built on this one, at every depth and in every database | `input_view_database_name`, `input_view_name`, optional `input_max_depth` | a view and one of its dependants: `view_database_name`, `view_name` (the view at that depth), `used_by_database_name`, `used_by_name`, `depth` — there is no type column; `depth = 1` names this view in its own definition |
 | `VIEW_DEPENDENCIES()` | the other way: what this view stands on, down to the data sources | `input_view_database_name`, `input_view_name` | an element it stands on, repeated at each depth it is reached |
 | `COLUMN_DEPENDENCIES()` | the same way, per output column | the two above, plus optional `input_column_name` | an output column and one element its value comes from |
 
@@ -25,12 +25,15 @@ Rules common to all three — *verified: 9.5.1 (live, 2026-09-30)*:
 - **It lists views only.** Associations are `GET_ASSOCIATIONS()`; web services and anything
   outside the catalog — a report, a client, a scheduled job — are not listed anywhere here.
   A metric view is a view and is listed.
-- **What you may see decides what you get** — *unverified: 9.5 documentation only*. For a
-  user without the `METADATA` privilege on a dependant, `USED_BY()` leaves the dependant
-  out; `COLUMN_DEPENDENCIES()` shows `dependency_type = 'No Privileges'` and omits data
-  sources for anyone who is not an administrator of the database. Neither says it narrowed
-  the answer. When the profile's user is not an administrator, an empty answer means
-  "nothing this user can see" — say so to the human.
+- **What you may see decides what you get.** Checked as a user who may read only the top
+  view, by impersonation (`CONTEXT ('impersonate_user' = …)`, `/denodo:security`) —
+  *verified: 9.5.1 (live, 2026-10-01)*: `COLUMN_DEPENDENCIES()` of that view answered one
+  row per column with `dependency_name` empty and `dependency_type = 'No Privileges'`, where
+  an administrator got seven named rows down to the data source; `USED_BY()` of a view the
+  user may not read failed with a bare `Error executing query`. That a dependant the user
+  may not see is left out of `USED_BY()` is documentation only. Neither says it narrowed
+  the answer: when the profile's user is not an administrator (`env check` → `vdp.admin`),
+  an empty or nameless answer means "nothing this user can see" — say so to the human.
 
 ## `COLUMN_DEPENDENCIES()` sees output columns only
 

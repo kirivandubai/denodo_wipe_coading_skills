@@ -96,6 +96,11 @@ marketplace_url = "http://localhost:9090/denodo-data-catalog"  # only for /denod
 
 Then ask Claude to check the connection — `env check` reaches VDP and, if configured, the
 marketplace. `env list` shows the profiles on the machine and never prints passwords.
+`env check` also reports whether the profile's user is an administrator (`vdp.admin`) and
+whether it may run a query as another user (`vdp.impersonation`, the `impersonator` role):
+security policies do not apply to administrators, so `/denodo:security` checks a policy by
+running the same query as each person it is for — without the role, that check is left to
+you.
 
 ## Quick start
 
@@ -128,6 +133,7 @@ phrasing; `/denodo:vql` is the entry point when the request is ambiguous.
 | `/denodo:cache` | the full cache of a view: switching it on and off, loading it with all rows or the ones you name, clearing it; every other cache setting goes to Design Studio | VQL |
 | `/denodo:semantics` | what people and AI consumers (MCP Server, Assisted Query, AI SDK) read about existing views: an audit of descriptions, primary keys, associations and the MCP visibility tag, and descriptions written from the data after you approve them | VQL |
 | `/denodo:metrics` | metric views: KPIs defined once over a fact view and its dimensions (`CREATE METRIC VIEW`), the views built on them, and querying them with `evaluate_metric` | VQL |
+| `/denodo:security` | who may read what: a role with read access and giving it to a user, a global security policy that masks columns, filters rows or denies a view over tagged columns, and checking it as each person by impersonation | VQL |
 
 **A "tag" alone does not say which server you mean.** Virtual DataPort tags
 (`CREATE TAG`, VQL) and Data Marketplace tags (REST) are different objects on different
@@ -140,8 +146,8 @@ In scope: the sixteen objects of the first six skills, everything needed to take
 from plain language to a mart a consumer can browse. `/denodo:procedures` sits outside that
 scope — stored procedures are not part of the mart scenario — and is there because it is
 useful on its own. So are `/denodo:cache`, for the full cache of a view only,
-`/denodo:semantics`, for the Virtual DataPort half of view metadata, and `/denodo:metrics`,
-for metric views.
+`/denodo:semantics`, for the Virtual DataPort half of view metadata, `/denodo:metrics`,
+for metric views, and `/denodo:security`, for roles and global security policies.
 
 Created in Design Studio, not by the agent: every data source beyond a delimited or JSON file
 on the server and a JDBC table with a password — REST APIs, Excel, XML, Salesforce, SAP, cloud
@@ -150,8 +156,9 @@ changed. `/denodo:datasources` tells the human what to create there and builds o
 
 Deliberately out of scope: a full function reference; performance beyond the full cache
 (partial cache, time to live, incremental loads, summary views, materialized tables, remote
-tables, MPP); security and publication (users, roles,
-privileges, row/column restrictions, REST/SOAP/GraphQL/OData services); Scheduler,
+tables, MPP); security beyond roles and global security policies (user accounts and
+passwords, LDAP, per-role row and column restrictions, custom policies); publication
+(REST/SOAP/GraphQL/OData services); Scheduler,
 Solution Manager and cross-environment deployment; Denodo versions other than 9.5.
 
 Every template carries its verification status in a comment on the line above it —

@@ -27,15 +27,15 @@ tool reads host, user and password from `~/.denodo/profiles.toml` itself.
 | Another database | add `--database <db>` (or put `CONNECT DATABASE <db>;` first in the file) |
 | Schema of an object | `vql desc --env dev bv_orders` (`--type view` is the default and covers base views too — there is no `DESC TABLE`) |
 | Server-generated VQL | `vql desc --env dev bv_orders --vql` — read it, do not apply it: it opens with `DROP … CASCADE` and rebuilds the object **together with what it depends on** in its own database — dependencies in another database are left out, except under a metric view of another database: the metric view is left out and its source views come back unqualified, as if they were in yours — never with what depends on it. Which object you ask therefore decides what you get: a base view returns source, wrapper and `CREATE TABLE` in one answer; the source alone returns only itself, without the column list. A name can be qualified — `vql desc --env dev "other_db.bv_orders" --vql` reads another database without switching yours — *verified: 9.5.1 (live, 2026-09-12)* |
-| Other types | `--type database`, `--type "datasource df"`, `--type "wrapper df"`, `--type tag`, `--type association`, `--type "interface view"`; folders take a quoted path: `vql desc --env dev "'/sales'" --type folder --vql` |
+| Other types | `--type database`, `--type "datasource df"`, `--type "wrapper df"`, `--type tag`, `--type association`, `--type "interface view"`, `--type role`, `--type global_security_policy` (with `--vql`, read only: it starts with `DROP … CASCADE`); folders take a quoted path: `vql desc --env dev "'/sales'" --type folder --vql` |
 | Marketplace call | `api get --env dev /public/api/tags` |
 | … with a body | `api post --env dev /public/api/tags --json '{"name":"pii","description":"…","descriptionType":"TEXT"}'` |
 | … with the body in a file | `api put --env dev /public/api/views --json-file body.json` — for HTML, quotes, or a body you want to keep |
 | … query params / multipart | `--param k=v` (repeatable), `--part field=@file` / `field=json:{…}` |
 | Encrypt a source password | `secret encrypt --env dev` — the password is typed into a hidden prompt (in a terminal) or piped in on stdin, never passed as an argument; the answer carries `encrypted` and nothing else. See **A password for a data source** below |
 | Which profiles exist | `env list` (never shows passwords) |
-| Is the server reachable | `env check --env dev` (VDP, and the marketplace if configured) |
-| Verify the skills' own templates | `verify --env dev` runs the chain in `verification/chain.toml` and removes everything it made: its own test database, and two server-level `verify_` tags beside it; `--with-marketplace` adds the REST tail, which also writes to the shared marketplace catalog and takes those entries back out during cleanup; `--keep` leaves it all for inspection, `--update-marks` rewrites the `verified:` lines that passed, `--allow-destructive` is required on a production profile — without it the whole run is refused before it creates anything |
+| Is the server reachable, and who am I on it | `env check --env dev` (VDP, and the marketplace if configured); `vdp.admin` — the profile's user is an administrator, so security policies do not apply to its own queries; `vdp.impersonation` — it may run a query as another user (`/denodo:security`) |
+| Verify the skills' own templates | `verify --env dev` runs the chain in `verification/chain.toml` and removes everything it made: its own test database, and the server-level `verify_` tags, user, role and global security policy beside it — its security checks read as that user by impersonation, so they need `vdp.impersonation: true`; `--with-marketplace` adds the REST tail, which also writes to the shared marketplace catalog and takes those entries back out during cleanup; `--keep` leaves it all for inspection, `--update-marks` rewrites the `verified:` lines that passed, `--allow-destructive` is required on a production profile — without it the whole run is refused before it creates anything |
 
 Prefix every command with `${CLAUDE_PLUGIN_ROOT}/scripts/denodo`. Keep results
 readable: `--max-rows N` (default 100) caps every result set; `row_count` is the
@@ -151,14 +151,17 @@ predefined procedure that changes state — `GENERATE_STATS`, `CREATE_REMOTE_TAB
 `ROLLBACK_ICEBERG_VIEW_TO_SNAPSHOT` (the list, with what each
 one destroys, is in `/denodo:procedures`, `references/predefined.md`); a query whose
 `CONTEXT` loads or invalidates a view's cache — `'cache_preload' = 'true'` or any
-`'cache_invalidate'` (`/denodo:cache`); HTTP `DELETE`, and
+`'cache_invalidate'` (`/denodo:cache`); a `CREATE [OR REPLACE]` of a `USER`, a `ROLE` or a
+`GLOBAL_SECURITY_POLICY`, `CHOWN`, and a `CREATE DATABASE` with a `GRANT` — each changes who
+may read what across the server, and re-declaring an existing role or user adds to it
+instead of replacing it (`/denodo:security`); HTTP `DELETE`, and
 the marketplace `POST`s that replace a whole set or delete what is missing from the payload
 — `tags/vdp/synchronize`,
 `element-management/{all,DATABASES,VIEWS,WEBSERVICES,EXTERNAL_ELEMENTS}/synchronize`, the
 `external-tool-servers/synchronize` family, `views/{id}/tags`,
 `category-management/views/{id}/categories` and `property-management/views/{id}/groups`.
 Every result carries a `destructive` field: the
-kind (`drop`, `alter`, `delete`, `write`, `setting`, `procedure`, `cache`, `replace`) when it is one of
+kind (`drop`, `alter`, `delete`, `write`, `setting`, `procedure`, `cache`, `security`, `replace`) when it is one of
 these, and `null` — not `false` — when it is not. Session settings come back `null` and pass on
 any profile: `SET QUERYTIMEOUT TO …` (property name unquoted) and `ALTER SESSION SET
 'querytimeout' = …` last until the connection closes; a quoted property after a bare `SET` is

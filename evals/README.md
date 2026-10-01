@@ -115,6 +115,12 @@ gone after someone renamed a view and synchronised (`routing-marketplace-rename-
 first does not forbid `/denodo:views`: the rename itself is a view statement, and reaching it
 on the way is right.
 
+Three guard `/denodo:security` (T31): masking columns for one role while another keeps the
+values (`routing-security`), giving a newcomer the team's access to a database
+(`routing-security-grant`), and a user who sees rows a restriction used to hide
+(`routing-security-symptom`) — the second names no role, privilege or statement, and the third
+only the symptom, which is how a policy that stopped applying reaches a human.
+
 **`discrimination`** — фразы на границах, где описания конкурируют. Каждый такой кейс несёт
 и положительный, и отрицательный грейдер, потому что проверяется именно выбор между двумя:
 
@@ -135,6 +141,7 @@ on the way is right.
 | `discrimination-metrics-not-views` | `metrics` | `views` |
 | `discrimination-metrics-not-semantics` | `metrics` | `semantics` |
 | `discrimination-mart-not-metrics` | `views` | `metrics` |
+| `discrimination-security-not-catalog` | `security` | `catalog` |
 
 Первые две строки — тот самый риск, ради которого сьют и заводился: «тег» в VDP и «тег» в
 маркетплейсе — **разные объекты на разных серверах**, и перепутанный навык уйдёт корректным

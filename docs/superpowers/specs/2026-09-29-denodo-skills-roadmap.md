@@ -772,15 +772,19 @@ Assistant, Solution Manager environment modelling.
    parts, each settled inside the task that needs it:
    - *the cache of the agent's own views* — counted as its own objects; working assumption
      taken with `cache` (item 6);
-   - *global objects* (roles, users, global security policies, VDP tags) — settled in the
-     `security` task (item 13); the verification chain's `verify_` prefix plus removal by id is
-     the existing precedent;
+   - *global objects* (roles, users, global security policies, VDP tags) — **settled in T31**:
+     the agent applies a security statement itself only when everything it touches was
+     created in the same session, anything older waits for the human's yes (a `CREATE`
+     included); on the test server they are the run's own by prefix only (`verify_`,
+     `zq<task>_`) and removed by name;
    - *writes to external databases* (remote tables, materialized tables, writes through views)
      — settled with `materialize` (item 15) and `dml` (item 22); the owner put the safety of
      `dml` after the skill itself.
    `publish` no longer needs it — dropped.
-3. **A second, non-admin profile in the transport** — settled in the `security` task (item 13),
-   together with the admin flag in `env check` (2.5).
+3. **A second, non-admin profile in the transport** — **settled in T31 without one**: the
+   check runs as each person with `CONTEXT ('impersonate_user' = …)` (the profile's user needs
+   the `impersonator` role, granted on the test server by the owner); `env check` reports
+   `vdp.admin` and `vdp.impersonation` (2.5).
 
 ---
 

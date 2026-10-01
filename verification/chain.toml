@@ -1,9 +1,10 @@
 # verification/chain.toml
-# Verifies 28 of the templates end to end: catalog database, folders, the DF (CSV), JSON
+# Verifies 37 of the templates end to end: catalog database, folders, the DF (CSV), JSON
 # and JDBC data sources, a hand-written JDBC wrapper and base view, derived views, the union
 # and the array views, the interface view, the association, the column-impact queries, the
 # full cache switched on, loaded and cleared, tags, the metadata audit, profile and
-# write, and the metric view with the views over it, its reads and the totals check (vql
+# write, the metric view with the views over it, its reads and the totals check, and a role,
+# the security reads, a masking policy, a view's tags and the check as a person (vql
 # channel), plus the
 # Data Marketplace catalog
 # sync, a tag, a category, an external element and a renamed view that keeps its element
@@ -57,10 +58,16 @@ jdbc_password = "@encrypt-throwaway"
 
 [cleanup]
 vql = [
+  # the policy first: a tag a policy names cannot be dropped without CASCADE, and CASCADE is
+  # exactly what this list avoids
+  "DROP GLOBAL_SECURITY_POLICY IF EXISTS {tag_prefix}analyst_masking",
   "DROP DATABASE IF EXISTS {database} CASCADE",
   "DROP TAG IF EXISTS {tag_prefix}pii",
   "DROP TAG IF EXISTS {tag_prefix}finance_sensitive",
   "DROP TAG IF EXISTS {tag_prefix}mcp",
+  "DROP TAG IF EXISTS {tag_prefix}personal_data",
+  "DROP ROLE IF EXISTS {tag_prefix}sales_analyst",
+  "DROP USER IF EXISTS {tag_prefix}reader",
 ]
 http = [
   { method = "delete", path = "/public/api/tags/{tag_id}" },
@@ -592,6 +599,88 @@ substitute = { sales_analytics = "{database}" }
 database = "{database}"
 # Row 1 of the block's table: the slices of the income-band dimension add up to the fact.
 check = "SELECT s.t FROM (SELECT SUM(x.household_count) AS t FROM (SELECT income_band_sk, evaluate_metric(household_count) AS household_count FROM household_metrics GROUP BY income_band_sk) x) s CROSS JOIN (SELECT COUNT(hd_demo_sk) AS f FROM bv_household_demographics) b WHERE s.t = b.f"
+
+# --- Security: a role, a masking policy over tagged columns, checked as a person -----------
+# The four blocks of skills/security/SKILL.md over the views the steps above built, plus the
+# claim its "view's own file" rests on. Everything here is server-wide — a user, a role, a tag
+# and a global security policy — so every name carries {tag_prefix} and [cleanup] drops them
+# by name; the policy is limited to {database} by VIEW_DATABASES, so no view outside this run
+# is ever restricted. The user is EXTERNAL: there is no password anywhere, and the checks read
+# as that user through CONTEXT ('impersonate_user' = …). That needs the profile's user to hold
+# the role impersonator — `env check` reports it as vdp.impersonation; without it these checks
+# fail with "This user cannot impersonate", which is the answer, not a bug in the template.
+
+[[step]]
+id = "security-user"
+kind = "fixture"
+channel = "vql"
+vql = "CREATE OR REPLACE USER {tag_prefix}reader EXTERNAL 'Verification chain: the person a policy is checked as';"
+
+[[step]]
+id = "security-role"
+kind = "template"
+channel = "vql"
+address = "skills/security/SKILL.md#A role that reads the marts, given to a user"
+substitute = { sales_analytics = "{database}", sales_analyst = "{tag_prefix}sales_analyst", mlee = "{tag_prefix}reader" }
+# The user reads the view through the role alone: EXECUTE on the view is enough, nothing below
+# it is granted.
+check = "SELECT COUNT(*) AS n FROM household_income HAVING COUNT(*) > 0 CONTEXT ('impersonate_user' = '{tag_prefix}reader')"
+database = "{database}"
+
+[[step]]
+id = "security-read"
+kind = "template"
+channel = "vql"
+address = "skills/security/SKILL.md#Before you change anything"
+substitute = { sales_analytics = "{database}" }
+database = "{database}"
+# Query 1's claim: the grant arrives through the role, so rolename is filled in.
+check = "SELECT username FROM CATALOG_PERMISSIONS() WHERE dbname = '{database}' AND username = '{tag_prefix}reader' AND rolename = '{tag_prefix}sales_analyst'"
+
+[[step]]
+id = "security-policy"
+kind = "template"
+channel = "vql"
+address = "skills/security/SKILL.md#Tag the columns, then the policy"
+substitute = { sales_analytics = "{database}", personal_data = "{tag_prefix}personal_data", sales_analyst = "{tag_prefix}sales_analyst", analyst_masking = "{tag_prefix}analyst_masking" }
+database = "{database}"
+check = "SELECT name FROM GET_ELEMENTS() WHERE type = 'globalSecurityPolicy' AND name = '{tag_prefix}analyst_masking' AND element_status = 'OK'"
+
+[[step]]
+id = "security-view-tags"
+kind = "template"
+channel = "vql"
+address = "skills/security/SKILL.md#The tag in the view's own file"
+substitute = { sales_analytics = "{database}", personal_data = "{tag_prefix}personal_data" }
+database = "{database}"
+# Masked for the person, through the interface view above the tagged one: a filter compares
+# the masked value, so no row may survive "not masked".
+check = "SELECT household_sk FROM household_income WHERE buy_potential <> '********' LIMIT 1 CONTEXT ('impersonate_user' = '{tag_prefix}reader')"
+expect = "no rows"
+
+[[step]]
+id = "security-check"
+kind = "template"
+channel = "vql"
+address = "skills/security/SKILL.md#Check it as the people it is for"
+substitute = { sales_analytics = "{database}", mlee = "{tag_prefix}reader", sales_analyst = "{tag_prefix}sales_analyst" }
+database = "{database}"
+# The message template's claim: an aggregate over a hidden number becomes NULL for the role.
+check = "SELECT income_band_sk FROM household_income_by_band WHERE avg_dependents IS NOT NULL CONTEXT ('impersonate_roles' = '{tag_prefix}sales_analyst')"
+expect = "no rows"
+
+[[step]]
+id = "security-reapply"
+kind = "template"
+channel = "vql"
+# The claim the security skill puts the tag in the view's own file for: re-applying the view's
+# file without its TAGS takes the tag off the column, and the mask with it, silently. The file
+# here is the views skill's Derived view block, which carries no TAGS; the check expects the
+# person to read the real values again.
+address = "skills/views/SKILL.md#Derived view"
+substitute = { sales_analytics = "{database}" }
+database = "{database}"
+check = "SELECT household_sk FROM household_income WHERE buy_potential <> '********' LIMIT 1 CONTEXT ('impersonate_user' = '{tag_prefix}reader')"
 
 [[step]]
 id = "external-element-vql"

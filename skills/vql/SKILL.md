@@ -43,7 +43,8 @@ re-apply the same file from the top.
 
 Chain order, when several objects are involved: `database → folder → datasource → wrapper
 → base view → derived view → association`. Tags and marketplace objects come last: they
-attach to things that must already exist.
+attach to things that must already exist — except a tag that a view's own file names
+(`TAGS`), which is created before that view.
 
 ## Naming and layout
 
@@ -122,6 +123,7 @@ it just means the verification is yours to do, with `DESC` and a `SELECT`.
 | — | loading, reloading or clearing the cache of a view you did not create in this session — `SELECT … CONTEXT ('cache_preload' = 'true', …)`, `ALTER VIEW … CACHE` (`/denodo:cache`) |
 | — | `CREATE OR REPLACE METRIC VIEW` over a metric view you did not create in this session — a changed join type, filter or metric changes every figure built on it, with no column dropped (`/denodo:metrics`) |
 | — | the description, field descriptions, primary key or tags of a view you did not create in this session — by `ALTER VIEW`, `ALTER TAG`, or by re-declaring the view with `CREATE OR REPLACE`: the human approves the texts; naming a view to be made visible to an agent is the yes for its tag (`/denodo:semantics`) |
+| — | who may read what: a role, a user or a global security policy, created or changed, a grant of a role or a privilege to a person, or a tag that a policy names put on or taken off a column — unless every object it touches was created by you in this session. A `CREATE` counts: a new policy restricts people who exist, and `CREATE OR REPLACE` of an existing role adds to it (`/denodo:security`) |
 | — | a predefined procedure that changes state, however it is spelled: `SELECT * FROM DROP_REMOTE_TABLE(…)`, `CALL CLEAN_CACHE_DATABASE(…)`, `GENERATE_STATS(…)` — the list is in `/denodo:procedures` |
 | `GET` calls to the marketplace | every destructive marketplace call (below) |
 | — | **any change at all on a profile with `production: true`, `CREATE` included** |
@@ -218,6 +220,7 @@ different figures depending on what Denodo pushes down to the source.
 | Stored procedures — calling one, or writing one | `/denodo:procedures` |
 | The full cache of a view — switching it on or off, loading it, clearing it; where every other cache setting lives | `/denodo:cache` |
 | KPIs defined once for every tool — metric views (`CREATE METRIC VIEW`), `evaluate_metric`, the views built on them | `/denodo:metrics` |
+| Who may read what — a role and its grants, giving it to a user, masking columns or filtering rows with a global security policy over tagged columns, checking what a given user gets | `/denodo:security` |
 | What people and AI consumers read about existing views — descriptions, primary keys, associations, the tag the MCP Server shows views by; "why does the agent not see this view" | `/denodo:semantics` |
 | Running anything against a live server, reading its errors | `/denodo:execute` |
 

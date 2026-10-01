@@ -70,6 +70,14 @@ Remote: `github.com/kirivandubai/denodo_wipe_coading_skills` (имя на GitHub
   базы **читаются свободно**: `SELECT`, `DESC`, `DESC VQL`, `GET_ELEMENTS()` — это лучший
   источник примеров синтаксиса, точнее документации. Ни одного изменяющего запроса за
   пределами своей базы, включая «безобидные» правки и уборку.
+- **Server-wide objects are yours by name only** (T31). Users, roles, tags and global
+  security policies belong to no database. For a check they are created under a prefix
+  that names the run — `verify_` for the verification chain, `zq<task>_` for manual probes
+  and subagent runs — and removed by that name when the work is done. Users for a check are
+  `EXTERNAL`: no password exists to leak, and impersonation reads as them. Existing
+  server-wide objects are read freely and never changed, the profile's own user included;
+  the one standing exception is the `impersonator` role the owner granted to `admin` on the
+  stand, which the policy checks of `security` and of `verify` stand on.
 
 ## Проверки
 
