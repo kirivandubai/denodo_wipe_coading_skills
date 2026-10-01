@@ -106,6 +106,10 @@ ALTER VIEW household_in_band RENAME household_by_band;
 
 A rename breaks every dependant that names the view, silently, the same way a renamed
 column does — `USED_BY()` first, and for a column, `SKILL.md`, "Before a column changes".
+In the Data Marketplace the view is an element found by its name, and the next
+synchronisation removes it with its tags, categories and endorsements unless the rename is
+matched there — `/denodo:marketplace`, "A view in the marketplace is renamed, recreated or
+moved".
 
 `LAYOUT (…)` is Design Studio's canvas geometry. It shows up in `DESC VQL` output and
 means nothing to the server; leave it out of hand-written files and do not treat its

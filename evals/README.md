@@ -109,6 +109,12 @@ Two guard `/denodo:metrics` (T29): defining KPIs once for every BI tool and AI a
 `SELECT *` with no rows (`routing-metrics-query-symptom`) — the second names only the
 symptoms, which is how the silent query rules of a metric view reach a human.
 
+Two guard the rename half of `/denodo:marketplace` (T30): renaming a view that carries tags, a
+category and an endorsement in the Data Marketplace (`routing-marketplace-rename`), and those
+gone after someone renamed a view and synchronised (`routing-marketplace-rename-symptom`). The
+first does not forbid `/denodo:views`: the rename itself is a view statement, and reaching it
+on the way is right.
+
 **`discrimination`** — фразы на границах, где описания конкурируют. Каждый такой кейс несёт
 и положительный, и отрицательный грейдер, потому что проверяется именно выбор между двумя:
 

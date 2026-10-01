@@ -49,6 +49,7 @@ class Step:
     calls: list[int] = field(default_factory=list)
     substitute: dict[str, str] = field(default_factory=dict)
     capture: dict[str, str] = field(default_factory=dict)
+    expect_body: dict[str, str] = field(default_factory=dict)
     check: str | None = None
     expect: str = "rows"
     marketplace: bool = False
@@ -148,10 +149,19 @@ def _step(raw: dict) -> Step:
     database = raw.get("database")
     if database is not None and not isinstance(database, str):
         raise ChainError(f"step {step_id!r}: database must be a string, got {database!r}")
+    expect_body = raw.get("expect_body") or {}
+    if not isinstance(expect_body, dict):
+        raise ChainError(f"step {step_id!r}: expect_body must be a table of field = value, "
+                         f"got {expect_body!r}")
+    if expect_body and channel != "http":
+        # Only an http step has a response body to compare; on a vql step the table would
+        # be read by nothing and the run would report a check it never made.
+        raise ChainError(f"step {step_id!r}: expect_body only applies to an http-channel step")
     return Step(id=step_id, kind=kind, channel=channel, address=address, vql=vql,
                 calls=_int_calls(raw.get("calls", []), step_id),
                 substitute={str(k): str(v) for k, v in (raw.get("substitute") or {}).items()},
                 capture={str(k): str(v) for k, v in (raw.get("capture") or {}).items()},
+                expect_body={str(k): str(v) for k, v in expect_body.items()},
                 check=raw.get("check"), expect=expect, marketplace=marketplace, database=database)
 
 
@@ -880,6 +890,17 @@ def _run_http(profile: Profile, step: Step, *, body: str, values: dict[str, str]
             }}
         for key, field_name in step.capture.items():
             values[key] = str(last_body[field_name])
+    mismatches = []
+    for field_name, expected in step.expect_body.items():
+        wanted = render(expected, {}, values)
+        got = last_body.get(field_name) if isinstance(last_body, dict) else None
+        if got is None or str(got) != wanted:
+            mismatches.append(f"{field_name}: expected {wanted!r}, got {got!r}")
+    if mismatches:
+        return {"ok": False, "calls": executed, "partial": partial, "error": {
+            "kind": "expect_body",
+            "message": f"step {step.id!r}: the last call's response differs — " + "; ".join(mismatches),
+        }}
     return {"ok": True, "calls": executed, "partial": partial, "error": None}
 
 

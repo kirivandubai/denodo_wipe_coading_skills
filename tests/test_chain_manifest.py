@@ -67,6 +67,15 @@ class ChainManifestMatchesSkillsTest(unittest.TestCase):
                             name, available,
                             f"step {step.id!r} substitutes {needle!r} with {{{name}}}, which "
                             f"no earlier step captures and [values] does not define")
+            # expect_body is compared after the step's own capture, so that capture counts.
+            after_own_capture = set(available) | set(step.capture)
+            for field_name, expected in step.expect_body.items():
+                for name in {m.group(1) for m in PLACEHOLDER.finditer(expected)}:
+                    with self.subTest(step=step.id, expect_body=field_name, value=name):
+                        self.assertIn(
+                            name, after_own_capture,
+                            f"step {step.id!r} expects {field_name!r} to equal {{{name}}}, "
+                            f"which nothing has captured by then and [values] does not define")
 
     def test_every_template_step_resolves_and_renders_against_the_real_skills(self):
         template_steps = [s for s in self.chain.steps if s.kind == "template"]

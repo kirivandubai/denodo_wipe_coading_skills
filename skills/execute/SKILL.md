@@ -30,6 +30,7 @@ tool reads host, user and password from `~/.denodo/profiles.toml` itself.
 | Other types | `--type database`, `--type "datasource df"`, `--type "wrapper df"`, `--type tag`, `--type association`, `--type "interface view"`; folders take a quoted path: `vql desc --env dev "'/sales'" --type folder --vql` |
 | Marketplace call | `api get --env dev /public/api/tags` |
 | … with a body | `api post --env dev /public/api/tags --json '{"name":"pii","description":"…","descriptionType":"TEXT"}'` |
+| … with the body in a file | `api put --env dev /public/api/views --json-file body.json` — for HTML, quotes, or a body you want to keep |
 | … query params / multipart | `--param k=v` (repeatable), `--part field=@file` / `field=json:{…}` |
 | Encrypt a source password | `secret encrypt --env dev` — the password is typed into a hidden prompt (in a terminal) or piped in on stdin, never passed as an argument; the answer carries `encrypted` and nothing else. See **A password for a data source** below |
 | Which profiles exist | `env list` (never shows passwords) |
@@ -154,8 +155,9 @@ one destroys, is in `/denodo:procedures`, `references/predefined.md`); a query w
 the marketplace `POST`s that replace a whole set or delete what is missing from the payload
 — `tags/vdp/synchronize`,
 `element-management/{all,DATABASES,VIEWS,WEBSERVICES,EXTERNAL_ELEMENTS}/synchronize`, the
-`external-tool-servers/synchronize` family, `views/{id}/tags` and
-`category-management/views/{id}/categories`. Every result carries a `destructive` field: the
+`external-tool-servers/synchronize` family, `views/{id}/tags`,
+`category-management/views/{id}/categories` and `property-management/views/{id}/groups`.
+Every result carries a `destructive` field: the
 kind (`drop`, `alter`, `delete`, `write`, `setting`, `procedure`, `cache`, `replace`) when it is one of
 these, and `null` — not `false` — when it is not. Session settings come back `null` and pass on
 any profile: `SET QUERYTIMEOUT TO …` (property name unquoted) and `ALTER SESSION SET
