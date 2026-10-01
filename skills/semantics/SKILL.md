@@ -264,8 +264,8 @@ In order:
    which). `SELECT dbconnect, elementname, elementexecute FROM GET_CATALOG_EFFECTIVE_PERMISSIONS()
    WHERE input_user_name = '<user>' AND input_database_name = '<db>'` — the database row
    needs `dbconnect = true`, the view's row `elementexecute = true`. A user that exists only
-   in the identity provider is not returned (documentation). Granting is the
-   administrator's.
+   in the identity provider is not returned (documentation). Granting is a change of who
+   reads what: `/denodo:security`, after the human's yes.
 3. **The server has picked the change up**: it refreshes its schema while
    `mcp.schema-refresh.enabled` is on; otherwise it needs a restart. A new client session
    lists views again.

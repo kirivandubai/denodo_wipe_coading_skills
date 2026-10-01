@@ -28,7 +28,8 @@ denodo_skills/
 │   ├── procedures/          predefined, VQL and Java stored procedures + references/
 │   ├── cache/               the full cache of a view + references/
 │   ├── semantics/           descriptions, keys, associations, MCP visibility + references/
-│   └── metrics/             metric views and the views over them + references/
+│   ├── metrics/             metric views and the views over them + references/
+│   └── security/            roles, grants, global security policies + references/
 ├── scripts/
 │   ├── denodo               launcher — standard library only
 │   └── denodo_cli/          the implementation behind it

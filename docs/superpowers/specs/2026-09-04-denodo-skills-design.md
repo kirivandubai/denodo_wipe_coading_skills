@@ -80,6 +80,7 @@ Virtual DataPort — основной адресат, но не единстве
 /denodo:cache         full cache of a view: on and off, load, clear (T27, beyond v1)
 /denodo:semantics     metadata AI consumers read: descriptions, keys, associations, MCP tag (T28, beyond v1)
 /denodo:metrics       metric views: KPIs defined once, the views over them, evaluate_metric (T29, beyond v1)
+/denodo:security      who reads what: roles given to users, global security policies over tagged columns (T31, beyond v1)
 ```
 
 The dialect has no skill of its own (section 9): it is a table in the body of `/denodo:vql`
@@ -143,9 +144,12 @@ denodo_skills/                        репозиторий = плагин = м
 │   ├── semantics/
 │   │   ├── SKILL.md
 │   │   └── references/metadata.md    what each AI consumer reads, every metadata ALTER, inheritance
-│   └── metrics/
+│   ├── metrics/
+│   │   ├── SKILL.md
+│   │   └── references/metric-views.md  grammar, joins per association measured, query rules, limits
+│   └── security/
 │       ├── SKILL.md
-│       └── references/metric-views.md  grammar, joins per association measured, query rules, limits
+│       └── references/               policies (grammar, masks, audience per grant path), privileges
 ├── scripts/
 │   ├── denodo                        launcher (только stdlib)
 │   └── denodo_cli/                   реализация
@@ -256,6 +260,16 @@ with `'all_rows'`), and `'cache_preload' = 'true'` without it (it appends to wha
 a second run doubles every row). The statement starts with `SELECT`, so neither the keyword
 nor the procedure check sees it. `'cache' = 'off'`, the read that bypasses the cache, is not a
 write. `ALTER VIEW … CACHE …` is already `alter`.
+
+**By statement (T31)**, `CREATE [OR REPLACE]` of a `USER`, a `ROLE` or a
+`GLOBAL_SECURITY_POLICY`, `CHOWN`, and a `CREATE DATABASE` that carries a `GRANT` or `REVOKE`
+clause are flagged `security`. They start with `CREATE`, which is otherwise a clean create,
+but each changes who may read what across the server; and `CREATE OR REPLACE` of an existing
+role or user keeps every grant and role it had and adds the new ones (checked on 9.5.1), so
+it is never the "new object" the keyword suggests. `ALTER USER | ROLE | DATABASE` and
+`ALTER GLOBAL_SECURITY_POLICIES` are already `alter`. A tag assignment that brings a column
+under an existing policy is a security change no text classifier can see: the rule for it
+lives in the skill.
 
 **Для HTTP-канала правило формулируется по методу и пути, а не по глаголу.** `DELETE`
 тега, категории (каскадно с потомками) и external tool server (со всеми его элементами)
@@ -382,8 +396,8 @@ scripts/denodo verify    --env dev            прогон шаблонов, с�
   ничего после неё, без отката, — так что клиентское разбиение ничего не меняет в
   семантике, но даёт точную диагностику. `CONNECT DATABASE` в файле работает, потому что
   сессия одна на весь прогон.
-- **Разрушительные операции помечаются в ответе** (`destructive: drop|alter|delete|write|setting|procedure|cache`
-  для VQL — по ключевому слову и по имени вызванной процедуры, and by `CONTEXT` for a cache write (T27); `delete|replace` для HTTP —
+- **Разрушительные операции помечаются в ответе** (`destructive: drop|alter|delete|write|setting|procedure|cache|security`
+  для VQL — по ключевому слову и по имени вызванной процедуры, and by `CONTEXT` for a cache write (T27), and by the security statement (T31); `delete|replace` для HTTP —
   по методу и пути, раздел 6.3) и на профиле с
   `production = true` отклоняются до исполнения без флага `--allow-destructive`. Само
   подтверждение человеком остаётся правилом ядра: флаг лишь не даёт выполнить такое молча.
@@ -391,6 +405,16 @@ scripts/denodo verify    --env dev            прогон шаблонов, с�
   отклонённая разрушительная операция, `3` — не поднято окружение. Ответ всегда один
   JSON-документ на stdout с полями `ok`, `command`, `env {name, production, transport,
   database}`; у ошибок — `error {kind, message}`, у HTTP — `status` отдельно от `body`.
+- **`env check` says who the profile's user is (T31, roadmap 2.5).** `vdp.admin` is
+  `adminglobal` from `DESC USER <user>`, which any user may run on themselves: global security
+  policies and restrictions never apply to an administrator, so their own `SELECT` proves
+  nothing about a policy. `vdp.impersonation` is whether a query may run as someone else
+  (`CONTEXT ('impersonate_user' = …)`), asked by impersonating the profile's own user over
+  `Dual()`; the server refuses a user without the `impersonator` role in words of its own.
+  Both are `null` when the server does not say (a user known only to LDAP or an identity
+  provider, or another refusal). This replaces the second, non-administrator profile the
+  roadmap asked for (decision 9.3): impersonation checks a policy as each user or role
+  without a password, where a second profile needs one per user and checks only that one.
 
 ### 7.4 Правила
 
@@ -785,6 +809,27 @@ and an expression around `evaluate_metric` is dropped). It cost the execution la
 metric view is in the safety table of `vql`. Its five templates, each with a check that the
 totals agree, run in the `verify` chain, whose fixture now declares the key of
 `bv_income_band` (a dimension view without one empties every `HAVING` grouped by its key).
+
+**Also beyond v1, `/denodo:security`** (T31, from the owner's roadmap review): a role with
+read access given to a user, a global security policy that masks columns, filters rows or
+denies a view over tagged columns, and the check as each person. Two facts carry it, both
+measured on 9.5.1: administrators — global, and local ones of the view's database — are
+never restricted, so the agent's own `SELECT` proves nothing; and an audience restricts only
+the grant path it names (a role audience what roles grant, a user audience what is granted
+directly, `ALL` every path), so one person with a direct grant reads in clear under a policy
+that "works". The check is `CONTEXT ('impersonate_user' = …)` — the owner granted the
+`impersonator` role to the profile user of the test server for it — instead of the second,
+non-administrator profile the roadmap asked for (decision 9.3): impersonation checks every
+person and role without a password, a second profile one account and with one. Global
+objects (decision 9.2): the agent applies a security statement itself only when everything
+it touches was created in the same session; anything that existed before, any grant to a
+person, and any new policy that reaches existing people or views waits for the human's yes,
+a `CREATE` included. On the test server, server-wide objects are the run's own by prefix
+only (`verify_`, `zq<task>_`), and the users a check reads as are `EXTERNAL`, so no password
+exists. It cost the execution layer the `security` kind in the classifier (section 6.3) and
+the two flags of `env check` (section 7.3); its four templates and the claim that
+re-applying a view's file takes the mask away run in the `verify` chain, whose checks read
+as an `EXTERNAL` user by impersonation.
 
 ## 13. Риски и открытые вопросы
 

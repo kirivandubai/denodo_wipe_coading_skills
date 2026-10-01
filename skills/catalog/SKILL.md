@@ -93,6 +93,13 @@ CREATE OR REPLACE TAG finance_sensitive
 The other way to attach a tag is `TAGS (pii)` inside `CREATE OR REPLACE VIEW` — that
 belongs to the view's file (`/denodo:views`).
 
+**A tag that a global security policy names is not a label.** Put on a column, it masks or
+filters that column for the policy's audience; taken off — or lost when the view's file is
+re-applied without it — it lifts the restriction. Before assigning, removing or dropping an
+existing tag, ask the server:
+`SELECT global_security_policy_name FROM GET_GLOBAL_SECURITY_POLICIES_TAGS() WHERE tag_name = '<tag>'`.
+A row means the change is `/denodo:security`'s, and the human's yes comes first.
+
 The tag the Denodo MCP Server shows views by (`mcp` in its shipped configuration) — which
 views carry it, and why an agent does not see a view — is `/denodo:semantics`.
 
@@ -158,7 +165,7 @@ contents without a `CREATE DATABASE` line — neither tells you what you want he
 | `COLUMNS ( customer.email )` | `Syntax error … near ')'` | `COLUMNS ( sales_analytics.customer.email )` |
 | `COLUMNS ( db.customer.emial )` | nothing — accepted | read `GET_VIEW_TAGS()`; fix the name; re-apply |
 | `DROP FOLDER '/x'` with content | `folder /x contains elements and can not be dropped` | `DROP FOLDER IF EXISTS '/x' CASCADE` — after the human confirms; it takes subfolders and every object in them |
-| `DROP TAG t` while assigned | `Some elements depend on 't'` | `DROP TAG t CASCADE` — after the human confirms; it removes every assignment |
+| `DROP TAG t` while assigned, or named by a global security policy | `Some elements depend on 't'` | `DROP TAG t CASCADE` — after the human confirms; it removes every assignment **and deletes every policy that names the tag** (`/denodo:security`) |
 | `WHERE input_tag_names = 'pii'` on `GET_VIEW_TAGS()` | `Unable to execute condition using types 'text' and 'array'` | filter on `tag_name`, or on `input_database_name` |
 | `WHERE database_name = …` on `GET_DATABASES()` | `Field not found 'database_name'` | the column is `db_name` |
 

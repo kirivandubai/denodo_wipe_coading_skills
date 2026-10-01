@@ -64,6 +64,10 @@ DROP TAGS [ IF EXISTS ] ( <name> [, <name> ]* ) [ CASCADE ]
 - A tag with assignments is refused without `CASCADE`: `Some elements depend on '<name>'`.
   `CASCADE` removes the tag and every assignment; they cannot be recreated from the tag
   alone, so list them (`GET_VIEW_TAGS()`) before asking the human.
+- A tag that a global security policy names is refused the same way even with no
+  assignment, and `CASCADE` **deletes the policy** with it, silently —
+  `GET_GLOBAL_SECURITY_POLICIES_TAGS()` lists them — *verified: 9.5.1 (live, 2026-10-01)*.
+  See `/denodo:security`.
 - `IF EXISTS` on a name that does not exist is a no-op, also inside `DROP TAGS`.
 - A tag imported into the Data Marketplace disappears there on the next
   `tags/vdp/synchronize` — that call is `/denodo:marketplace`'s destructive one.

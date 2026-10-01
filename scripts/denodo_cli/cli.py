@@ -91,7 +91,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     env = top.add_parser("env", help="environment profiles").add_subparsers(dest="action", required=True)
     env.add_parser("list", help="profiles known on this machine (never shows passwords)")
-    env.add_parser("check", parents=[env_opt], help="connect to VDP (and Data Marketplace if configured)")
+    env.add_parser("check", parents=[env_opt], help="connect to VDP (and Data Marketplace if configured); report whether the user is an administrator and may impersonate")
     env.add_parser("init", help="create a profile interactively — run it yourself, e.g. `! scripts/denodo env init`")
 
     verify = top.add_parser("verify", parents=[env_opt],

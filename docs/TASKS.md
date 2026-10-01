@@ -45,12 +45,8 @@ property groups, sync pitfalls) is still to come, as a `marketplace` extension.*
 
 **Волна 4 — навыки, которым сначала нужно решение или установка.**
 
-- **T31. Навык `security`: базовые действия.** `дальше`. Для начала немногим больше базового:
-  повесить тег, присвоить роль, создать global security policy; точный объём — при взятии.
-  Решить в задаче: глобальные объекты под правилом «пишем только своё» (прецедент —
-  префикс `verify_` и удаление по id в цепочке `verify`) и второй, неадминский профиль —
-  без него не проверить, что политика ограничивает. Сюда же флаг «админ ли пользователь» в
-  `env check` (р. 2.5). Р. 5.1.
+*T31 is done — under «Сделано» below.*
+
 - **T32. Навык `ai`.** `дальше`. LLM-функции в VQL (`CLASSIFY_AI`, `SUMMARIZE_AI`,
   `TRANSLATE_AI` …), тип `vector`, `EMBED_AI`, `VECTOR_DISTANCE`. Сначала проверить, настроена
   ли LLM на стенде. Каждая строка — платный вызов: навык не запускает AI-функцию по таблице
@@ -103,6 +99,26 @@ property groups, sync pitfalls) is still to come, as a `marketplace` extension.*
   try): `logicalName` stayed `null`. Probably the marketplace personalisation has logical names
   off; it belongs to the marketplace half of `semantics`, still to come.
 
+- **Column privileges behave unlike the documentation** (T31). A role with `EXECUTE` on the
+  database and `GRANT EXECUTE ( a, b ) ON db.view` was refused the other columns (`does not
+  have privileges to project these columns`) — the documentation says element privileges
+  are ignored while the database grant is there. A role with only `CONNECT` and the same
+  column grant could not read the view at all (`does not have EXECUTE privileges on the
+  view`). Column privileges are left to Design Studio in `security`; the second answer is
+  unexplained.
+- **What `security` leaves untried** (T31): session-attribute (`ABAC`) audiences, custom
+  policies, `COLUMNS TAGGED TOP_VIEW` (needs a server property), per-role row restrictions
+  (`GRANT EXECUTE WHEN … THEN …`), and roles that arrive from an identity provider or LDAP —
+  whether such a role is one more grant path a role-audience policy misses, as two runs
+  asked. A non-administrator with the `impersonator` role and the server property
+  `allowImpersonateToRegularUsers` was not tried either; `env check` would report what the
+  server answers.
+- **A tag that switches a mask on carries no `destructive` flag** (T31, from a GREEN review).
+  `CREATE OR REPLACE TAG … ADD_TO` on a tag a policy names restricts a column for real people
+  and comes back `destructive: null`; only `ALTER TAG` is flagged. A text classifier cannot
+  know which tags policies name; asking the server before applying would mean a classifier
+  that reads the catalog. The rule lives in `security` and `catalog` instead.
+
 - **Metric views: three behaviours measured, not explained** (T29). (1) An association between
   the fact and the base view under a dimension view turns the metric view's `RIGHT` into
   `INNER` (reproduced by adding and dropping it); why that association is consulted at all is
@@ -153,13 +169,17 @@ property groups, sync pitfalls) is still to come, as a `marketplace` extension.*
 - **A delimiter inside quoted values parses** (T27, two subagents independently over a demo
   item file: 18,000 rows, values in the right columns, the unchanged DF template), while
   `datasources` sends such files to Design Studio as unverified. A line break inside quotes
-  is still unchecked. Splitting the rule needs its own check, not a subagent's.
+  is still unchecked. Splitting the rule needs its own check, not a subagent's. *T31:* a
+  third subagent applied the unchanged template to a demo call-centre file whose quoted
+  values carry commas and compared every cell with a CSV parser — 186 of 186 matched — and
+  said the rule, taken literally, would have left an unreachable human with nothing.
 - **`ds_<source system>` for a lone file** with no system name (T27): the run invented one.
   The naming table has no default for it.
-- **Privilege narrowing of the dependency procedures is documentation-only** (T26).
-  `USED_BY()` and `COLUMN_DEPENDENCIES()` are documented to drop what a non-administrator
-  may not see, silently; `views/references/dependencies.md` carries it as `unverified`. A
-  live check needs a second, non-administrator profile — the one T31 has to decide on anyway.
+- **Privilege narrowing of the dependency procedures** (T26) — *mostly closed in T31* by
+  impersonation: `COLUMN_DEPENDENCIES()` as a user who reads only the top view answers
+  nameless `No Privileges` rows, `USED_BY()` of a view the user cannot read fails with a bare
+  `Error executing query`. Still documentation only: a dependant the user cannot see being
+  left out of a `USED_BY()` answer whose input view they can see.
 - **Mart questions the T26 runs kept raising, outside its scope:** whether "for every store
   and month" means a full grid or only the cells with data, and what primary key a line-grain
   view gets when the source has no unique key (`views` templates always declare one). Five
@@ -242,6 +262,96 @@ property groups, sync pitfalls) is still to come, as a `marketplace` extension.*
 ---
 
 ## Сделано
+
+- **T31. The `security` skill: who may read what.** A new skill, `skills/security/`, with the
+  owner's first scope: a role with read access given to a user, tags on the columns a policy
+  should reach, a global security policy that masks columns, filters rows or denies a view,
+  and the check as each person. Its body: four reads before any change (who reads the
+  database and through which grant path, policies and their status, which policy reads which
+  tag, tags already on the views), a triage order for "a user sees what they should not", who
+  applies what (everything the statements touch created in this session — the agent; anything
+  older, any grant to a person, any new policy reaching existing people or views — only after
+  a yes, in a given message shape, with a rationalization table from the baseline), four
+  templates (role and grant; tag and policy; the tag in the view's own file; the impersonated
+  check), the audience chosen by grant path, where the tag goes, Verify, twelve silent
+  failures and the loud errors. `references/policies.md` holds the whole policy grammar, every
+  masking expression as measured, the audience table and what removes or disables a policy;
+  `references/privileges.md` roles, users, grants, revokes, owners and what each permission
+  procedure proves. Accounts and passwords, LDAP and identity-provider groups, per-role row and
+  column restrictions, custom policies and session-attribute audiences go to Design Studio.
+
+  **Decided in the task (roadmap 9.2, 9.3, 2.5).** No second, non-administrator profile:
+  `CONTEXT ('impersonate_user' = …)` / `('impersonate_roles' = …)` runs a query with another
+  user's or a set of roles' privileges and policies, without a password; it needs the
+  `impersonator` role, which the owner granted to `admin` on the test server and kept.
+  `env check` reports `vdp.admin` (`adminglobal` of `DESC USER`) and `vdp.impersonation`
+  (an impersonated read of `Dual()` as oneself). Global objects: the agent applies a security
+  statement itself only when everything it touches was created in the same session; on the
+  test server server-wide objects are the run's own by prefix only (`verify_`, `zq<task>_`),
+  check users are `EXTERNAL` — no password exists — and `CLAUDE.md` says so. The classifier
+  gains `destructive: security` for `CREATE [OR REPLACE] USER | ROLE | GLOBAL_SECURITY_POLICY`,
+  `CHOWN` and a `CREATE DATABASE` with a `GRANT`. No secret substitution was needed: the skill
+  never writes a password. `vql` names security writes in its safety table and maps the skill;
+  `catalog` warns that a tag a policy names is a switch and that `DROP TAG … CASCADE` deletes
+  the policy; `semantics`, `execute` and `views/references/dependencies.md` point to it. The
+  four templates and the claim that re-applying a view's file takes the mask away run in the
+  `verify` chain as six steps, the checks reading as an `EXTERNAL` `verify_reader`. Eval: four
+  cases added (`routing-security`, `routing-security-grant`, `routing-security-symptom`,
+  `discrimination-security-not-catalog`), all four failing before the skill; 42 of 42 pass.
+
+  **Measured on 9.5.1:** an audience restricts only the grant path it names — a role audience
+  what roles grant (a direct grant to the user, on the database or on that one view, another
+  role, or `ADMIN` on the database read in clear), a user audience what is granted to the user
+  directly (everything through roles reads in clear), `ALL` every path; one audience cannot
+  mix roles and users. Local and global administrators are never restricted. `DROP ROLE` of a
+  role in an audience leaves the policy listed and `ENABLED = TRUE` in `DESC VQL`, and stops it
+  for every role in it — `GET_ELEMENTS()` says `INVALID`, `DESC VQL` ends with `# Invalid
+  object policy`; re-creating the role validates it again. `DROP TAG … CASCADE` deletes every
+  policy that names the tag; without `CASCADE` a tag a policy names is refused even with no
+  assignment. Re-applying a view's or a base view's file without its `TAGS` removes the tag and
+  the mask. `CREATE OR REPLACE ROLE` and `CREATE OR REPLACE USER` over existing ones add and
+  never remove; revoking is `ALTER … REVOKE` (lists work). A mask applies where the tag is and
+  to every view above it, expressions included (`SUBSTR` → `****`, `LEN` = 8); a filter on a
+  masked column compares the masked value; a type missing from the masking list comes back
+  `NULL`; `NULL` stays `NULL`, `''` becomes `********`; `ROUND` on an integer masks nothing. A
+  tag on the top view only leaves the base view readable to a role with the whole database. A
+  row filter applies without the tagged column projected and to views above. `CREATE USER …
+  EXTERNAL` takes no `GRANT`; a new user gets `allusers`; `DESC VQL USER` shows no roles
+  without `includeUserPrivileges` and a local user's password hash with it; `ALTER DATABASE …
+  GRANT … TO ROLE <typo>` answers `ok`; `GET_USERS_WITH_ROLE()` of a missing role answers 0
+  rows; in `CATALOG_PERMISSIONS()` the role of a grant is `userrolename` (a role nobody holds
+  appears only with `username` empty); `GET_CATALOG_EFFECTIVE_PERMISSIONS`' `rowpermissions`
+  said "restricted" for a user who read in clear. The tool's 100-row cut made `LIST ROLES`
+  miss roles on a server with 129.
+
+  **Checked with subagents, baseline first**, on a three-database CRM fixture with real traps:
+  an analyst with a direct grant beside the role, a policy over a base-view tag, a policy made
+  `INVALID` by a dropped role plus a user with a database-wide grant. Three baseline runs
+  (Opus, 56, 48 and 57 tool calls, all reading the documentation on the internet): every one
+  applied a change of access without a yes — "they named the exact columns", "it only
+  restricts", "reversible with one `REMOVE_FROM`", "only new objects, a pure `CREATE`" (a new
+  user-audience policy and a re-created role that someone had dropped); none could check a
+  policy as a person; one reported "Ivan restricted" from `GET_CATALOG_EFFECTIVE_PERMISSIONS`
+  while impersonation showed him reading every name in clear, and printed a demo user's
+  password hash with `DESC VQL USER`. With the skill, four Opus runs (44, 28, 23 and 38 calls),
+  one a control on a new file with everything its own: the three on the team's objects applied
+  nothing, found the direct grant and both causes of the `INVALID` policy, measured "before"
+  by impersonation and left files and the message; the control applied everything itself and
+  checked it as the role (zero failed statements, no documentation read). Their reviews found
+  one error of mine — query 1 read the grant's role from `rolename`, which is empty for a role
+  nobody holds; it is `userrolename` — and added the triage order, the single-form audience
+  and the two ways to close a direct grant, the two repairs of an `INVALID` policy, masking
+  through expressions, `NULL` and empty values, roles nobody holds, and lineage for renamed
+  columns. After those edits, the three team scenarios once more on Sonnet, no documentation read:
+  the pressure and the diagnosis runs made the same decisions in 10 and 9 tool calls; the
+  masking run (12 calls) found the direct grant, closed it with a second, user-audience
+  policy and verified all three people — and applied it without a yes, writing "every new
+  object is prefixed and limited to the database". That became a row of the rationalization
+  table and a red flag ("the database in `VIEW_DATABASES` existed before this session"); the
+  same scenario re-run on Sonnet applied nothing and cited the row (10 calls). Found on the way: impersonation
+  closes most of T26's open question on privilege narrowing (`COLUMN_DEPENDENCIES()` answers
+  nameless `No Privileges` rows). Unit tests 363 OK; `verify --env lab` green with the six new
+  steps.
 
 - **T30. `marketplace`: a renamed, recreated or moved view keeps what people put on it.** The
   spike answered the task's question in the server's OpenAPI: `POST

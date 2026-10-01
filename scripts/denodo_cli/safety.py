@@ -17,7 +17,10 @@ its CONTEXT: the predefined procedures that change state (``DROP_REMOTE_TABLE``,
 ``CLEAN_CACHE_DATABASE``, ``GENERATE_STATS`` …) are invoked with ``SELECT … FROM name(…)`` or
 ``CALL name(…)`` (T20), and a query that loads or invalidates a view's cache is a ``SELECT``
 with ``'cache_preload'`` or ``'cache_invalidate'`` in its CONTEXT (T27) — the keyword alone
-lets both through. HTTP calls are classified by method and path, never
+lets both through. A ``CREATE`` of a user, a role or a global security policy, a ``CHOWN`` and
+a ``CREATE DATABASE`` that carries a ``GRANT`` change who may read what across the server, and
+``CREATE OR REPLACE`` of an existing role or user adds to it rather than replacing it (T31).
+HTTP calls are classified by method and path, never
 by words in the body: the Data Marketplace has ``POST`` endpoints that overwrite whole sets
 (spike T11, section 6).
 """
@@ -41,6 +44,8 @@ _VQL_KINDS = {
     # WEBCONTAINER sets, stops, starts or reloads the embedded web container
     "SET": "setting",
     "WEBCONTAINER": "setting",
+    # the owner of an element decides who may change it and grant on it
+    "CHOWN": "security",
 }
 # Forms that start with one of the keywords above but only touch the caller's session or
 # only read: the ODBC connection settings (SET QUERYTIMEOUT TO …), ALTER SESSION, and
@@ -81,6 +86,16 @@ _PROCEDURE_CALL = re.compile(
 # quoted name has to be followed by '=': a doubled quote inside a string literal does not match.
 _CACHE_WRITE = re.compile(r"'cache_invalidate'\s*=|'cache_preload'\s*=\s*'true'", re.IGNORECASE)
 
+# Server-wide security objects. CREATE OR REPLACE of an existing role or user keeps every grant
+# and role it already had and adds the new ones (checked on 9.5.1), so the statement is never a
+# clean "create"; a global security policy restricts every view its tags reach, in every
+# database it names. A CREATE DATABASE with a GRANT or REVOKE clause changes privileges too.
+_SECURITY_CREATE = re.compile(
+    r"CREATE\s+(?:OR\s+REPLACE\s+)?(?:USER|ROLE|GLOBAL_SECURITY_POLICY)\b", re.IGNORECASE)
+_DATABASE_CREATE = re.compile(r"CREATE\s+(?:OR\s+REPLACE\s+)?DATABASE\b", re.IGNORECASE)
+_GRANT_CLAUSE = re.compile(r"\b(?:GRANT|REVOKE)\b", re.IGNORECASE)
+_STRING_LITERAL = re.compile(r"'(?:[^']|'')*'")
+
 # POST endpoints that replace a whole set instead of adding to it, or that delete what is
 # missing from the payload (T11 section 6; T8d re-checked them against the 9.5.1 API).
 _REPLACING_POSTS = (
@@ -110,7 +125,9 @@ def classify_vql(statement: str) -> str | None:
     """``"drop"``, ``"alter"``, ``"delete"`` for destructive statements, ``"write"`` for a
     write into a source, ``"setting"`` for a change of server configuration, ``"procedure"``
     for a call of a predefined procedure that changes state, ``"cache"`` for a query that
-    loads or invalidates the cache of a view, else ``None``."""
+    loads or invalidates the cache of a view, ``"security"`` for a statement that creates a
+    user, a role or a global security policy, changes an owner, or grants in ``CREATE
+    DATABASE``, else ``None``."""
     body = _LEADING_NOISE.sub("", statement, count=1)
     match = re.match(r"([A-Za-z_]+)", body)
     if not match:
@@ -118,6 +135,10 @@ def classify_vql(statement: str) -> str | None:
     kind = _VQL_KINDS.get(match.group(1).upper())
     if kind and not _HARMLESS_FORMS.match(body):
         return kind
+    if _SECURITY_CREATE.match(body):
+        return "security"
+    if _DATABASE_CREATE.match(body) and _GRANT_CLAUSE.search(_STRING_LITERAL.sub("''", body)):
+        return "security"
     for call in _PROCEDURE_CALL.finditer(body):
         if call.group(1).upper() in STATE_CHANGING_PROCEDURES:
             return "procedure"

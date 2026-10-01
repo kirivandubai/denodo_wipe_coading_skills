@@ -25,6 +25,22 @@ class OkVql:
         pass
 
 
+def scripted(answers, seen=None):
+    """A VQL transport that answers by the start of the statement (or a substring for
+    ``CONTEXT``): a VqlResult is returned, an exception raised; anything else is OkVql."""
+    class Scripted(OkVql):
+        def execute(self, statement):
+            if seen is not None:
+                seen.append(statement)
+            for key, answer in answers.items():
+                if statement.startswith(key) or (key == "CONTEXT" and "CONTEXT" in statement):
+                    if isinstance(answer, Exception):
+                        raise answer
+                    return answer
+            return super().execute(statement)
+    return Scripted
+
+
 class OkRest:
     calls = []
 
@@ -80,6 +96,45 @@ class CheckTest(unittest.TestCase):
         self.assertFalse(doc["vdp"]["ok"])
         self.assertIn("connection refused", doc["vdp"]["error"]["message"])
         self.assertTrue(doc["marketplace"]["ok"])
+
+    def test_admin_and_impersonation_are_reported(self):
+        doc, code = check_environment(profile(), vql_factory=scripted({
+            "DESC USER u": VqlResult("", ["name", "description", "admin", "adminglobal"],
+                                     [["u", None, "true", "true"]]),
+        }), rest_factory=OkRest)
+        self.assertEqual(code, 0)
+        self.assertIs(doc["vdp"]["admin"], True)
+        self.assertIs(doc["vdp"]["impersonation"], True)
+
+    def test_standard_user_without_the_impersonator_role(self):
+        doc, code = check_environment(profile(), vql_factory=scripted({
+            "DESC USER u": VqlResult("", ["name", "description", "admin", "adminglobal"],
+                                     [["u", "analyst", "false", "false"]]),
+            "CONTEXT": RuntimeError("This user cannot impersonate. Only users with role "
+                                    "'impersonator' can impersonate."),
+        }), rest_factory=OkRest)
+        self.assertEqual(code, 0)
+        self.assertTrue(doc["ok"])
+        self.assertIs(doc["vdp"]["admin"], False)
+        self.assertIs(doc["vdp"]["impersonation"], False)
+
+    def test_unknown_when_the_server_does_not_say(self):
+        # a user known only to LDAP or an identity provider has no DESC USER; any other refusal
+        # of the impersonated read says nothing about the role either
+        doc, code = check_environment(profile(), vql_factory=scripted({
+            "DESC USER u": RuntimeError("Error loading user 'u'"),
+            "CONTEXT": RuntimeError("The user 'u' does not exist."),
+        }), rest_factory=OkRest)
+        self.assertEqual(code, 0)
+        self.assertTrue(doc["vdp"]["ok"])
+        self.assertIsNone(doc["vdp"]["admin"])
+        self.assertIsNone(doc["vdp"]["impersonation"])
+
+    def test_user_name_is_quoted_as_an_identifier_and_as_a_literal(self):
+        seen = []
+        check_environment(profile(user="o'neil.ops"), vql_factory=scripted({}, seen=seen), rest_factory=OkRest)
+        self.assertIn('DESC USER "o\'neil.ops"', seen)
+        self.assertTrue(any("'impersonate_user' = 'o''neil.ops'" in s for s in seen), seen)
 
     def test_marketplace_401_is_a_failure(self):
         class Unauthorized(OkRest):

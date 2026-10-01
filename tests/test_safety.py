@@ -178,6 +178,60 @@ class CacheWriteTest(unittest.TestCase):
         self.assertEqual(classify_vql("ALTER VIEW v CACHE FULL"), "alter")
 
 
+class SecurityObjectTest(unittest.TestCase):
+    """Users, roles and global security policies are server-wide, and a CREATE of one changes
+    who may read what: CREATE OR REPLACE of a role or a user adds to what it already has
+    instead of replacing it, and a policy restricts every view its tags reach (T31)."""
+
+    def test_create_role(self):
+        self.assertEqual(classify_vql("CREATE ROLE sales_reader GRANT CONNECT ON sales"), "security")
+        self.assertEqual(
+            classify_vql("CREATE OR REPLACE ROLE sales_reader 'Reads sales' GRANT EXECUTE ON sales.customer"),
+            "security",
+        )
+
+    def test_create_user(self):
+        self.assertEqual(classify_vql("CREATE OR REPLACE USER jdoe EXTERNAL 'John'"), "security")
+        self.assertEqual(classify_vql("create user admin ops_admin EXTERNAL"), "security")
+
+    def test_create_global_security_policy(self):
+        self.assertEqual(
+            classify_vql(
+                "-- verified: 9.5.1\nCREATE OR REPLACE GLOBAL_SECURITY_POLICY mask_pii ENABLED = TRUE "
+                "AUDIENCE ( ALL ) ELEMENTS ( COLUMNS TAGGED ANY ( pii ) ) "
+                "RESTRICTION ( FILTER = '' MASKING ANY ( pii ) WITH ( HIDE ) ( texts WITH HIDE ) )"
+            ),
+            "security",
+        )
+
+    def test_change_of_owner(self):
+        self.assertEqual(classify_vql("CHOWN jdoe VIEW customer"), "security")
+
+    def test_database_created_with_a_grant(self):
+        self.assertEqual(
+            classify_vql("CREATE OR REPLACE DATABASE sales 'Sales' GRANT CONNECT, EXECUTE TO ROLE sales_reader"),
+            "security",
+        )
+
+    def test_grant_inside_a_description_does_not_count(self):
+        self.assertIsNone(classify_vql("CREATE OR REPLACE DATABASE sales 'GRANT CONNECT here' CHARSET DEFAULT"))
+
+    def test_other_creates_are_not_flagged(self):
+        self.assertIsNone(classify_vql("CREATE OR REPLACE VIEW user_roles AS SELECT 1 AS a FROM DUAL()"))
+        self.assertIsNone(classify_vql("CREATE OR REPLACE TAG pii DESCRIPTION = 'Personal data'"))
+        self.assertIsNone(classify_vql("CREATE OR REPLACE VIEW grants AS SELECT * FROM role_grant"))
+
+    def test_alter_and_drop_keep_their_kinds(self):
+        self.assertEqual(classify_vql("ALTER USER jdoe GRANT ROLE sales_reader"), "alter")
+        self.assertEqual(classify_vql("ALTER GLOBAL_SECURITY_POLICIES ( mask_pii ENABLED = FALSE )"), "alter")
+        self.assertEqual(classify_vql("DROP ROLE sales_reader"), "drop")
+
+    def test_impersonated_read_is_a_read(self):
+        self.assertIsNone(
+            classify_vql("SELECT email FROM customer LIMIT 5 CONTEXT ('impersonate_user' = 'jdoe')")
+        )
+
+
 class StateChangingProcedureTest(unittest.TestCase):
     """Predefined procedures that change state are invoked with SELECT or CALL, so the
     leading keyword says nothing; the name does (T20)."""
