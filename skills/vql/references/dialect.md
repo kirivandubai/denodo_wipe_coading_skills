@@ -66,7 +66,7 @@ Java does.
 | `LOG(8, 2)` | **value first, base second** → `3` (log₂ 8). PostgreSQL and Oracle take the base first | `LOG(value, base)`; `LOG(x)` is base 10, `LN(x)` natural |
 | `GREATEST(a, b)`, `LEAST` | do not exist. Their substitute, the scalar `MAX(a, b)` / `MIN(a, b)`, returns **`NULL` when any argument is `NULL`** | `MAX(COALESCE(a, b), COALESCE(b, a))` |
 | `CAST('yes' AS boolean)` | `false`; `'true'` and `'1'` are true | map the source's values with `CASE` |
-| `CAST(x AS double)`, `CAST(x AS int)` | syntax errors — a `CAST` takes SQL type names | `CAST(x AS double precision)`, `CAST(x AS integer)`, or the VQL names in the two-argument form: `CAST('double', x)` |
+| `CAST(x AS double)`, `CAST(x AS int)`, `CAST(x AS long)` | syntax errors — a `CAST` takes SQL type names | `CAST(x AS double precision)`, `CAST(x AS integer)`, or the VQL names in the two-argument form: `CAST('double', x)` |
 
 ### Aggregates
 

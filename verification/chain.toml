@@ -1,9 +1,10 @@
 # verification/chain.toml
-# Verifies 22 of the templates end to end: catalog database, folders, the DF (CSV), JSON
+# Verifies 27 of the templates end to end: catalog database, folders, the DF (CSV), JSON
 # and JDBC data sources, a hand-written JDBC wrapper and base view, derived views, the union
 # and the array views, the interface view, the association, the column-impact queries, the
-# full cache switched on, loaded and cleared, tags, and the metadata audit, profile and
-# write (vql channel), plus the
+# full cache switched on, loaded and cleared, tags, the metadata audit, profile and
+# write, and the metric view with the views over it, its reads and the totals check (vql
+# channel), plus the
 # Data Marketplace catalog
 # sync, a tag and a category (http channel). Bodies of the
 # "template" steps come from the skills themselves (address = file#section); "fixture"
@@ -182,6 +183,7 @@ CREATE OR REPLACE TABLE bv_income_band I18N us_pst (
         ib_income_band_sk:int, ib_lower_bound:int, ib_upper_bound:int
     )
     FOLDER = '/01 - connectivity'
+    PRIMARY KEY ( 'ib_income_band_sk' )
     CACHE OFF
     TIMETOLIVEINCACHE DEFAULT
     ADD SEARCHMETHOD wr_income_band (
@@ -531,6 +533,64 @@ substitute = { sales_analytics = "{database}" }
 database = "{database}"
 check = "SELECT view_name FROM GET_VIEW_TAGS() WHERE input_database_name = '{database}' AND input_view_name = 'household_income_by_band' AND tag_name = '{tag_prefix}mcp' UNION ALL SELECT view_name FROM GET_VIEW_COLUMNS() WHERE input_database_name = '{database}' AND input_view_name = 'household_income_by_band' AND column_is_primary_key = true"
 expect = "no rows"
+
+# --- Metric view: the model, the views over it, the reads and the totals check ---------------
+# The five blocks of skills/metrics/SKILL.md over the fixture's households and income bands
+# and the association step's a_income_band_household. bv_income_band declares its key above:
+# the metrics skill requires it of every dimension view (without it, a HAVING grouped by the
+# key returns no rows). Every check is the block's claim — the same total three ways — not
+# only that the server accepted it.
+
+[[step]]
+id = "metric-view"
+kind = "template"
+channel = "vql"
+address = "skills/metrics/SKILL.md#The metric view"
+substitute = { sales_analytics = "{database}" }
+database = "{database}"
+# "The grand total always counts every fact row": the metric with no dimension equals the
+# fact's own count.
+check = "SELECT m.n FROM (SELECT evaluate_metric(household_count) AS n FROM household_metrics) m CROSS JOIN (SELECT COUNT(hd_demo_sk) AS f FROM bv_household_demographics) b WHERE m.n = b.f AND m.n > 0"
+
+[[step]]
+id = "metric-selection-views"
+kind = "template"
+channel = "vql"
+address = "skills/metrics/SKILL.md#Selection views, a total and a share"
+substitute = { sales_analytics = "{database}" }
+database = "{database}"
+# The shares add up to 100 and the bands to every household — what a total taken from the
+# metric, not from the rows, has to give.
+check = "SELECT SUM(household_count) AS households FROM household_share_by_band HAVING SUM(household_share_pct) = 100 AND SUM(household_count) = 7200"
+
+[[step]]
+id = "metric-query"
+kind = "template"
+channel = "vql"
+address = "skills/metrics/SKILL.md#Query it ad hoc"
+database = "{database}"
+# The block's HAVING is grouped by income_band_sk, the key of bv_income_band: it returns rows
+# only because the fixture declares that key.
+check = "SELECT income_band_sk, buy_potential, evaluate_metric(household_count) AS household_count FROM household_metrics WHERE buy_potential = '>10000' GROUP BY income_band_sk, buy_potential HAVING evaluate_metric(household_count) > 50"
+
+[[step]]
+id = "metric-read"
+kind = "template"
+channel = "vql"
+address = "skills/metrics/SKILL.md#3. Read what exists"
+substitute = { sales_analytics = "{database}" }
+database = "{database}"
+check = "SELECT COUNT(*) AS metrics FROM GET_VIEW_COLUMNS() WHERE input_database_name = '{database}' AND input_view_name = 'household_metrics' AND column_organization = 'metric' HAVING COUNT(*) = 3"
+
+[[step]]
+id = "metric-totals-check"
+kind = "template"
+channel = "vql"
+address = "skills/metrics/SKILL.md#Verify — the totals check"
+substitute = { sales_analytics = "{database}" }
+database = "{database}"
+# Row 1 of the block's table: the slices of the income-band dimension add up to the fact.
+check = "SELECT s.t FROM (SELECT SUM(x.household_count) AS t FROM (SELECT income_band_sk, evaluate_metric(household_count) AS household_count FROM household_metrics GROUP BY income_band_sk) x) s CROSS JOIN (SELECT COUNT(hd_demo_sk) AS f FROM bv_household_demographics) b WHERE s.t = b.f"
 
 [[step]]
 id = "external-element-vql"

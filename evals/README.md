@@ -104,6 +104,11 @@ assistant (`routing-semantics`), and an agent that does not see a view through t
 Server (`routing-semantics-mcp-visibility`) — the second names neither a tag nor a statement,
 only the symptom, and the cause is a VDP tag the MCP Server is configured with.
 
+Two guard `/denodo:metrics` (T29): defining KPIs once for every BI tool and AI agent
+(`routing-metrics`), and a metric view that answers `AVG` with the same figure as `SUM` and
+`SELECT *` with no rows (`routing-metrics-query-symptom`) — the second names only the
+symptoms, which is how the silent query rules of a metric view reach a human.
+
 **`discrimination`** — фразы на границах, где описания конкурируют. Каждый такой кейс несёт
 и положительный, и отрицательный грейдер, потому что проверяется именно выбор между двумя:
 
@@ -121,6 +126,9 @@ only the symptom, and the cause is a VDP tag the MCP Server is configured with.
 | `discrimination-cache-not-views` | `cache` | `views` |
 | `discrimination-semantics-not-views` | `semantics` | `views` |
 | `discrimination-semantics-not-marketplace` | `semantics` | `marketplace` |
+| `discrimination-metrics-not-views` | `metrics` | `views` |
+| `discrimination-metrics-not-semantics` | `metrics` | `semantics` |
+| `discrimination-mart-not-metrics` | `views` | `metrics` |
 
 Первые две строки — тот самый риск, ради которого сьют и заводился: «тег» в VDP и «тег» в
 маркетплейсе — **разные объекты на разных серверах**, и перепутанный навык уйдёт корректным

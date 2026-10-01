@@ -36,11 +36,8 @@
 
 *T28 is done — under «Сделано» below. The marketplace half of `semantics` (logical names,
 property groups, sync pitfalls) is still to come, as a `marketplace` extension.*
-- **T29. Навык `metrics`.** `дальше`. `CREATE METRIC VIEW`, `EVALUATE_METRIC`, измерения и
-  метрики, ассоциации как предусловие. Правило владельца: поверх метрического
-  представления строятся только selection-представления, а факты и измерения джойнятся к
-  selection — подтвердить на стенде, как любое правило. Описание конкурирует с `views` и
-  `semantics` — eval-сьют. Р. 5.2.
+
+*T29 is done — under «Сделано» below. Wave 2 is closed.*
 
 **Волна 3 — маркетплейс.**
 
@@ -80,6 +77,29 @@ property groups, sync pitfalls) is still to come, as a `marketplace` extension.*
 ---
 
 ## Открытые вопросы
+
+- **Metric views: three behaviours measured, not explained** (T29). (1) An association between
+  the fact and the base view under a dimension view turns the metric view's `RIGHT` into
+  `INNER` (reproduced by adding and dropping it); why that association is consulted at all is
+  unknown. (2) A `HAVING` on a metric grouped by the key of a dimension view without a declared
+  primary key plans as `INCOMPATIBLE_QUERY_VIEW` over file sources, but answers over a view
+  delegated to SQL Server — only those two cases were measured. (3) An expression over a
+  dimension grouped by its alias drops every `COUNT(DISTINCT …)` metric from the plan over SQL
+  Server sources and keeps it over file sources; PostgreSQL was not tried. The skill states each
+  as measured, with the condition it was measured under.
+- **The `FILTER ( … )` clause of a metric view** (T29) is not in the VQL grammar; the wizard
+  writes it. Over one source every query fails with `Error applying metric transformation.`,
+  over two a metrics-only query fails when the condition is on a fact column. The skill sends
+  filters to the fact view instead. A metric view saved from the Design Studio wizard with a
+  filter would show whether the wizard's own output works — not tried.
+- **Consumers of metric views were not queried** (T29): the Data Marketplace query wizard,
+  Assisted Query's dimension/metric flag, Power BI in DirectQuery mode, the MCP Server, and
+  summaries over a metric view are all from the documentation.
+- **The association template of `views` declares `(1)` on the principal end** (T29). Over a
+  fact with `NULL` or orphan keys, any metric view over it drops those facts whatever join type
+  it writes; `views` now says so next to the template, and `metrics` tells the agent to write
+  `(0,1)`. Whether the template itself should switch to `(0,1)` — an association does not make
+  joins written by hand implicit, so only metric views would notice — is open.
 
 - **The consumer side of `semantics` is documentation only** (T28). No MCP Server, Assisted
   Query or AI SDK was queried: that a column-level tag leaves a view hidden, that the MCP
@@ -197,6 +217,69 @@ property groups, sync pitfalls) is still to come, as a `marketplace` extension.*
 ---
 
 ## Сделано
+
+- **T29. The `metrics` skill: metric views, the views over them, and the rules for querying
+  them.** A new skill, `skills/metrics/`, for the 9.5 object the model does not know. Its core
+  is the owner's rule, confirmed live: the only thing built directly on a metric view is a
+  selection view — the metric view alone in its `FROM`, dimensions in `GROUP BY`, metrics in
+  `evaluate_metric` — and everything else (other facts and dimensions, a second metric view,
+  arithmetic over metrics, totals) goes over selection views. The body: the model before the
+  statement (one fact view, dimension views with one row per key and the key declared, one
+  association per dimension, what happens to facts without a dimension row), a table of which
+  rows each association keeps, five templates (the metric view; selection views, a total from
+  the metric and a share; an ad hoc query with what works and what does not; reading a metric
+  view; the totals check), who applies what, thirteen silent failures and the loud errors.
+  `references/metric-views.md` holds the full grammar with the undocumented `FILTER` clause,
+  the join types case by case, every query shape measured, what a metric view refuses, the
+  consumers and the procedures. `vql` maps the skill, names metric views and puts a rewrite of
+  someone else's metric view in its safety table; `views` points to it and warns next to the
+  association template that a `(1)` endpoint drops unmatched facts from any metric view over
+  it; `cache`, `semantics` and `execute` point to it; `dialect.md` adds `CAST(x AS long)` to
+  the cast syntax errors. The five templates run in the `verify` chain, each check asserting
+  that the totals agree; the fixture's `bv_income_band` now declares its key. Eval: five cases
+  (`routing-metrics`, `routing-metrics-query-symptom`, `discrimination-metrics-not-views`,
+  `discrimination-metrics-not-semantics`, `discrimination-mart-not-metrics`); 36 of 36 pass.
+
+  **Measured on 9.5.1, none of it in the documentation:** a metric view joined to another view
+  in one `FROM` runs until the query timeout (900 s over 20,000 fact rows, 60 s of 60 over 7,200), the
+  same join over a selection view answers at once; `evaluate_metric(a) * k` and
+  `ROUND(evaluate_metric(a), n)` return `a` unchanged and `evaluate_metric(a) /
+  evaluate_metric(b)` returns no rows, ad hoc and inside a `CREATE VIEW`; `evaluate_metric`
+  over any other view returns `NULL`; `SELECT *` or a dimension without `GROUP BY` returns no
+  rows (as a view: `Error applying metric transformation.`); a dimensions-only query lists every
+  member of the dimension view, not the ones with facts. Which fact rows survive is decided by
+  the association: `RIGHT` keeps facts without a dimension row only over a `(0,1)` endpoint,
+  `LEFT` (and no type over `PRINCIPAL (0,1)`) keeps every dimension member and drops those
+  facts, a `(1)` endpoint runs `INNER` whatever is written, the order of the aliases does not
+  matter, and a metrics-only query applies no join at all — so the grand total stays right
+  while every slice is short; an association from the fact to the base view under a dimension
+  view switched `RIGHT` to `INNER`. A metric over other metrics or `COUNT(*)` is refused
+  (`missing source schema`), a metric without an aggregate is accepted and returns nothing,
+  `SUM` over `int` stays `int` and `int / int` is integer division inside a metric too. A
+  `HAVING` on a metric grouped by the key of a dimension view with no declared key plans as
+  `VOID PLAN` over file sources; an expression over a dimension grouped by its alias drops every
+  `COUNT(DISTINCT …)` metric over SQL Server sources. Duplicate dimension keys multiply the
+  metric. `FILTER ( … )` exists after `SOURCES` and breaks some queries. A metric view takes no
+  cache; its dependants behave like those of any view. Against the documentation: a query with
+  no dimension is accepted (the Data Marketplace page forbids it), a metric cannot reference
+  other metrics (the Administration Guide says it can), and `GET_METRIC_VIEWS` takes a pattern
+  only positionally.
+
+  **Checked with subagents, baseline first**, on a web-returns fixture with `NULL` keys (build a
+  KPI layer from three files), the server's own health and telco metric views (combine two metric
+  views into a dashboard; answer four questions read-only). Three baseline runs (Opus): all three
+  reached right numbers, every one by reading the documentation on the internet (46, 34 and 21
+  tool calls); the build run first wrote `LEFT`, got right grand totals and short slices, and
+  found `RIGHT` by reading the plan; none met the expression, `SELECT *` or direct-join traps,
+  because each verified carefully. With the skill (Opus): 27, 27 and 14 calls, no documentation,
+  no failed DDL, `(0,1)` + `RIGHT` chosen before the first statement. Their reviews found two
+  behaviours my text had backwards or too wide — an alias-grouped expression losing the distinct
+  count, and the `HAVING` rule holding only over file sources — and added the per-member
+  average, the ad hoc form of the templates, `column_remarks`, the `DESC VQL` hazards (another
+  database's views returned unqualified, encrypted passwords in the transcript) and a wrong
+  line in `execute`. After those edits the build and the dashboard once more on Sonnet: the
+  same decisions in 13 and 14 tool calls, no documentation, 0 mismatches against plain SQL.
+  Unit tests 343 OK; `verify --env lab` green with the five new steps.
 
 - **T28. The `semantics` skill: the Virtual DataPort half of what AI consumers read.** A new
   skill, `skills/semantics/`, for views that already exist: a read-only audit of a database in

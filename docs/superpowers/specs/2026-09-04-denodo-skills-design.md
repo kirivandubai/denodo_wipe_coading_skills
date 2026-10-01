@@ -79,6 +79,7 @@ Virtual DataPort — основной адресат, но не единстве
 /denodo:procedures    хранимые процедуры: предопределённые, VQL, Java (вне v1)
 /denodo:cache         full cache of a view: on and off, load, clear (T27, beyond v1)
 /denodo:semantics     metadata AI consumers read: descriptions, keys, associations, MCP tag (T28, beyond v1)
+/denodo:metrics       metric views: KPIs defined once, the views over them, evaluate_metric (T29, beyond v1)
 ```
 
 The dialect has no skill of its own (section 9): it is a table in the body of `/denodo:vql`
@@ -139,9 +140,12 @@ denodo_skills/                        репозиторий = плагин = м
 │   ├── cache/
 │   │   ├── SKILL.md
 │   │   └── references/full-cache.md  every load parameter and ALTER VIEW … CACHE form, measured
-│   └── semantics/
+│   ├── semantics/
+│   │   ├── SKILL.md
+│   │   └── references/metadata.md    what each AI consumer reads, every metadata ALTER, inheritance
+│   └── metrics/
 │       ├── SKILL.md
-│       └── references/metadata.md    what each AI consumer reads, every metadata ALTER, inheritance
+│       └── references/metric-views.md  grammar, joins per association measured, query rules, limits
 ├── scripts/
 │   ├── denodo                        launcher (только stdlib)
 │   └── denodo_cli/                   реализация
@@ -759,6 +763,17 @@ Logical names, property groups and marketplace-side descriptions wait for a `mar
 extension. It cost the execution layer nothing: every statement it writes is an `ALTER`,
 already classified; its three templates and the claim that re-applying a view's file removes
 the metadata run in the `verify` chain.
+
+**Also beyond v1, `/denodo:metrics`** (T29, from the owner's roadmap review): metric views —
+KPIs declared once over a fact view and its dimension views, queried with `evaluate_metric`.
+The owner's rule is its core: the only thing built directly on a metric view is a selection
+view; other facts, dimensions, metric views and arithmetic over metrics go over selection
+views (confirmed live: a metric view joined in the same `FROM` runs until the query timeout,
+and an expression around `evaluate_metric` is dropped). It cost the execution layer nothing —
+`CREATE OR REPLACE METRIC VIEW` is a `CREATE`, classified as such; changing someone else's
+metric view is in the safety table of `vql`. Its five templates, each with a check that the
+totals agree, run in the `verify` chain, whose fixture now declares the key of
+`bv_income_band` (a dimension view without one empties every `HAVING` grouped by its key).
 
 ## 13. Риски и открытые вопросы
 
