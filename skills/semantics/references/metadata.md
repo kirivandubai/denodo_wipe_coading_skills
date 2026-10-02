@@ -128,6 +128,9 @@ The MCP Server prints both as `[PK] [NOT NULL]` (documentation).
 `DENODO_ASSISTANT_GENERATE_VIEW_DESCRIPTION(<db>, <view>, <max words>)` and
 `DENODO_ASSISTANT_GENERATE_FIELDS_DESCRIPTION(<db>, <view>, <array of fields>)` call the
 LLM configured for the Denodo Assistant and return text; they need that configuration and the
-`use_large_language_model_role` role (*documentation only*). Each call is a paid LLM request.
+role `use_large_language_model` — the documentation of these procedures says
+`use_large_language_model_role`, which does not exist on 9.5.1 (`Error loading role`). Each
+call is a paid LLM request (*documentation only*; the role, measured). The LLM functions in a
+query are `/denodo:ai`.
 What they return is a draft built from names and sample values, held to the same rule as
 yours: every sentence confirmed by the profile, approved by the human before it is written.

@@ -20,7 +20,8 @@ intent in words
   → decide placement: database, layer folder, name
   → write the statements into a .vql file in the project
   → apply the file with /denodo:execute
-  → verify: DESC, and SELECT for anything that carries rows
+  → verify: DESC, and SELECT for anything that carries rows — a view whose columns call
+    the server's LLM is read from its cache, or with a LIMIT the human agreed to (/denodo:ai)
   → the file stays in git
 ```
 
@@ -116,7 +117,7 @@ it just means the verification is yours to do, with `DESC` and a `SELECT`.
 | You do it yourself | Only after the human confirms |
 |---|---|
 | `CREATE` / `CREATE OR REPLACE` of an object | `DROP`, `TRUNCATE`, `DELETE` |
-| Read-only `SELECT`, `DESC`, `GET_*`, `env check` — on any profile, production included | `ALTER` of an object that already exists |
+| Read-only `SELECT`, `DESC`, `GET_*`, `env check` — on any profile, production included | `ALTER` of an object that existed before this session, or that something you did not create already reads. Your own new view takes the `ALTER VIEW … CACHE` line of its file without a yes; a `DROP`, even of your own object, does not |
 | Session settings: `SET QUERYTIMEOUT TO …`, `ALTER SESSION SET 'querytimeout' = …` | `INSERT`, `UPDATE` — the rows land in the source behind the view |
 | — | `SET '<property>' = …`, `WEBCONTAINER SET / STOP / START / RELOAD` — the whole server's configuration, not your session |
 | — | `CREATE OR REPLACE` of an existing view that drops or renames a column other objects use — the server accepts it and breaks them without an error (`/denodo:views`, "Before a column changes") |
@@ -124,6 +125,7 @@ it just means the verification is yours to do, with `DESC` and a `SELECT`.
 | — | `CREATE OR REPLACE METRIC VIEW` over a metric view you did not create in this session — a changed join type, filter or metric changes every figure built on it, with no column dropped (`/denodo:metrics`) |
 | — | the description, field descriptions, primary key or tags of a view you did not create in this session — by `ALTER VIEW`, `ALTER TAG`, or by re-declaring the view with `CREATE OR REPLACE`: the human approves the texts; naming a view to be made visible to an agent is the yes for its tag (`/denodo:semantics`) |
 | — | who may read what: a role, a user or a global security policy, created or changed, a grant of a role or a privilege to a person, or a tag that a policy names put on or taken off a column — unless every object it touches was created by you in this session. A `CREATE` counts: a new policy restricts people who exist, and `CREATE OR REPLACE` of an existing role adds to it (`/denodo:security`) |
+| `…_AI` calls on `Dual()` — to see that the server answers, or to try an expression on up to three texts — and a search whose text is embedded once | an AI function — `CLASSIFY_AI`, `SENTIMENT_AI` and the rest, or an embedding computed per row — evaluated on the rows of a view, a cache load of a view with such a column included: every row is a paid request to an outside provider, and its text goes with it. The human agrees to the number of requests, or names a ceiling (`/denodo:ai`) |
 | — | a predefined procedure that changes state, however it is spelled: `SELECT * FROM DROP_REMOTE_TABLE(…)`, `CALL CLEAN_CACHE_DATABASE(…)`, `GENERATE_STATS(…)` — the list is in `/denodo:procedures` |
 | `GET` calls to the marketplace | every destructive marketplace call (below) |
 | — | **any change at all on a profile with `production: true`, `CREATE` included** |
@@ -221,6 +223,7 @@ different figures depending on what Denodo pushes down to the source.
 | The full cache of a view — switching it on or off, loading it, clearing it; where every other cache setting lives | `/denodo:cache` |
 | KPIs defined once for every tool — metric views (`CREATE METRIC VIEW`), `evaluate_metric`, the views built on them | `/denodo:metrics` |
 | Who may read what — a role and its grants, giving it to a user, masking columns or filtering rows with a global security policy over tagged columns, checking what a given user gets | `/denodo:security` |
+| The LLM or the embedding model in a query — classifying, scoring, translating, summarising or extracting from a text column (`CLASSIFY_AI` …), a view that keeps those answers, semantic search over stored vectors (`VECTOR_DISTANCE`, `EMBED_AI`) | `/denodo:ai` |
 | What people and AI consumers read about existing views — descriptions, primary keys, associations, the tag the MCP Server shows views by; "why does the agent not see this view" | `/denodo:semantics` |
 | Running anything against a live server, reading its errors | `/denodo:execute` |
 

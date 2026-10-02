@@ -27,7 +27,8 @@ Remote: `github.com/kirivandubai/denodo_wipe_coading_skills` (имя на GitHub
 Юнит-тесты гоняются без зависимостей: `PYTHONPATH=scripts python3 -m unittest discover -s tests -t .`;
 интеграционные — против стенда: `DENODO_TEST_ENV=dev uv run --with denodo-sqlalchemy
 --with psycopg2-binary python -m unittest tests.integration.test_stand` (с `PYTHONPATH=scripts`).
-Прогон верификации шаблонов — `scripts/denodo verify --env lab`. Сам инструмент:
+Прогон верификации шаблонов — `scripts/denodo verify --env lab`; the AI templates run only
+with `--with-ai` (about 40 paid requests to the stand's LLM). Сам инструмент:
 `scripts/denodo --help`.
 
 ## Рабочий процесс
@@ -78,6 +79,10 @@ Remote: `github.com/kirivandubai/denodo_wipe_coading_skills` (имя на GitHub
   server-wide objects are read freely and never changed, the profile's own user included;
   the one standing exception is the `impersonator` role the owner granted to `admin` on the
   stand, which the policy checks of `security` and of `verify` stand on.
+- **AI calls on the stand are paid by the owner** (T32). Every `…_AI` function, `EMBED_AI` and
+  `VECTOR_DISTANCE` with a text sends one request per row to the stand's LLM provider. Probes
+  and subagent scenarios run them only over views of a few hundred rows at most — a fixture,
+  or a small demo view — and a subagent prompt names the only databases it may read.
 
 ## Проверки
 

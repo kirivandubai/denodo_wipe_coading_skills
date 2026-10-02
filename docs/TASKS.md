@@ -47,10 +47,8 @@ property groups, sync pitfalls) is still to come, as a `marketplace` extension.*
 
 *T31 is done — under «Сделано» below.*
 
-- **T32. Навык `ai`.** `дальше`. LLM-функции в VQL (`CLASSIFY_AI`, `SUMMARIZE_AI`,
-  `TRANSLATE_AI` …), тип `vector`, `EMBED_AI`, `VECTOR_DISTANCE`. Сначала проверить, настроена
-  ли LLM на стенде. Каждая строка — платный вызов: навык не запускает AI-функцию по таблице
-  без согласованного с человеком `LIMIT`. Р. 6.
+*T32 is done — under «Сделано» below.*
+
 - **T33. Навык `dml`.** `дальше`. `INSERT`/`UPDATE`/`DELETE` через представления, `RETURNING`,
   `WITH CHECK OPTION`. Безопасность записи в источники владелец решает позже; классификатор
   помечает `INSERT`/`UPDATE` уже после T22. Р. 6.
@@ -98,6 +96,24 @@ property groups, sync pitfalls) is still to come, as a `marketplace` extension.*
 - **`PUT /public/api/views/fields/logical-name` answers `200` and stores nothing** (T30, one
   try): `logicalName` stayed `null`. Probably the marketplace personalisation has logical names
   off; it belongs to the marketplace half of `semantics`, still to come.
+
+- **What `ai` leaves untried** (T32): the error texts on a server without an LLM or without
+  Enterprise Plus (this one has both); `ENRICH_AI_BINARY`; `SENTIMENT_AI` with a custom scale;
+  approximate search and `CONTEXT ('approximate_vector_search' = 'OFF')`; a data source with
+  `delegatevectorliteral = true` (every vector source on the server is another team's, set to
+  `false`); `EMBED_AI` delegated to a source; a request for several labels per row, which
+  `CLASSIFY_AI` cannot answer.
+- **A condition on an AI column over a file source runs before the other filters** (T32,
+  measured, not explained): the plan lists `sentiment_ai(…) is not null` first among the
+  base's filter conditions, and 4 wanted rows cost 39 requests over a 35-row file. Over JDBC the
+  other filters went to the database and the same query cost 8.
+- **`vql desc --vql` prints a dependency's data source** (T32, from a GREEN review): on an
+  interface view it printed the JDBC URI, user and encrypted password of the other team's data
+  source into the transcript. `('includeDependencies' = 'no')` exists and `views` uses it;
+  `execute` does not mention it.
+- **The server adds `TIMETOLIVEINCACHE NOEXPIRE` to a cache line** (T32, three runs): `DESC VQL`
+  of a view switched on with `ALTER VIEW … CACHE FULL WITH_STATUS` ends with it. Harmless, and
+  not in `cache`.
 
 - **Column privileges behave unlike the documentation** (T31). A role with `EXECUTE` on the
   database and `GRANT EXECUTE ( a, b ) ON db.view` was refused the other columns (`does not
@@ -262,6 +278,80 @@ property groups, sync pitfalls) is still to come, as a `marketplace` extension.*
 ---
 
 ## Сделано
+
+- **T32. The `ai` skill: the server's LLM in a query.** A new skill, `skills/ai/`: the six LLM
+  functions over a text column, a view that keeps their answers in its full cache, semantic
+  search over a stored vector column, and a search view an application sends a sentence to.
+  Its body: how many requests a query makes (measured), the owner's rule — an AI function runs
+  over rows only up to a number the human agreed to, counted in requests, a ceiling named up
+  front included — with the message shape, a rationalization table and red flags; six
+  templates (does the server answer, count before you run, classify and score over rows, the
+  cached view and its load, a search with a literal, the search view); what you need, Verify,
+  twelve silent failures and the loud errors. `references/functions.md` has every function as
+  measured (`EXTRACT_AI`'s register with spaced field names and `''` for a missing entity, the
+  one-request translate-or-keep-English recipe, the role), `references/vectors.md` the type,
+  the distance functions, which model `EMBED_AI` and `VECTOR_DISTANCE` use, delegation and
+  approximate search. Configuring the LLM and generating embeddings for a table stay outside.
+
+  **Decided in the task.** The stand has an LLM (`gpt-5.1`) and an embedding model
+  (`text-embedding-3-large`), read from the server's configuration file without the secrets.
+  No classifier rule: an AI call changes no state, and a text classifier cannot see how many
+  rows it will touch; the rule lives in `ai` and in a new row of `vql`'s safety table. The
+  `verify` chain gains `ai = true` steps behind a `--with-ai` flag (spec 11.1): about 40 paid
+  requests over a six-row fixture of the demo return reasons; the default run skips them with
+  a reason. `execute` says `--max-rows` cuts the printout, not the work; `vql`, `views`, `cache`
+  and `semantics` point to `ai`; `semantics` names the real role (`use_large_language_model`,
+  not the documentation's `use_large_language_model_role`); `views/references/delegation.md`
+  says a planned query must have no `LIMIT`. `CLAUDE.md` gains the rule that AI calls on the
+  stand go only over small views. Eval: four cases (`routing-ai`, `routing-ai-semantic-search`,
+  `routing-ai-cost-symptom`, `discrimination-ai-not-semantics`); 46 of 46 pass.
+
+  **Measured on 9.5.1:** one request is 0.7–2 s and they run one after another. A `LIMIT`
+  bounds the requests only when the function is in the `SELECT` list alone; in a `WHERE` it
+  runs until enough rows match; under `ORDER BY` or `GROUP BY` every row is sent; a condition on
+  an AI column is evaluated again for every row kept, and over a file source before the other
+  filters, on every row of the file. A column the query does not read is not computed; a cached
+  one sends nothing. `NULL` sends nothing, `''` a request and a confident `neutral`; a `CASE`
+  branch not taken sends nothing; a literal or a repeated text is one request per row; a
+  literal is evaluated while planning. The tool reads every row, so `--max-rows` bounds
+  nothing. `CLASSIFY_AI` always returns one of the labels as written (opening hours →
+  `billing` without an `other`), and mixed-arity scales fail before any request. The same
+  input changed its answer between two runs at temperature 0. A reader without
+  `use_large_language_model` fails on an uncached AI column and reads a cached one; `EMBED_AI`
+  needs no role. A view with `EXTRACT_AI` leaves a `_register_…` type behind after `DROP
+  VIEW`. A full cache cannot hold a vector column. `VECTOR_DISTANCE(<column>, <view
+  parameter>)` — the documentation's own pattern — embeds once per row on every search (4 rows
+  2 s, 32 rows 13 s); an `EMBED_AI` of the parameter in a `Dual()` branch is one request (0.9 s).
+  `embeddingmodel` survives derived views; a `NULL` vector fails the query once its row is in
+  the result; `delegatevectorliteral = false` sends every vector to Denodo; a `WHERE` on another
+  column of the search view is applied before the five are chosen; `GET_QUERY_EXECUTION_PLAN`
+  fails on any query with a `LIMIT`. The documentation's `VECTOR_INNER_PRODUCT_DISTANCE` does
+  not exist, and the real inner product is negative.
+
+  **Checked with subagents, baseline first**, on a 157-ticket helpdesk fixture (a CSV with nine
+  empty texts, four languages, four long complaints) and the telco embeddings of `verticals`.
+  Three baseline runs (Opus, 43, 57 and 44 tool calls, all reading the documentation on the
+  internet): the dashboard run under a deadline loaded the cache itself — 118 requests nobody
+  agreed to; the translation run stayed within ten sample tickets; the search run found the
+  per-row embedding in a plan and worked around it. With the skill, four Opus runs (26, 31, 33,
+  39 calls, no documentation read, no failed statement): the dashboard run sent six requests on
+  `Dual()` and left the files and the message; the control run, given a ceiling of 400, loaded
+  itself (151). Their reviews found two errors of mine — new source rows are absent from a
+  cached view, not present without answers; a filter on the search view is applied before the
+  top five, not after — and added the ceiling, the unit of the number, the folder and
+  `formatted` context of the templates, the sample with the cache off, the dedupe-and-join
+  option, the reload cost, the verify row for missing answers and the scale of the search
+  view. After the edits, the four scenarios on Sonnet (9, 17, 13, 15 calls) made the same
+  decisions; the control deduplicated to 58 requests. About 700 LLM and 300 embedding requests
+  in the whole task. Unit tests 366 OK; `verify --env lab --with-ai` green with eight new steps.
+
+  **Decided by the owner on the PR.** The strict reading stays: without a number from the
+  human no AI function runs over rows, not even a five-row sample — only `Dual()` tries — so
+  under a deadline the figures wait for the yes. And `vql`'s `ALTER` row now says what three
+  skills already assumed: an `ALTER` of an object the agent created in this session, which
+  nothing else reads yet, is its own (the `ALTER VIEW … CACHE` line of its new view); a `DROP`
+  still needs the yes, and every change does on production. The spec (6.3) and `execute` say
+  the same.
 
 - **T31. The `security` skill: who may read what.** A new skill, `skills/security/`, with the
   owner's first scope: a role with read access given to a user, tags on the columns a policy

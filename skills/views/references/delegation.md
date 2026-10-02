@@ -25,7 +25,10 @@ SELECT execution_plan
 ```
 
 It plans without running the query (`unions.md`, "Seeing the plan"), so the `SELECT` of a
-view can be planned inline before the view exists. Plan the top view, not the pieces: the
+view can be planned inline before the view exists. A `LIMIT` in the planned query makes it
+answer `Error executing query` with nothing more — plan the query without it; a view with a
+`LIMIT` inside plans fine (*live, 2026-10-02*). A query that calls an AI function on a literal
+is not free to plan: the literal is evaluated while planning (`/denodo:ai`). Plan the top view, not the pieces: the
 optimizer works through the `iv_` layer, and what reaches the database is decided for the
 whole stack. The text is long; the lines that decide are `noDelegationCause`,
 `optimizationsApplied`, `JDBC ROUTE (`, `datasource =` and `SQLSentence =`. Three outcomes:

@@ -96,6 +96,16 @@ class LoadChainTest(unittest.TestCase):
             load_chain(self.path)
         self.assertIn("sneaky", str(ctx.exception))
 
+    def test_ai_on_an_http_step_is_rejected(self):
+        # ai = true gates a VQL step that calls the server's LLM; an http step has no such
+        # call, and the flag on it would read as a guarantee nobody checks.
+        self.path.write_text(
+            '[[step]]\nid = "odd"\nkind = "template"\nchannel = "http"\nmarketplace = true\nai = true\n'
+            'address = "skills/marketplace/SKILL.md#Tag"\n', encoding="utf-8")
+        with self.assertRaises(ChainError) as ctx:
+            load_chain(self.path)
+        self.assertIn("odd", str(ctx.exception))
+
     def test_non_string_id_is_rejected(self):
         self.path.write_text(
             '[[step]]\nid = 5\nkind = "fixture"\nchannel = "vql"\nvql = "SELECT 1"\n', encoding="utf-8")
@@ -416,6 +426,41 @@ marketplace = true
         self.assertEqual(code, 0)
         self.assertTrue(doc["steps"][0]["skipped"])
         self.assertEqual(doc["steps"][0]["reason"], "marketplace steps need --with-marketplace")
+
+    def test_ai_steps_are_skipped_unless_asked_for(self):
+        # An AI step calls the server's LLM once per row it projects: every run costs money
+        # and needs an LLM the server may not have. Like the marketplace tail, opt-in.
+        chain = self.chain("""
+[values]
+database = "denodo_skills_test"
+[[step]]
+id = "llm"
+kind = "fixture"
+channel = "vql"
+vql = "SELECT SENTIMENT_AI('fine') FROM DUAL()"
+ai = true
+""")
+        doc, code = run_chain(profile(), chain, root=self.root, vql_factory=FakeVql)
+        self.assertEqual(code, 0)
+        self.assertTrue(doc["steps"][0]["skipped"])
+        self.assertEqual(doc["steps"][0]["reason"],
+                         "AI steps call the server's LLM, one paid request per row; they need --with-ai")
+
+    def test_ai_steps_run_with_the_flag(self):
+        chain = self.chain("""
+[values]
+database = "denodo_skills_test"
+[[step]]
+id = "llm"
+kind = "fixture"
+channel = "vql"
+vql = "SELECT SENTIMENT_AI('fine') FROM DUAL()"
+ai = true
+""")
+        doc, code = run_chain(profile(), chain, root=self.root, vql_factory=FakeVql, with_ai=True)
+        self.assertEqual(code, 0)
+        self.assertFalse(doc["steps"][0]["skipped"])
+        self.assertTrue(doc["steps"][0]["ok"])
 
     def test_a_broken_address_is_a_failed_step_not_a_crash(self):
         chain = self.chain("""

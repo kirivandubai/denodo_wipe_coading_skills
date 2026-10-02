@@ -29,7 +29,8 @@ denodo_skills/
 │   ├── cache/               the full cache of a view + references/
 │   ├── semantics/           descriptions, keys, associations, MCP visibility + references/
 │   ├── metrics/             metric views and the views over them + references/
-│   └── security/            roles, grants, global security policies + references/
+│   ├── security/            roles, grants, global security policies + references/
+│   └── ai/                  LLM functions, their cached answers, semantic search + references/
 ├── scripts/
 │   ├── denodo               launcher — standard library only
 │   └── denodo_cli/          the implementation behind it
@@ -156,7 +157,9 @@ scripts/denodo verify --env dev
 ```
 
 `--with-marketplace` adds the REST tail (which writes to the shared marketplace catalog),
-`--keep` leaves the objects for inspection, and `--update-marks` rewrites the `verified:`
+`--with-ai` adds the steps that call the server's LLM and embedding model (about 40 paid
+requests; they need Enterprise Plus and a configured Denodo Assistant, and the embedding
+model named in `[values]`), `--keep` leaves the objects for inspection, and `--update-marks` rewrites the `verified:`
 line of every step that passed. Run this before blaming a skill's text for a failure — a
 broken template looks exactly like a badly worded skill.
 
