@@ -134,6 +134,12 @@ through views failing with `Update operation is not allowed` and `No update meth
 run` (`routing-dml-symptom`) — the second names no statement at all, the third only the server's
 errors, which is how a view that takes no writes reaches a human.
 
+Three guard `/denodo:materialize` (T34): a nightly table in a warehouse for a team that reads it
+directly (`routing-materialize`), dashboards whose generated SQL cannot change and whose figures
+may be a night old (`routing-materialize-summary`), and a `REFRESH` refused on a table the
+command made (`routing-materialize-symptom`) — the second names no statement, only the
+situation a summary is for.
+
 **`discrimination`** — фразы на границах, где описания конкурируют. Каждый такой кейс несёт
 и положительный, и отрицательный грейдер, потому что проверяется именно выбор между двумя:
 
@@ -158,6 +164,8 @@ errors, which is how a view that takes no writes reaches a human.
 | `discrimination-ai-not-semantics` | `semantics` | `ai` |
 | `discrimination-views-not-dml` | `views` | `dml` |
 | `discrimination-dml-not-cache` | `dml` | `cache` |
+| `discrimination-cache-not-materialize` | `cache` | `materialize` |
+| `discrimination-materialize-not-dml` | `materialize` | `dml` |
 
 Первые две строки — тот самый риск, ради которого сьют и заводился: «тег» в VDP и «тег» в
 маркетплейсе — **разные объекты на разных серверах**, и перепутанный навык уйдёт корректным

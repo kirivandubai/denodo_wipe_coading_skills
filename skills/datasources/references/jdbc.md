@@ -178,4 +178,6 @@ What generated VQL looks like, and what to change in it:
 `DATA_LOAD_CONFIGURATION ( USE_FOR_QUERY_OPTIMIZATION = DATA_MOVEMENT … )`,
 `EMBEDDED_MPP`, `PROCESSING_UNITS`, external tables and bulk-load settings belong to
 performance work, which is outside v1. The clauses exist in the grammar above; the
-Administration Guide documents what they do.
+Administration Guide documents what they do. A data movement written into a view, a remote
+table or a summary created in this data source's database is `/denodo:materialize`; the
+temporary tables of a data movement go to its `TARGET_CATALOG` and `TARGET_SCHEMA`.

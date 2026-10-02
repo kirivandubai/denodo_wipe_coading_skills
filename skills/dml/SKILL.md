@@ -1,6 +1,6 @@
 ---
 name: dml
-description: Use when rows have to change in the database behind a Denodo 9.5 view — INSERT INTO a view or base view, UPDATE … SET, DELETE FROM, INSERT … SELECT from another view or a file, INSERT … ON DUPLICATE KEY UPDATE (upsert), RETURNING the key the database generated, a view an application writes through WITH CHECK OPTION ("correct these records", "set these orders back to open", "load these rows into the table", "delete the test orders", "apply the corrections in this file", "the app may only create orders for its own region", "give me the new ids"). Also when such a write fails with "Update operation is not allowed", "No update methods ready to be run", "The update condition is non-delegable", "CHECK OPTION failed" or "is not updateable", or a cached view went empty after someone updated rows through it. Not for building views that only read (/denodo:views), not for loading a view's cache (/denodo:cache), not for creating tables in a source or storing a query's result in one (remote and materialized tables).
+description: Use when rows have to change in the database behind a Denodo 9.5 view — INSERT INTO a view or base view, UPDATE … SET, DELETE FROM, INSERT … SELECT from another view or a file, INSERT … ON DUPLICATE KEY UPDATE (upsert), RETURNING the key the database generated, a view an application writes through WITH CHECK OPTION ("correct these records", "set these orders back to open", "load these rows into the table", "delete the test orders", "apply the corrections in this file", "the app may only create orders for its own region", "give me the new ids"). Also when such a write fails with "Update operation is not allowed", "No update methods ready to be run", "The update condition is non-delegable", "CHECK OPTION failed" or "is not updateable", or a cached view went empty after someone updated rows through it. Not for building views that only read (/denodo:views), not for loading a view's cache (/denodo:cache), not for creating a table from a query's result or refreshing one (/denodo:materialize).
 ---
 
 # Writing rows through a view
@@ -17,8 +17,9 @@ only its own rows; rows copied from another view or a file, including an upsert;
 readers of the view see afterwards. Building views that only read is `/denodo:views`; a
 view's cache is `/denodo:cache`; base views and data sources are `/denodo:datasources`;
 granting `INSERT`, `UPDATE`, `DELETE` on a view is `/denodo:security`; applying files is
-`/denodo:execute`. Creating a table in a source, or storing a query's result in one (remote
-and materialized tables), is not here — say so and stop.
+`/denodo:execute`. Creating a table in a source, or storing a query's result in one — a
+remote table, a summary, a materialized table — is `/denodo:materialize`; so is the refresh of
+such a table.
 
 ## What a write does
 

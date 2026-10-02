@@ -154,8 +154,9 @@ a `FROM` of its own — the selection view — and build everything else over it
 A summary built from a metric-view query (`SELECT <dims>, evaluate_metric(…) … GROUP BY
 <dims>`) answers that query and any query over a subset of its dimensions (*documentation*,
 Administration Guide, "Materialization and Smart Query Acceleration using Summaries"; it
-needs every metric of the view in the summary). Summaries are created in Design Studio by
-someone with the right licence and privileges — not by this skill.
+needs every metric of the view in the summary). Summaries are
+created by a server administrator with the right licence — `/denodo:materialize`, where a
+summary over plain views is measured; one over a metric view was not tried.
 
 ## Consumers
 

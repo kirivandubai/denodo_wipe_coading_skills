@@ -51,10 +51,8 @@ property groups, sync pitfalls) is still to come, as a `marketplace` extension.*
 
 *T33 is done — under «Сделано» below.*
 
-- **T34. Навык `materialize`.** `дальше`. Удалённые и материализованные таблицы, summaries,
-  data movement. Удалённая таблица пишет в базу-источник с `DROP` и `TRUNCATE` внутри —
-  решить в задаче запись во внешние базы (р. 9, решение 2) и добавить
-  `CREATE [OR REPLACE] REMOTE TABLE` и `REFRESH` удалённой таблицы в классификатор. Р. 5.3.
+*T34 is done — under «Сделано» below.*
+
 - **T35. Навык `testing`: формат `.denodotest`, исполняет Testing Tool.** `дальше`. Тесты
   рядом с `.vql` проекта, первые — проверки, которые `views` уже делает при создании.
   Своего раннера нет. Решить в задаче: как получить `configuration.properties` вне
@@ -95,6 +93,29 @@ property groups, sync pitfalls) is still to come, as a `marketplace` extension.*
 - **`PUT /public/api/views/fields/logical-name` answers `200` and stores nothing** (T30, one
   try): `logicalName` stayed `null`. Probably the marketplace personalisation has logical names
   off; it belongs to the marketplace half of `semantics`, still to come.
+
+- **What `materialize` leaves untried** (T34): every target but SQL Server (no PostgreSQL schema
+  this time), bulk loads (the data source has none configured — inserts in batches), Hive,
+  Impala and the Lakehouse Accelerator; incremental summary loads (`CUSTOM LOAD QUERY`,
+  `LAST_DATE_REFRESH`), a summary over a metric view, the database-level `SUMMARY REWRITE`
+  switch, the Summary Recommendations tool, and the error a non-administrator gets; automatic
+  (cost-based) data movement and the database's *Optimizer data movement control*; temporary
+  tables; materialized tables on a database without a cache; `CREATE INDEX` in the command.
+- **A failed summary load keeps the summary in every plan** (T34, measured, not explained): its
+  table empty, the queries it answers return no rows or a `NULL` total while the sources are
+  fine, until a `REFRESH` succeeds or rewriting is switched off. Together with the documented
+  invalidation on a changed view that did not happen (two kinds of change), it may be a defect
+  worth reporting to Denodo. The skill makes the loading job switch rewriting off on failure.
+- **`CREATE_REMOTE_TABLE` with `create_table_template` fails** with a message cut before its
+  reason, and leaves an empty table (T33 once, T34 twice); the command takes a template. The
+  skill widens text with `CAST` instead. The documented `REMOTE_TABLE_ALREADY_EXISTS` and other
+  statuses never came back as rows: a taken name fails the call.
+- **Readers of a table in a source database** have no one-call answer: `GET_SOURCE_TABLE()`
+  takes one base view at a time, and a text search of `DESC VQL DATABASE` prints the data
+  sources' encrypted passwords with it. Two GREEN runs asked for a better way.
+- **A new table where the human named is the agent's, but the tool still flags it `table`** (T34):
+  on a production profile it waits for the yes like every change — consistent with `vql`, and
+  the skill says so; whether the owner wants the flag narrower is open.
 
 - **What `dml` leaves untried** (T33): PostgreSQL and every other database — all of it was
   measured against SQL Server, so `RETURNING`, the upsert, how values land and the cut error text
@@ -303,6 +324,93 @@ property groups, sync pitfalls) is still to come, as a `marketplace` extension.*
 ---
 
 ## Сделано
+
+- **T34. The `materialize` skill: query results stored as tables.** A new skill,
+  `skills/materialize/`: a remote table other tools read, created by `CREATE_REMOTE_TABLE` and
+  reloaded by `REFRESH`; a frozen snapshot; a summary the optimizer answers aggregate queries
+  from; a data movement that copies the small side of a federated join next to the big one; a
+  materialized table. Its body: what each does (measured), which one for which request, the
+  rule — new is the agent's, existing is the human's — with the report shape, a
+  rationalization table from the baseline and red flags; eight templates (is the name free and
+  what will land, the remote table, its refresh, a summary created unloaded and proved by the
+  plan, its load and the check against the views, data movement in a view, a materialized table,
+  the drop); what you need, Verify, fifteen silent failures and the loud errors.
+  `references/remote-tables.md` has the procedure and the command in full, every result, the
+  types as they land, `REFRESH`, changing a load query, finding a table's readers, materialized
+  and temporary tables; `references/summaries.md` the summary grammar, which queries are
+  rewritten (measured), staleness, a failed load, collation, incremental loads (documentation)
+  and data movement.
+
+  **Decided in the task (roadmap 9.2, part 3).** The owner chose the rule for tables in external
+  databases: a new table, by a statement that cannot overwrite one (`CREATE_REMOTE_TABLE` with
+  `replace_remote_table_if_exist = false`), in the data source and schema the human named, under
+  a name checked free, is the agent's own, and so are its `REFRESH` and its replacement in the
+  same session; replacing, emptying or dropping a table older than the session, a new load query
+  for one, and every load of a summary wait for the yes — from its first load a summary answers
+  other people's queries. A summary created unloaded is the agent's. `vql`'s safety table and its
+  definition of destruction say so; the roadmap's decision log records it. The classifier gains
+  `destructive: table` for `CREATE [OR REPLACE] REMOTE TABLE`, `CREATE [OR REPLACE] SUMMARY VIEW`,
+  `REFRESH` and `CREATE OR REPLACE MATERIALIZED TABLE` (a plain `CREATE MATERIALIZED TABLE` and
+  `SELECT … INTO` refuse a taken name and pass). The owner allowed `zq34_*` tables in the stand's
+  SQL Server for this task and one yes for their cleanup; subagents wrote there through the
+  scratchpad copy of the tool without a new permission rule. `verify` gains eight steps behind
+  `--with-writes` — the plan checks read `execution_plan LIKE '%Summary Acceleration%'` — and
+  `[cleanup] writes` takes both table names over and drops them. `execute` documents the kind and
+  `('includeDependencies' = 'no')`; `dml`, `cache`, `metrics`, `datasources`, `views` and
+  `procedures` point to the skill; `views` says a remote table is not in `USED_BY`. Eval: five
+  cases (`routing-materialize`, `routing-materialize-summary`, `routing-materialize-symptom`,
+  `discrimination-cache-not-materialize`, `discrimination-materialize-not-dml`); 57 of 57 pass.
+
+  **Measured on 9.5.1 against SQL Server:** `CREATE_REMOTE_TABLE` answers three phase rows with
+  `inserted_rows`, names the wrapper after the base view and stores the query as its
+  `DATA_LOAD_QUERY`; a taken name fails the whole call with a bare `[STORED PROCEDURE] [ERROR]`
+  and touches nothing, while a failure after the table was created (a 5,000-character text into
+  `varchar(4000)`, any `create_table_template` on the procedure) leaves it empty without a base
+  view. The `CREATE REMOTE TABLE` command answers nothing, makes no base view, and its table can
+  be neither refreshed nor dropped by `DROP_REMOTE_TABLE`; with `OR REPLACE` it replaced a table
+  another database's base view read, which stayed `OK` until a dropped column was queried.
+  `REFRESH` answers nothing and empties the table first: with the source file gone, and with a
+  column added under a `SELECT *` load query, it failed and left the table empty.
+  `ALTER TABLE … DATA_LOAD_QUERY` is a syntax error; re-declaring the base view with a new one
+  works and leaves the table. A remote table is not in `USED_BY` of its source view (a summary
+  is); `DROP VIEW` orphans the table. Types: text without a source size → `varchar(4000)`, where
+  characters outside the code page become `?` (`CAST(… AS nvarchar(n))` keeps them), `SUM` of a
+  `decimal` → `numeric(38,20)`, `timestamptz` → `datetimeoffset`. A summary is used at its grain
+  and coarser, for filters on its columns and `COUNT(*)` from its count, for a `COUNT(DISTINCT)`
+  only at exactly its grain, never for `AVG`; it kept answering its last load after a row was
+  inserted under it and after the view under it gained a filter (the documented invalidation was
+  not observed); a failed `REFRESH` left it empty **and in every plan**, so the queries it answers
+  returned no rows and a total `NULL` until it was reloaded; its filters ran in SQL Server's
+  collation (`'DELHI'` found `Delhi`). `DATA_LOAD_IMMEDIATE = FALSE` creates no table and keeps it
+  out of plans until a `REFRESH`; `consider_all_summaries` puts it in a plan; `QUERY REWRITE
+  ENABLED = FALSE` takes it out. A data movement in a view's `CONTEXT` creates
+  `t_<view>_<uuid>` in the target and drops it; into a data source the big side is not in it
+  moves for nothing (4.6 s → 0.9 s when it is the right one). A materialized table lives in the
+  cache database as `C_<NAME>…`, refuses `UPDATE` and `DELETE`, does not enforce its key, keeps
+  twenty decimals whatever is declared, and `CREATE OR REPLACE` over its rows empties it.
+
+  **Checked with subagents, baseline first**, on copies of a retail warehouse project over the
+  stand's SQL Server (a million sale lines; stores from a separate data source): a nightly table
+  whose requested name was taken by a frozen month-end table another database reads; dashboards
+  over `COUNT(DISTINCT)` aggregates, "do whatever you need", unreachable; a frozen audit snapshot
+  in a named scratch schema (the control). Three baseline runs (Opus, current skills, 61, 39 and
+  42 tool calls, grammar from the web): the trap run found the reader and stopped, but would
+  have refreshed with `DELETE` + `INSERT`; the dashboard run never considered a summary or a data
+  movement, and found a re-pointing that only worked because both data sources were the same
+  server (fixed in the GREEN fixture: the store master became a file, its stale warehouse copy
+  forbidden); the control created the table itself — against the skills of the time, with the
+  reasons the owner's rule now states — through the command, with no count and no refresh. With
+  the skill, four Opus runs (40, 43, 33 and 37 calls, no documentation; a fourth scenario: a CFO
+  table whose load query is `SELECT *` over a view that has gained a column): the trap found its
+  reader in two calls; the dashboard run created two summaries unloaded, proved them by the plan
+  and left the load for the yes; the control created its snapshot and marked it frozen; the
+  refresh run did not refresh and showed why the refresh would have emptied the table. Their
+  reviews corrected two of my claims (`COUNT(DISTINCT)` is answered at a summary's own grain;
+  the `GENERATE_VQL_TO_CREATE_JDBC_BASE_VIEW` call I wrote with `folder = '/'` fails) and led to
+  four measurements (a failed summary load, collation, non-Latin text, changing a load query),
+  the `UPPER` name check, the pre-refresh column check and the reports' shape. After the edits,
+  the four scenarios on Sonnet (18, 16, 14 and 10 calls) made the same decisions.
+  Unit tests 380 OK; `verify --env lab --with-writes` green with eight new steps (49 verified).
 
 - **T33. The `dml` skill: writing rows through a view.** A new skill, `skills/dml/`: updating,
   inserting (with the generated key back) and deleting by key through a base view, a view an

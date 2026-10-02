@@ -26,7 +26,7 @@ tool reads host, user and password from `~/.denodo/profiles.toml` itself.
 | Read stdin | `vql run --env dev -` |
 | Another database | add `--database <db>` (or put `CONNECT DATABASE <db>;` first in the file) |
 | Schema of an object | `vql desc --env dev bv_orders` (`--type view` is the default and covers base views too — there is no `DESC TABLE`) |
-| Server-generated VQL | `vql desc --env dev bv_orders --vql` — read it, do not apply it: it opens with `DROP … CASCADE` and rebuilds the object **together with what it depends on** in its own database — dependencies in another database are left out, except under a metric view of another database: the metric view is left out and its source views come back unqualified, as if they were in yours — never with what depends on it. Which object you ask therefore decides what you get: a base view returns source, wrapper and `CREATE TABLE` in one answer; the source alone returns only itself, without the column list. A name can be qualified — `vql desc --env dev "other_db.bv_orders" --vql` reads another database without switching yours — *verified: 9.5.1 (live, 2026-09-12)* |
+| Server-generated VQL | `vql desc --env dev bv_orders --vql` — read it, do not apply it: it opens with `DROP … CASCADE` and rebuilds the object **together with what it depends on** in its own database — dependencies in another database are left out, except under a metric view of another database: the metric view is left out and its source views come back unqualified, as if they were in yours — never with what depends on it. Which object you ask therefore decides what you get: a base view returns source, wrapper and `CREATE TABLE` in one answer; the source alone returns only itself, without the column list. A name can be qualified — `vql desc --env dev "other_db.bv_orders" --vql` reads another database without switching yours — *verified: 9.5.1 (live, 2026-09-12)*. The object alone, without the data source its dependencies bring (and that source's encrypted password): `vql run --env dev -e "DESC VQL VIEW bv_orders ('includeDependencies' = 'no', 'dropElements' = 'no')"` — *verified: 9.5.1 (live, 2026-10-02)* |
 | Other types | `--type database`, `--type "datasource df"`, `--type "wrapper df"`, `--type tag`, `--type association`, `--type "interface view"`, `--type role`, `--type global_security_policy` (with `--vql`, read only: it starts with `DROP … CASCADE`); folders take a quoted path: `vql desc --env dev "'/sales'" --type folder --vql` |
 | Marketplace call | `api get --env dev /public/api/tags` |
 | … with a body | `api post --env dev /public/api/tags --json '{"name":"pii","description":"…","descriptionType":"TEXT"}'` |
@@ -162,14 +162,16 @@ one destroys, is in `/denodo:procedures`, `references/predefined.md`); a query w
 `'cache_invalidate'` (`/denodo:cache`); a `CREATE [OR REPLACE]` of a `USER`, a `ROLE` or a
 `GLOBAL_SECURITY_POLICY`, `CHOWN`, and a `CREATE DATABASE` with a `GRANT` — each changes who
 may read what across the server, and re-declaring an existing role or user adds to it
-instead of replacing it (`/denodo:security`); HTTP `DELETE`, and
+instead of replacing it (`/denodo:security`); `CREATE [OR REPLACE] REMOTE TABLE`, `CREATE [OR
+REPLACE] SUMMARY VIEW`, `REFRESH` and `CREATE OR REPLACE MATERIALIZED TABLE` — each creates,
+replaces or empties a table in a database (`/denodo:materialize`); HTTP `DELETE`, and
 the marketplace `POST`s that replace a whole set or delete what is missing from the payload
 — `tags/vdp/synchronize`,
 `element-management/{all,DATABASES,VIEWS,WEBSERVICES,EXTERNAL_ELEMENTS}/synchronize`, the
 `external-tool-servers/synchronize` family, `views/{id}/tags`,
 `category-management/views/{id}/categories` and `property-management/views/{id}/groups`.
 Every result carries a `destructive` field: the
-kind (`drop`, `alter`, `delete`, `write`, `setting`, `procedure`, `cache`, `security`, `replace`) when it is one of
+kind (`drop`, `alter`, `delete`, `write`, `setting`, `procedure`, `cache`, `security`, `table`, `replace`) when it is one of
 these, and `null` — not `false` — when it is not. Session settings come back `null` and pass on
 any profile: `SET QUERYTIMEOUT TO …` (property name unquoted) and `ALTER SESSION SET
 'querytimeout' = …` last until the connection closes; a quoted property after a bare `SET` is
