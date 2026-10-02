@@ -54,6 +54,7 @@ class Step:
     expect: str = "rows"
     marketplace: bool = False
     ai: bool = False
+    writes: bool = False
     database: str | None = None
 
 
@@ -63,6 +64,7 @@ class Chain:
     steps: list[Step]
     cleanup: list[str] = field(default_factory=list)
     cleanup_http: list[dict] = field(default_factory=list)
+    cleanup_writes: list[str] = field(default_factory=list)
 
 
 def load_chain(path: Path) -> Chain:
@@ -84,7 +86,11 @@ def load_chain(path: Path) -> Chain:
     cleanup_section = document.get("cleanup") or {}
     cleanup = [str(s) for s in cleanup_section.get("vql", [])]
     cleanup_http = _cleanup_http_entries(cleanup_section.get("http", []), path)
-    return Chain(values=values, steps=steps, cleanup=cleanup, cleanup_http=cleanup_http)
+    cleanup_writes = cleanup_section.get("writes", [])
+    if not isinstance(cleanup_writes, list) or not all(isinstance(s, str) for s in cleanup_writes):
+        raise ChainError(f"[cleanup] writes in {path} must be a list of VQL statements, got {cleanup_writes!r}")
+    return Chain(values=values, steps=steps, cleanup=cleanup, cleanup_http=cleanup_http,
+                 cleanup_writes=list(cleanup_writes))
 
 
 def _cleanup_http_entries(raw: object, path: Path) -> list[dict]:
@@ -152,6 +158,11 @@ def _step(raw: dict) -> Step:
         # ai = true gates a VQL step that calls the server's LLM or embedding model; an http
         # step makes no such call, and the flag on it would claim a gate nothing enforces.
         raise ChainError(f"step {step_id!r}: ai = true only applies to a vql-channel step")
+    writes = bool(raw.get("writes", False))
+    if writes and channel != "vql":
+        # writes = true gates a VQL step that changes rows in a source database the manifest
+        # names; an http step writes nothing there.
+        raise ChainError(f"step {step_id!r}: writes = true only applies to a vql-channel step")
     database = raw.get("database")
     if database is not None and not isinstance(database, str):
         raise ChainError(f"step {step_id!r}: database must be a string, got {database!r}")
@@ -168,7 +179,7 @@ def _step(raw: dict) -> Step:
                 substitute={str(k): str(v) for k, v in (raw.get("substitute") or {}).items()},
                 capture={str(k): str(v) for k, v in (raw.get("capture") or {}).items()},
                 expect_body={str(k): str(v) for k, v in expect_body.items()},
-                check=raw.get("check"), expect=expect, marketplace=marketplace, ai=ai,
+                check=raw.get("check"), expect=expect, marketplace=marketplace, ai=ai, writes=writes,
                 database=database)
 
 
@@ -352,6 +363,7 @@ def run_chain(
     database: str | None = None,
     with_marketplace: bool = False,
     with_ai: bool = False,
+    with_writes: bool = False,
     keep: bool = False,
     update_marks: bool = False,
     today: dt.date | None = None,
@@ -410,6 +422,14 @@ def run_chain(
     (or without the Enterprise Plus bundle) fails them. A default run must stay free and
     portable, so they are skipped unless asked for.
 
+    ``with_writes`` gates the steps marked ``writes = true`` and the ``[cleanup] writes``
+    statements together (T33). Those steps create a table in a source database the manifest
+    names (``[values]``), outside the test database, and insert, update and delete its rows
+    through Virtual DataPort; a server without that data source, or an account that may not
+    create tables there, fails them, and a default run must not touch that database at all.
+    ``[cleanup] writes`` runs before the rest of cleanup: the table is dropped through the
+    base view that names it, which ``DROP DATABASE ... CASCADE`` would otherwise take away.
+
     ``update_marks`` rewrites the ``-- verified: ...`` mark of every ``template`` step
     that passed, with the version the server actually reported and ``today`` (or
     ``dt.date.today()`` when ``today`` is not given). The version is read once, before
@@ -462,6 +482,11 @@ def run_chain(
                 reports.append(_skipped(
                     step, "AI steps call the server's LLM, one paid request per row; they need --with-ai"))
                 continue
+            if step.writes and not with_writes:
+                reports.append(_skipped(
+                    step, "write steps create a table in a source database and change its rows; "
+                          "they need --with-writes"))
+                continue
             report = _run_step(profile, step, values=values, root=root, vql_factory=vql_factory,
                                rest_factory=rest_factory, allow_destructive=allow_destructive,
                                update_marks=update_marks, version=version, day=day)
@@ -474,7 +499,7 @@ def run_chain(
         # here (see the docstring) still leaves cleanup done before it surfaces.
         cleanup_report = _cleanup(profile, chain, values=values, vql_factory=vql_factory,
                                   rest_factory=rest_factory, allow_destructive=allow_destructive,
-                                  keep=keep, with_marketplace=with_marketplace)
+                                  keep=keep, with_marketplace=with_marketplace, with_writes=with_writes)
     ok = all(r["ok"] for r in reports if not r["skipped"])
     ok = ok and (cleanup_report["ran"] is False or (
         all(s["ok"] for s in cleanup_report["statements"]) and
@@ -560,7 +585,7 @@ def _check_cleanup_placeholders(chain: Chain, values: dict[str, str]) -> None:
     the missing value and the statement, instead of a remote syntax error discovered only
     after the run has already touched the server.
     """
-    for statement in chain.cleanup:
+    for statement in chain.cleanup_writes + chain.cleanup:
         for match in PLACEHOLDER.finditer(statement):
             name = match.group(1)
             if name not in values:
@@ -570,7 +595,7 @@ def _check_cleanup_placeholders(chain: Chain, values: dict[str, str]) -> None:
 
 def _cleanup(profile: Profile, chain: Chain, *, values: dict[str, str], vql_factory: Callable,
              rest_factory: Callable | None, allow_destructive: bool, keep: bool,
-             with_marketplace: bool = False) -> dict:
+             with_marketplace: bool = False, with_writes: bool = False) -> dict:
     """Always runs, including after a failure: a run that did not clean up must say so.
 
     Cleanup statements are destructive by definition (``DROP ...``, ``DELETE``, and the
@@ -605,12 +630,16 @@ def _cleanup(profile: Profile, chain: Chain, *, values: dict[str, str], vql_fact
     if keep:
         return {"ran": False, "reason": "--keep was given; objects were left on the server",
                 "statements": [], "http": []}
-    if not chain.cleanup and not chain.cleanup_http:
+    if not chain.cleanup and not chain.cleanup_http and not chain.cleanup_writes:
         return {"ran": False, "reason": "the manifest has no cleanup section",
                 "statements": [], "http": []}
     vql_report: list[dict] = []
-    if chain.cleanup:
-        statements = [render(s, {}, values) for s in chain.cleanup]
+    # The write steps' table lives in a source database, not in the test database: it goes
+    # first, through the base view DROP DATABASE would take away, and only when those steps
+    # could have run.
+    vql_cleanup = (chain.cleanup_writes if with_writes else []) + chain.cleanup
+    if vql_cleanup:
+        statements = [render(s, {}, values) for s in vql_cleanup]
         doc, _ = run_statements(profile, statements, transport_factory=vql_factory, max_rows=MAX_ROWS,
                                 allow_destructive=allow_destructive, continue_on_error=True)
         if doc.get("statements") is None:

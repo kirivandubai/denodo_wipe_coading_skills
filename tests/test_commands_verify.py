@@ -106,6 +106,23 @@ class LoadChainTest(unittest.TestCase):
             load_chain(self.path)
         self.assertIn("odd", str(ctx.exception))
 
+    def test_writes_on_an_http_step_is_rejected(self):
+        # writes = true gates a VQL step that changes rows in a source database; an http
+        # step writes nothing there, and the flag on it would claim a gate nothing enforces.
+        self.path.write_text(
+            '[[step]]\nid = "odd"\nkind = "template"\nchannel = "http"\nmarketplace = true\nwrites = true\n'
+            'address = "skills/marketplace/SKILL.md#Tag"\n', encoding="utf-8")
+        with self.assertRaises(ChainError) as ctx:
+            load_chain(self.path)
+        self.assertIn("odd", str(ctx.exception))
+
+    def test_cleanup_writes_must_be_a_list_of_statements(self):
+        self.path.write_text(
+            '[cleanup]\nwrites = "DROP X"\n[[step]]\nid = "a"\nkind = "fixture"\nchannel = "vql"\nvql = "SELECT 1"\n',
+            encoding="utf-8")
+        with self.assertRaises(ChainError):
+            load_chain(self.path)
+
     def test_non_string_id_is_rejected(self):
         self.path.write_text(
             '[[step]]\nid = 5\nkind = "fixture"\nchannel = "vql"\nvql = "SELECT 1"\n', encoding="utf-8")
@@ -462,6 +479,43 @@ ai = true
         self.assertFalse(doc["steps"][0]["skipped"])
         self.assertTrue(doc["steps"][0]["ok"])
 
+    def test_write_steps_are_skipped_unless_asked_for(self):
+        # A write step creates a table in a source database the manifest names and writes
+        # rows into it: a server without that data source, or an account that may not create
+        # tables there, fails it. Like the AI steps, opt-in.
+        chain = self.chain("""
+[values]
+database = "denodo_skills_test"
+[[step]]
+id = "write"
+kind = "fixture"
+channel = "vql"
+vql = "UPDATE t SET a = 1 WHERE b = 2"
+writes = true
+""")
+        doc, code = run_chain(profile(), chain, root=self.root, vql_factory=FakeVql)
+        self.assertEqual(code, 0)
+        self.assertTrue(doc["steps"][0]["skipped"])
+        self.assertEqual(doc["steps"][0]["reason"],
+                         "write steps create a table in a source database and change its rows; "
+                         "they need --with-writes")
+
+    def test_write_steps_run_with_the_flag(self):
+        chain = self.chain("""
+[values]
+database = "denodo_skills_test"
+[[step]]
+id = "write"
+kind = "fixture"
+channel = "vql"
+vql = "UPDATE t SET a = 1 WHERE b = 2"
+writes = true
+""")
+        doc, code = run_chain(profile(), chain, root=self.root, vql_factory=FakeVql, with_writes=True)
+        self.assertEqual(code, 0)
+        self.assertFalse(doc["steps"][0]["skipped"])
+        self.assertTrue(doc["steps"][0]["ok"])
+
     def test_a_broken_address_is_a_failed_step_not_a_crash(self):
         chain = self.chain("""
 [values]
@@ -540,6 +594,24 @@ vql = "CONNECT DATABASE {database};"
         doc, code = run_chain(profile(), load_chain(self.manifest), root=self.root, vql_factory=FakeVql)
         self.assertEqual(code, 1)
         self.assertTrue(doc["cleanup"]["ran"])
+
+    def test_cleanup_writes_run_first_and_only_with_the_flag(self):
+        # The table a write step created lives in a source database, outside the test
+        # database: it has to go before DROP DATABASE takes away the base view that names it,
+        # and a default run, which created nothing there, must not touch that database at all.
+        self.manifest.write_text(self.manifest.read_text(encoding="utf-8").replace(
+            "[cleanup]\n", '[cleanup]\nwrites = ["SELECT * FROM DROP_REMOTE_TABLE() WHERE base_view_name = \'t\'"]\n'),
+            encoding="utf-8")
+        chain = load_chain(self.manifest)
+        doc, code = run_chain(profile(), chain, root=self.root, vql_factory=FakeVql)
+        self.assertEqual(code, 0)
+        self.assertNotIn("DROP_REMOTE_TABLE", " ".join(s["statement"] for s in doc["cleanup"]["statements"]))
+        FakeVql.instances.clear()
+        doc, code = run_chain(profile(), chain, root=self.root, vql_factory=FakeVql, with_writes=True)
+        self.assertEqual(code, 0)
+        statements = [s["statement"] for s in doc["cleanup"]["statements"]]
+        self.assertIn("DROP_REMOTE_TABLE", statements[0])
+        self.assertIn("DROP DATABASE", statements[1])
 
     def test_keep_skips_cleanup_and_says_so(self):
         doc, _ = run_chain(profile(), self.chain, root=self.root, vql_factory=FakeVql, keep=True)
