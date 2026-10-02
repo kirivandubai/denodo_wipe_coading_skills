@@ -97,18 +97,6 @@ property groups, sync pitfalls) is still to come, as a `marketplace` extension.*
   try): `logicalName` stayed `null`. Probably the marketplace personalisation has logical names
   off; it belongs to the marketplace half of `semantics`, still to come.
 
-- **A sample over rows needs the human's number too — is that what the owner wants?** (T32,
-  for the owner.) The skill reads the rule "never an AI function over a table without a
-  `LIMIT` the human agreed to" strictly: without a number the agent may only try an expression
-  on `Dual()` with up to three texts; a vague "a handful" is at most five rows. Under a
-  deadline with the human away, every GREEN and Sonnet run therefore delivered the files, the
-  `Dual()` tries and the message, and no counts — for a 296-request run. A named ceiling ("up
-  to 400, no need to come back") is a number, and the control runs used it.
-- **`vql`'s `ALTER` row and objects created in the session** (T32, from a GREEN review). The
-  safety table puts "`ALTER` of an object that already exists" under the human's yes, while
-  `cache`, `ai`, `security` and `metrics` let the agent alter what it created in the same
-  session (`ALTER VIEW … CACHE FULL` on its own new view). Read literally, the core row blocks
-  the second line of the `ai` and `cache` templates; nobody ran into it, everybody noticed it.
 - **What `ai` leaves untried** (T32): the error texts on a server without an LLM or without
   Enterprise Plus (this one has both); `ENRICH_AI_BINARY`; `SENTIMENT_AI` with a custom scale;
   approximate search and `CONTEXT ('approximate_vector_search' = 'OFF')`; a data source with
@@ -356,6 +344,14 @@ property groups, sync pitfalls) is still to come, as a `marketplace` extension.*
   view. After the edits, the four scenarios on Sonnet (9, 17, 13, 15 calls) made the same
   decisions; the control deduplicated to 58 requests. About 700 LLM and 300 embedding requests
   in the whole task. Unit tests 366 OK; `verify --env lab --with-ai` green with eight new steps.
+
+  **Decided by the owner on the PR.** The strict reading stays: without a number from the
+  human no AI function runs over rows, not even a five-row sample — only `Dual()` tries — so
+  under a deadline the figures wait for the yes. And `vql`'s `ALTER` row now says what three
+  skills already assumed: an `ALTER` of an object the agent created in this session, which
+  nothing else reads yet, is its own (the `ALTER VIEW … CACHE` line of its new view); a `DROP`
+  still needs the yes, and every change does on production. The spec (6.3) and `execute` say
+  the same.
 
 - **T31. The `security` skill: who may read what.** A new skill, `skills/security/`, with the
   owner's first scope: a role with read access given to a user, tags on the columns a policy

@@ -238,6 +238,13 @@ Community KB), а не придуман: `ds_`, `bv_`, `iv_`, `a_`, `s_`, биз
 любое действие в среде с признаком прода — только после явного подтверждения человека.
 Для публичного плагина обязательно: его установят на боевые стенды.
 
+**Whose `ALTER` (T32, owner's decision).** "Existing" means existing before this session. An
+`ALTER` of an object the agent created in the same session, which nothing it did not create
+reads yet — the `ALTER VIEW … CACHE FULL` line in a new view's own file, the second statement
+of the `cache` and `ai` templates — is the agent's own change and needs no yes. A `DROP` needs
+one whatever it hits, and on a profile marked production every change does. The classifier
+still flags every `ALTER`: it sees no ownership, and the flag only refuses on production.
+
 **Criterion for "destructive" (T22, owner review of the roadmap, item 2.1).** A statement is
 destructive when it destroys or overwrites something that exists, or changes state outside
 the agent's own project: server settings, data in sources, objects of other databases, global

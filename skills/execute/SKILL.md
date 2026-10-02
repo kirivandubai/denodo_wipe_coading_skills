@@ -142,7 +142,9 @@ encrypt --env dev` — which keeps the plaintext out of the terminal as well.
 A statement is destructive when it destroys or overwrites something that exists, or changes
 state outside your own project: server settings, data in sources, objects of other databases,
 global objects. `CREATE` of a new object is not. The tool cannot tell whose object a `DROP`
-or `ALTER` hits, so it flags every one.
+or `ALTER` hits, so it flags every one. The flag is not the rule: an `ALTER` of an object you
+created in this session, which nothing else reads yet, is yours to apply (`/denodo:vql`); on a
+production profile every flagged statement still needs the human's yes and the flag.
 
 `DROP`, `ALTER`, `DELETE`, `TRUNCATE`; `INSERT` and `UPDATE` (a write through a view lands in
 the source behind it — `INSERT … ON DUPLICATE KEY UPDATE` included, VQL has no `MERGE`); the
