@@ -49,9 +49,8 @@ property groups, sync pitfalls) is still to come, as a `marketplace` extension.*
 
 *T32 is done — under «Сделано» below.*
 
-- **T33. Навык `dml`.** `дальше`. `INSERT`/`UPDATE`/`DELETE` через представления, `RETURNING`,
-  `WITH CHECK OPTION`. Безопасность записи в источники владелец решает позже; классификатор
-  помечает `INSERT`/`UPDATE` уже после T22. Р. 6.
+*T33 is done — under «Сделано» below.*
+
 - **T34. Навык `materialize`.** `дальше`. Удалённые и материализованные таблицы, summaries,
   data movement. Удалённая таблица пишет в базу-источник с `DROP` и `TRUNCATE` внутри —
   решить в задаче запись во внешние базы (р. 9, решение 2) и добавить
@@ -96,6 +95,32 @@ property groups, sync pitfalls) is still to come, as a `marketplace` extension.*
 - **`PUT /public/api/views/fields/logical-name` answers `200` and stores nothing** (T30, one
   try): `logicalName` stayed `null`. Probably the marketplace personalisation has logical names
   off; it belongs to the marketplace half of `semantics`, still to come.
+
+- **What `dml` leaves untried** (T33): PostgreSQL and every other database — all of it was
+  measured against SQL Server, so `RETURNING`, the upsert, how values land and the cut error text
+  are SQL Server's (a scratch schema in the demo PostgreSQL needs the owner: the demo account may
+  not create in `public`, and `CREATE_SCHEMA_ON_SOURCE` serves only Lakehouse and Presto); writes
+  with query simplification switched off; partitioned unions and views with parameters; an
+  upsert whose `SELECT` runs in the same data source (the documented `MERGE` path — the one
+  measured went through the cache database); `ALLOWINSERT` / `ALLOWUPDATE`; transactions after the
+  server-wide `ignoreTransactions = false`; Salesforce, MongoDB and custom-wrapper writes;
+  materialized and temporary tables (documented as insert-only, left to `materialize`).
+- **Impersonation does not reach writes** (T33, measured, not explained). Under `CONTEXT
+  ('impersonate_user' = …)` an `EXTERNAL` user with only `EXECUTE` on a view updated it and a base
+  view it had no grant on; `impersonate_roles` the same. Either the `CONTEXT` of a write is
+  ignored or the privilege check is skipped — whether it is a defect worth reporting to Denodo is
+  open. `security` and `dml` now say impersonation proves reads only.
+- **A yes named up front** (T33, same as the T30 question). A human who names the rows and the
+  change ("reactivate 1012, 1017, 1023, 1031") still gets the message and is asked again: `dml`
+  keeps `vql`'s rule as it is, since the owner left the safety of writes for later. The
+  scenarios simulated the answer; whether a named set of rows, matched by the preview count,
+  should count as the yes is the owner's call.
+- **`affected` is `null` when a `RETURNING` answered** (T33, from a GREEN review): the driver gives
+  a result set, and the tool reports `affected` only for statements without one. The returned
+  rows are the trace; whether the tool should report the driver's `rowcount` there too is open.
+- **`CREATE_REMOTE_TABLE` with `create_table_template`** failed with a message cut before its
+  reason (T33), while the `CREATE REMOTE TABLE` command with `CREATE_TABLE_TEMPLATE` worked. It
+  matters to `materialize` (T34), not to `dml`.
 
 - **What `ai` leaves untried** (T32): the error texts on a server without an LLM or without
   Enterprise Plus (this one has both); `ENRICH_AI_BINARY`; `SENTIMENT_AI` with a custom scale;
@@ -278,6 +303,85 @@ property groups, sync pitfalls) is still to come, as a `marketplace` extension.*
 ---
 
 ## Сделано
+
+- **T33. The `dml` skill: writing rows through a view.** A new skill, `skills/dml/`: updating,
+  inserting (with the generated key back) and deleting by key through a base view, a view an
+  application writes through with `WITH CHECK OPTION`, rows copied from another view or a file,
+  and the upsert. Its body: what a write does (measured), the rule — every write waits for the
+  human's yes to the exact statements, as in `vql` — with a message shape, a rationalization
+  table and red flags; seven templates (can this view take the write, preview and before-image,
+  update, insert with `RETURNING`, delete, the writer view, rows from another view with the
+  `new_keys` count before an upsert) and the file-row-by-row procedure; what you need, Verify,
+  fourteen silent failures and the loud errors. `references/statements.md` has the grammar and
+  every form as measured, `RETURNING` per statement, the upsert, how values land and
+  transactions; `references/writable-views.md` the view types, the filter on writes, `WITH CHECK
+  OPTION` in full, the wrapper's write switches, the cache and impersonation. Creating tables in
+  a source (remote and materialized tables) is left out, for `materialize`.
+
+  **Decided in the task.** The owner allowed fixture tables in the stand's SQL Server and
+  PostgreSQL, created through Denodo itself (`CREATE REMOTE TABLE` through a data source of the
+  task's own database, reusing an existing source's ciphertext), and one yes for their cleanup;
+  `CLAUDE.md` gains the rule that source databases on the stand are written only in tables of the
+  run. The auto-mode classifier refused writes into those databases until the owner added
+  `Bash(scripts/denodo vql run *)` to the local settings. PostgreSQL stayed untested (no schema
+  the demo account may create in). The safety of writes stays as in `vql`, since the owner left
+  it for later. The tool gains `affected` on every `vql run` entry — the count the server reports
+  for a write, which before this task was simply lost. `verify` gains `--with-writes`: two tables
+  created in the server's cache database by `CREATE REMOTE TABLE`, base views carrying the
+  source's type metadata, the seven templates, and `[cleanup] writes` that drops both tables
+  through `CREATE_REMOTE_TABLE` + `DROP_REMOTE_TABLE` before the database goes (spec 11.1). No
+  classifier rule: `INSERT`, `UPDATE`, `DELETE` were already flagged. `security` and its
+  privileges reference now say impersonation proves reads only; `vql` maps the skill and names
+  "`ROLLBACK` undoes nothing" in its safety table; `execute` documents `affected` and the flag;
+  `views/references/derived.md` and `procedures` point to `dml`. Eval: five cases
+  (`routing-dml`, `routing-dml-app-view`, `routing-dml-symptom`, `discrimination-views-not-dml`,
+  `discrimination-dml-not-cache`); 51 of 51 pass.
+
+  **Measured on 9.5.1 against SQL Server:** `BEGIN`/`COMMIT`/`ROLLBACK` answer `ok` over the tool's
+  connection and `ROLLBACK` undoes nothing. A write returns no rows; `cursor.rowcount` carries the
+  true count. `UPDATE` and `DELETE` through a derived view reach only the rows it shows, at every
+  level; an `INSERT` outside the filter and an `UPDATE` moving a row out pass unless `WITH CHECK
+  OPTION`; the check evaluates the view's filter on the statement's values only, before any row is
+  read, a column left out counts as `NULL`, and `NULL` passes — `AND col IS NOT NULL` closes it and
+  then every `UPDATE` must send the column; plain `WITH CHECK OPTION` is `CASCADED`. A write
+  through a view with a full cache (`WITH_STATUS` or `NO_STATUS`), or through any view above one,
+  empties that cache — one updated row, 11 → 0 rows — while a write below it leaves it stale; an
+  `INSERT` into a cached view is refused. `CONTEXT ('impersonate_user' = …)` does not reach writes.
+  Join views refuse (`Update operation is not allowed`), aggregate and union views too (`No update
+  methods ready to be run`), a `SELECT DISTINCT` view takes the write the documentation forbids;
+  renamed columns write back, computed ones refuse; a non-delegable condition and a subquery over
+  another source refuse before anything changes. `RETURNING` answers for a one-row insert of the
+  identity key (through a derived view too); multi-row, a default column or two columns return
+  nothing or fail; `UPDATE … RETURNING` returns `NULL`; on a base view without the source's type
+  metadata it fails with `Cannot parse null string` after inserting the row. `INSERT … SELECT`
+  takes no column list and matches by name; an upsert keyed on an identity column fails, on a
+  natural key it updates and inserts. `decimal(10,2)` rounds `10.555` to `10.56`; a timestamp with
+  a zone lands converted to the server process's zone (UTC), a literal as written; the source's
+  refusal of a value arrives cut at `com.microsoft.sqlserver.` and `TRACE` does not bring it back.
+  `GET_VIEW_COLUMNS` gives the source's sizes only for an introspected base view, and `IN` on its
+  input answers no rows.
+
+  **Checked with subagents, baseline first**, on a three-database fixture over SQL Server tables:
+  accounts a batch suspended by mistake under two cached views a dashboard and a portal read; a
+  helpdesk table with a nullable team and a 60-character subject for an intake form; a product
+  catalog with a CSV of new prices holding two unknown SKUs and three prices with a third
+  decimal. Three baseline runs (Opus, current skills without `dml`, the tool without `affected`;
+  49, 70 and 23 tool calls, two of them reading the documentation on the internet): all three
+  kept the confirmation rule, and the reactivation run handled the cache itself through the
+  `cache` skill; the intake run found the `NULL` hole by experiment, created a server-wide role
+  without the run's prefix (removed with the owner's yes; later prompts named a prefix), and claimed write privileges checked by impersonation, which
+  probing proved unchecked; the price run applied nothing and found every anomaly. With the
+  skill, three Opus runs (28, 33, 25 calls, no documentation, no unexpected failure): the same
+  decisions at half the cost, the intake run proving the view's rules with values that cannot
+  store a row and consuming no key. Their reviews added the undo-needs-the-load line, a Verify
+  check that sees an update, the wrapper read without the data source's ciphertext, `IN` on
+  `GET_VIEW_COLUMNS`, the "from 18:00" line, the guard on a money column (measured), checking a
+  typed file against its source, `affected` with `RETURNING`, the grant syntax for a writer role,
+  the second net in rule checks and the inconsistency in `views/references/derived.md`. After the
+  edits, the three scenarios on Sonnet (19, 22, 17 calls) made the same decisions; the intake
+  run held the over-long ticket for the human instead of shortening it, which the skill now says.
+  Unit tests 372 OK; `verify --env lab --with-writes` green with eight new steps (41 verified),
+  the default run green with them skipped.
 
 - **T32. The `ai` skill: the server's LLM in a query.** A new skill, `skills/ai/`: the six LLM
   functions over a text column, a view that keeps their answers in its full cache, semantic

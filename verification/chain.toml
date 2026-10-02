@@ -1,12 +1,15 @@
 # verification/chain.toml
-# Verifies 44 of the templates end to end: catalog database, folders, the DF (CSV), JSON
+# Verifies 51 of the templates end to end: catalog database, folders, the DF (CSV), JSON
 # and JDBC data sources, a hand-written JDBC wrapper and base view, derived views, the union
 # and the array views, the interface view, the association, the column-impact queries, the
 # full cache switched on, loaded and cleared, tags, the metadata audit, profile and
 # write, the metric view with the views over it, its reads and the totals check, a role,
 # the security reads, a masking policy, a view's tags and the check as a person, and — only
 # with --with-ai, because each sends paid requests to the server's LLM — the AI functions
-# over rows, a cached view of their answers and two semantic searches (vql channel), plus the
+# over rows, a cached view of their answers and two semantic searches, and — only with
+# --with-writes, because they create two tables in the server's cache database and write rows
+# into them — updates, inserts, deletes, a view an application writes through and an upsert
+# (vql channel), plus the
 # Data Marketplace catalog
 # sync, a tag, a category, an external element and a renamed view that keeps its element
 # (http channel). Bodies of the
@@ -44,6 +47,15 @@ tag_prefix = "verify_"
 # Denodo Assistant → Embedding model). The ai search-view step writes it into EMBED_AI, which
 # refuses any other model; a fork verifying against its own server changes it here.
 embedding_model = "text-embedding-3-large"
+# The data source the write steps (--with-writes) create their two tables in and write through:
+# the server's cache data source, which every server with a cache has, in its own database and
+# schema. The table DDL in the writes-tables fixture is SQL Server's (an identity key starting at
+# 1001); a fork whose cache database is another product points these four values at its own and
+# rewrites that DDL.
+write_datasource_database = "admin"
+write_datasource_name = "vdpcachedatasource"
+write_catalog = "enterprise_data"
+write_schema = "dbo"
 # Not a credential and not a literal: the JDBC template carries USERPASSWORD '...' ENCRYPTED,
 # and the server validates the ciphertext at creation time ("error creating new data source:
 # Invalid encrypted value" for anything it did not encrypt itself). A real ciphertext is a
@@ -62,6 +74,18 @@ jdbc_password = "@encrypt-throwaway"
 # 500 "Session Expired." (skills/marketplace/SKILL.md, "Name the server").
 
 [cleanup]
+# Only with --with-writes, and before everything below: the write steps' two tables live in the
+# cache database, outside {database}, and DROP_REMOTE_TABLE drops a table only through a base
+# view CREATE_REMOTE_TABLE made. So each table is first taken over by CREATE_REMOTE_TABLE
+# (replace_remote_table_if_exist drops the fixture's table and makes a plain one with its base
+# view in {database}), then dropped with that base view. Both work whether or not the write
+# steps got as far as creating the table; DROP DATABASE below would take the base view away.
+writes = [
+  "SELECT remote_table, base_view, status FROM CREATE_REMOTE_TABLE() WHERE remote_table_name = '{tag_prefix}orders' AND replace_remote_table_if_exist = true AND query = 'SELECT 1 AS x FROM Dual()' AND datasource_database_name = '{write_datasource_database}' AND datasource_name = '{write_datasource_name}' AND datasource_catalog = '{write_catalog}' AND datasource_schema = '{write_schema}' AND base_view_database_name = '{database}' AND base_view_name = '{tag_prefix}orders_drop' AND replace_base_view_if_exist = true",
+  "SELECT * FROM DROP_REMOTE_TABLE() WHERE base_view_database_name = '{database}' AND base_view_name = '{tag_prefix}orders_drop' AND drop_base_view_on_cascade = true",
+  "SELECT remote_table, base_view, status FROM CREATE_REMOTE_TABLE() WHERE remote_table_name = '{tag_prefix}customer' AND replace_remote_table_if_exist = true AND query = 'SELECT 1 AS x FROM Dual()' AND datasource_database_name = '{write_datasource_database}' AND datasource_name = '{write_datasource_name}' AND datasource_catalog = '{write_catalog}' AND datasource_schema = '{write_schema}' AND base_view_database_name = '{database}' AND base_view_name = '{tag_prefix}customer_drop' AND replace_base_view_if_exist = true",
+  "SELECT * FROM DROP_REMOTE_TABLE() WHERE base_view_database_name = '{database}' AND base_view_name = '{tag_prefix}customer_drop' AND drop_base_view_on_cascade = true",
+]
 vql = [
   # the policy first: a tag a policy names cannot be dropped without CASCADE, and CASCADE is
   # exactly what this list avoids
@@ -836,6 +860,196 @@ substitute = { sales_analytics = "{database}", text-embedding-3-large = "{embedd
 database = "{database}"
 # The reader's query: the sentence as an equality, five rows back, closest first.
 check = "SELECT COUNT(*) FROM product_review_search WHERE search_text = 'it stopped working after a week' HAVING COUNT(*) = 5"
+
+# --- Writes through a view: gated behind --with-writes ------------------------------------
+# The seven blocks of skills/dml/SKILL.md, in its order. They need a table someone may write
+# to, and the only one every server has room for is in its cache database: writes-tables
+# creates two there with CREATE REMOTE TABLE (an identity-keyed orders table and a customer
+# table keyed by its code, for the upsert), and [cleanup] writes drops both. The base views are
+# written here with the source's type metadata the introspection would give them, because the
+# skill's RETURNING and GET_VIEW_COLUMNS claims hold only for such a base view. Every write the
+# blocks make lands in those two tables. The template names bv_orders_db_orders and
+# bv_orders_db_customer are substituted, so the JDBC template's own base view of that name, over
+# an unreachable host, is left alone.
+
+[[step]]
+id = "writes-tables"
+kind = "fixture"
+channel = "vql"
+writes = true
+database = "{database}"
+check = "SELECT COUNT(*) FROM bv_write_customer HAVING COUNT(*) = 18"
+vql = """
+CONNECT DATABASE {database};
+
+CREATE OR REPLACE REMOTE TABLE {tag_prefix}orders INTO {write_datasource_database}.{write_datasource_name}
+    CATALOG = '{write_catalog}' SCHEMA = '{write_schema}'
+    CREATE_TABLE_TEMPLATE ('CREATE TABLE @{internal_parameter_table_name} (order_id INT IDENTITY(1001,1) NOT NULL, customer_id VARCHAR(12) NOT NULL, order_dt DATETIME2(0) NULL, total_amount DECIMAL(12,2) NULL, status VARCHAR(12) NULL, @{internal_parameter_columns}, PRIMARY KEY (order_id))')
+    AS SELECT 'x' AS note FROM bv_income_band WHERE ib_income_band_sk < 0;
+
+CREATE OR REPLACE REMOTE TABLE {tag_prefix}customer INTO {write_datasource_database}.{write_datasource_name}
+    CATALOG = '{write_catalog}' SCHEMA = '{write_schema}'
+    CREATE_TABLE_TEMPLATE ('CREATE TABLE @{internal_parameter_table_name} (customer_id VARCHAR(12) NOT NULL, customer_name VARCHAR(40) NULL, segment VARCHAR(12) NULL, @{internal_parameter_columns}, PRIMARY KEY (customer_id))')
+    AS SELECT 'x' AS note FROM bv_income_band WHERE ib_income_band_sk < 0;
+
+CREATE OR REPLACE WRAPPER JDBC wr_write_orders
+    FOLDER = '/01 - connectivity'
+    DATASOURCENAME = {write_datasource_database}.{write_datasource_name}
+    CATALOGNAME = '{write_catalog}'
+    SCHEMANAME = '{write_schema}'
+    RELATIONNAME = '{tag_prefix}orders'
+    OUTPUTSCHEMA (
+        order_id = 'order_id' :'java.lang.Integer' (OPT) (sourcetypeid = '4', sourcetypesize = '10') NOT NULL SORTABLE IS_AUTOINCREMENT,
+        customer_id = 'customer_id' :'java.lang.String' (OPT) (sourcetypeid = '12', sourcetypesize = '12') NOT NULL SORTABLE,
+        order_dt = 'order_dt' :'java.time.LocalDateTime' (OPT) (sourcetypeid = '93') SORTABLE,
+        total_amount = 'total_amount' :'java.math.BigDecimal' (OPT) (sourcetypeid = '3', sourcetypesize = '12', sourcetypedecimals = '2') SORTABLE,
+        status = 'status' :'java.lang.String' (OPT) (sourcetypeid = '12', sourcetypesize = '12') SORTABLE
+    )
+    PRIMARY KEY ( 'order_id' );
+
+CREATE OR REPLACE TABLE bv_write_orders I18N us_pst (
+        order_id:int (notnull, autoincrement, sourcetypeid = '4', sourcetypesize = '10'),
+        customer_id:text (notnull, sourcetypeid = '12', sourcetypesize = '12'),
+        order_dt:timestamp (sourcetypeid = '93'),
+        total_amount:decimal (sourcetypeid = '3', sourcetypesize = '12', sourcetypedecimals = '2'),
+        status:text (sourcetypeid = '12', sourcetypesize = '12')
+    )
+    FOLDER = '/01 - connectivity'
+    PRIMARY KEY ( 'order_id' )
+    CACHE OFF
+    TIMETOLIVEINCACHE DEFAULT
+    ADD SEARCHMETHOD wr_write_orders (
+        OUTPUTLIST ( order_id, customer_id, order_dt, total_amount, status )
+        WRAPPER (jdbc wr_write_orders)
+    );
+
+CREATE OR REPLACE WRAPPER JDBC wr_write_customer
+    FOLDER = '/01 - connectivity'
+    DATASOURCENAME = {write_datasource_database}.{write_datasource_name}
+    CATALOGNAME = '{write_catalog}'
+    SCHEMANAME = '{write_schema}'
+    RELATIONNAME = '{tag_prefix}customer'
+    OUTPUTSCHEMA (
+        customer_id = 'customer_id' :'java.lang.String' (OPT) (sourcetypeid = '12', sourcetypesize = '12') NOT NULL SORTABLE,
+        customer_name = 'customer_name' :'java.lang.String' (OPT) (sourcetypeid = '12', sourcetypesize = '40') SORTABLE,
+        segment = 'segment' :'java.lang.String' (OPT) (sourcetypeid = '12', sourcetypesize = '12') SORTABLE
+    )
+    PRIMARY KEY ( 'customer_id' );
+
+CREATE OR REPLACE TABLE bv_write_customer I18N us_pst (
+        customer_id:text (notnull, sourcetypeid = '12', sourcetypesize = '12'),
+        customer_name:text (sourcetypeid = '12', sourcetypesize = '40'),
+        segment:text (sourcetypeid = '12', sourcetypesize = '12')
+    )
+    FOLDER = '/01 - connectivity'
+    PRIMARY KEY ( 'customer_id' )
+    CACHE OFF
+    TIMETOLIVEINCACHE DEFAULT
+    ADD SEARCHMETHOD wr_write_customer (
+        OUTPUTLIST ( customer_id, customer_name, segment )
+        WRAPPER (jdbc wr_write_customer)
+    );
+
+INSERT INTO bv_write_orders
+SELECT CONCAT('C-', ib_income_band_sk) AS customer_id, TIMESTAMP '2026-09-01 10:00:00' AS order_dt,
+       ib_lower_bound AS total_amount, 'open' AS status
+FROM bv_income_band;
+
+INSERT INTO bv_write_customer
+SELECT CONCAT('C-', ib_income_band_sk) AS customer_id, CONCAT('Customer ', ib_income_band_sk) AS customer_name,
+       'retail' AS segment
+FROM bv_income_band
+WHERE ib_income_band_sk <= 18;
+
+CREATE OR REPLACE VIEW order_import
+    FOLDER = '/02 - integration'
+    AS SELECT CONCAT('I-', ib_income_band_sk) AS customer_id, TIMESTAMP '2026-10-01 08:00:00' AS order_dt,
+              ib_upper_bound AS total_amount, 'open' AS status, 42 AS batch_id
+       FROM bv_income_band
+       WHERE ib_income_band_sk <= 3;
+
+CREATE OR REPLACE VIEW customer_update
+    FOLDER = '/02 - integration'
+    AS SELECT CONCAT('C-', ib_income_band_sk) AS customer_id, CONCAT('Customer ', ib_income_band_sk, ' Ltd') AS customer_name,
+              'wholesale' AS segment
+       FROM bv_income_band
+       WHERE ib_income_band_sk >= 15;
+"""
+
+[[step]]
+id = "dml-can-take"
+kind = "template"
+channel = "vql"
+writes = true
+address = "skills/dml/SKILL.md#Can this view take the write"
+substitute = { sales_analytics = "{database}", bv_orders_db_orders = "bv_write_orders" }
+database = "{database}"
+# The block's claim about a base view with the source's metadata: the generated key is marked.
+check = "SELECT column_name FROM GET_VIEW_COLUMNS() WHERE input_database_name = '{database}' AND input_view_name = 'bv_write_orders' AND column_is_autoincrement = true AND column_name = 'order_id'"
+
+[[step]]
+id = "dml-preview"
+kind = "template"
+channel = "vql"
+writes = true
+address = "skills/dml/SKILL.md#Preview, and the before-image"
+substitute = { sales_analytics = "{database}", bv_orders_db_orders = "bv_write_orders" }
+database = "{database}"
+check = "SELECT COUNT(*) FROM bv_write_orders WHERE order_id IN (1001, 1002, 1007) AND status = 'open' HAVING COUNT(*) = 3"
+
+[[step]]
+id = "dml-update"
+kind = "template"
+channel = "vql"
+writes = true
+address = "skills/dml/SKILL.md#Update by key"
+substitute = { sales_analytics = "{database}", bv_orders_db_orders = "bv_write_orders" }
+database = "{database}"
+check = "SELECT COUNT(*) FROM bv_write_orders WHERE order_id IN (1001, 1002, 1007) AND status = 'cancelled' HAVING COUNT(*) = 3"
+
+[[step]]
+id = "dml-insert"
+kind = "template"
+channel = "vql"
+writes = true
+address = "skills/dml/SKILL.md#Insert, and the key the database generated"
+substitute = { sales_analytics = "{database}", bv_orders_db_orders = "bv_write_orders" }
+database = "{database}"
+# One row, under a key the database generated past the seeded ones.
+check = "SELECT COUNT(*) FROM bv_write_orders WHERE customer_id = 'C-1001' AND order_id > 1020 HAVING COUNT(*) = 1"
+
+[[step]]
+id = "dml-delete"
+kind = "template"
+channel = "vql"
+writes = true
+address = "skills/dml/SKILL.md#Delete by key"
+substitute = { sales_analytics = "{database}", bv_orders_db_orders = "bv_write_orders" }
+database = "{database}"
+check = "SELECT order_id FROM bv_write_orders WHERE order_id IN (1001, 1002, 1007)"
+expect = "no rows"
+
+[[step]]
+id = "dml-writer-view"
+kind = "template"
+channel = "vql"
+writes = true
+address = "skills/dml/SKILL.md#A view an application writes through"
+substitute = { sales_analytics = "{database}", bv_orders_db_orders = "bv_write_orders" }
+database = "{database}"
+# The view reads the open orders: 17 seeded and the inserted one.
+check = "SELECT COUNT(*) FROM open_order HAVING COUNT(*) = 18"
+
+[[step]]
+id = "dml-from-view"
+kind = "template"
+channel = "vql"
+writes = true
+address = "skills/dml/SKILL.md#Rows from another view"
+substitute = { sales_analytics = "{database}", bv_orders_db_orders = "bv_write_orders", bv_orders_db_customer = "bv_write_customer" }
+database = "{database}"
+# Three imported orders, and the upsert: four customers renamed, two new — twenty in all.
+check = "SELECT COUNT(*) FROM bv_write_customer WHERE segment = 'wholesale' HAVING COUNT(*) = 6"
 
 [[step]]
 id = "nothing-invalid"

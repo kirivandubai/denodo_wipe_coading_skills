@@ -259,6 +259,11 @@ CONTEXT ('impersonate_roles' = 'sales_analyst');
 - `This user cannot impersonate` → `vdp.impersonation` is `false`: the restriction is
   unverified. Hand the human these queries and the expected answers; do not create a user,
   and do not grant your profile anything.
+- **Impersonation checks reads only.** An `INSERT`, `UPDATE` or `DELETE` with the same
+  `CONTEXT` ran with the profile's own privileges: a user with nothing but `EXECUTE` on a view
+  updated it and a base view they had no grant on — *verified: 9.5.1 (live, 2026-10-02)*.
+  Whether someone may write is proven only by their own login; hand that check to the human
+  (`/denodo:dml`).
 
 ## Choosing the audience
 

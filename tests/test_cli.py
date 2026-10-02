@@ -216,11 +216,12 @@ class CliTest(CliHarness, unittest.TestCase):
 class VerifyCommandTest(CliHarness, unittest.TestCase):
     def test_parser_accepts_the_flags(self):
         args = cli.build_parser().parse_args(["verify", "--env", "lab", "--with-marketplace", "--with-ai",
-                                              "--keep", "--update-marks", "--allow-destructive",
-                                              "--chain", "verification/chain.toml"])
+                                              "--with-writes", "--keep", "--update-marks",
+                                              "--allow-destructive", "--chain", "verification/chain.toml"])
         self.assertEqual(args.group, "verify")
         self.assertTrue(args.with_marketplace)
         self.assertTrue(args.with_ai)
+        self.assertTrue(args.with_writes)
         self.assertTrue(args.keep)
         self.assertTrue(args.update_marks)
         self.assertTrue(args.allow_destructive)
@@ -230,6 +231,7 @@ class VerifyCommandTest(CliHarness, unittest.TestCase):
         args = cli.build_parser().parse_args(["verify", "--env", "lab"])
         self.assertFalse(args.with_marketplace)
         self.assertFalse(args.with_ai)
+        self.assertFalse(args.with_writes)
         self.assertFalse(args.keep)
         self.assertFalse(args.update_marks)
         self.assertFalse(args.allow_destructive)

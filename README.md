@@ -135,6 +135,7 @@ phrasing; `/denodo:vql` is the entry point when the request is ambiguous.
 | `/denodo:metrics` | metric views: KPIs defined once over a fact view and its dimensions (`CREATE METRIC VIEW`), the views built on them, and querying them with `evaluate_metric` | VQL |
 | `/denodo:ai` | the server's LLM and embedding model in a query: classifying, scoring, translating, summarising or extracting from a text column, a cached view that keeps those answers so readers stop paying, and semantic search over stored vectors — never run over more rows than you agreed to | VQL |
 | `/denodo:security` | who may read what: a role with read access and giving it to a user, a global security policy that masks columns, filters rows or denies a view over tagged columns, and checking it as each person by impersonation | VQL |
+| `/denodo:dml` | rows changed in the database behind a view: update, insert (with the generated key back) and delete by key, a view an application writes through, rows copied from another view or a file, upserts — each previewed, with an undo file, applied only after your yes | VQL |
 
 **A "tag" alone does not say which server you mean.** Virtual DataPort tags
 (`CREATE TAG`, VQL) and Data Marketplace tags (REST) are different objects on different
@@ -148,8 +149,9 @@ from plain language to a mart a consumer can browse. `/denodo:procedures` sits o
 scope — stored procedures are not part of the mart scenario — and is there because it is
 useful on its own. So are `/denodo:cache`, for the full cache of a view only,
 `/denodo:semantics`, for the Virtual DataPort half of view metadata, `/denodo:metrics`,
-for metric views, `/denodo:security`, for roles and global security policies, and
-`/denodo:ai`, for the LLM functions and semantic search.
+for metric views, `/denodo:security`, for roles and global security policies,
+`/denodo:ai`, for the LLM functions and semantic search, and `/denodo:dml`, for writes through
+views.
 
 Created in Design Studio, not by the agent: every data source beyond a delimited or JSON file
 on the server and a JDBC table with a password — REST APIs, Excel, XML, Salesforce, SAP, cloud

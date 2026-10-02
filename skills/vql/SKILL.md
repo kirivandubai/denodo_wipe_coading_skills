@@ -118,7 +118,7 @@ it just means the verification is yours to do, with `DESC` and a `SELECT`.
 |---|---|
 | `CREATE` / `CREATE OR REPLACE` of an object | `DROP`, `TRUNCATE`, `DELETE` |
 | Read-only `SELECT`, `DESC`, `GET_*`, `env check` — on any profile, production included | `ALTER` of an object that existed before this session, or that something you did not create already reads. Your own new view takes the `ALTER VIEW … CACHE` line of its file without a yes; a `DROP`, even of your own object, does not |
-| Session settings: `SET QUERYTIMEOUT TO …`, `ALTER SESSION SET 'querytimeout' = …` | `INSERT`, `UPDATE` — the rows land in the source behind the view |
+| Session settings: `SET QUERYTIMEOUT TO …`, `ALTER SESSION SET 'querytimeout' = …` | `INSERT`, `UPDATE` — the rows land in the source behind the view, at once: over this connection `ROLLBACK` undoes nothing (`/denodo:dml`) |
 | — | `SET '<property>' = …`, `WEBCONTAINER SET / STOP / START / RELOAD` — the whole server's configuration, not your session |
 | — | `CREATE OR REPLACE` of an existing view that drops or renames a column other objects use — the server accepts it and breaks them without an error (`/denodo:views`, "Before a column changes") |
 | — | loading, reloading or clearing the cache of a view you did not create in this session — `SELECT … CONTEXT ('cache_preload' = 'true', …)`, `ALTER VIEW … CACHE` (`/denodo:cache`) |
@@ -224,6 +224,7 @@ different figures depending on what Denodo pushes down to the source.
 | KPIs defined once for every tool — metric views (`CREATE METRIC VIEW`), `evaluate_metric`, the views built on them | `/denodo:metrics` |
 | Who may read what — a role and its grants, giving it to a user, masking columns or filtering rows with a global security policy over tagged columns, checking what a given user gets | `/denodo:security` |
 | The LLM or the embedding model in a query — classifying, scoring, translating, summarising or extracting from a text column (`CLASSIFY_AI` …), a view that keeps those answers, semantic search over stored vectors (`VECTOR_DISTANCE`, `EMBED_AI`) | `/denodo:ai` |
+| Changing rows in the database behind a view — `INSERT`, `UPDATE`, `DELETE`, `INSERT … SELECT`, an upsert, the generated key back, a view an application writes through (`WITH CHECK OPTION`) | `/denodo:dml` |
 | What people and AI consumers read about existing views — descriptions, primary keys, associations, the tag the MCP Server shows views by; "why does the agent not see this view" | `/denodo:semantics` |
 | Running anything against a live server, reading its errors | `/denodo:execute` |
 

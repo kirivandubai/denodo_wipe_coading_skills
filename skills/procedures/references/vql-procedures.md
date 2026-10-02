@@ -63,7 +63,7 @@ block with something in it.
 | Loop | `LOOP … [EXIT WHEN <condition>] END LOOP;` |
 | Loop | `WHILE <condition> LOOP … END LOOP;` |
 | Loop | `FOR <var> IN <low> .. <high> LOOP … END LOOP;` |
-| Write | `INSERT INTO <view> (cols) VALUES (…);`, `UPDATE <view> SET (cols) = (values) WHERE …;`, `DELETE FROM <view> WHERE …;` (*unverified*) |
+| Write | `INSERT INTO <view> (cols) VALUES (…);`, `UPDATE <view> SET (cols) = (values) WHERE …;`, `DELETE FROM <view> WHERE …;` (*unverified* inside a procedure; the statements themselves, which views take them and what they change are `/denodo:dml`) |
 | Return | `RETURN ROW (out1, out2) VALUES (v1, v2);` |
 | DDL | `EXECUTE '<statement>' [PARAMETERS ( p ) VALUES ( v )] [ON DATABASE <name>];` |
 
