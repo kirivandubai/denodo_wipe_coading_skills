@@ -43,8 +43,8 @@ Every one of these changes state, and every one of them is invoked with `SELECT`
 | Procedure | What it changes |
 |---|---|
 | `GENERATE_STATS` | overwrites the stored statistics of a view. Deprecated in 9.5, still shipped, still writes; its parameters are the old-style `viewname`, `databasename` — no `input_` prefix *(live, 2026-09-17)* |
-| `CREATE_REMOTE_TABLE` | creates a table **in the JDBC source**, fills it with a query's rows, and creates a base view over it |
-| `DROP_REMOTE_TABLE` | drops the base view and the table **in the source** behind it; with cascade, the dependants too |
+| `CREATE_REMOTE_TABLE` | creates a table **in the JDBC source**, fills it with a query's rows, and creates a base view over it; with `replace_remote_table_if_exist = true`, drops whatever table had that name first. A new table where the human named, with `false`, is the agent's own (`/denodo:materialize`) |
+| `DROP_REMOTE_TABLE` | drops the base view or summary and the table **in the source** behind it; with cascade, the dependants too (`/denodo:materialize`) |
 | `CLEAN_CACHE_DATABASE` | runs the cache maintenance task: deletes expired and invalidated cached rows of a database, or of one view |
 | `DROP_NONACTIVE_CACHE_TABLES` | drops cache tables no cached view references any more (its preview mode only lists them, and is flagged all the same) |
 | `CREATE_SCHEMA_ON_SOURCE` | DDL in the source (Lakehouse Accelerator and PrestoDB data sources) |

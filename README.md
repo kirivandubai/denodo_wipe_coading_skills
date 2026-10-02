@@ -136,6 +136,7 @@ phrasing; `/denodo:vql` is the entry point when the request is ambiguous.
 | `/denodo:ai` | the server's LLM and embedding model in a query: classifying, scoring, translating, summarising or extracting from a text column, a cached view that keeps those answers so readers stop paying, and semantic search over stored vectors — never run over more rows than you agreed to | VQL |
 | `/denodo:security` | who may read what: a role with read access and giving it to a user, a global security policy that masks columns, filters rows or denies a view over tagged columns, and checking it as each person by impersonation | VQL |
 | `/denodo:dml` | rows changed in the database behind a view: update, insert (with the generated key back) and delete by key, a view an application writes through, rows copied from another view or a file, upserts — each previewed, with an undo file, applied only after your yes | VQL |
+| `/denodo:materialize` | query results stored as tables: a remote table other tools read and its refresh, a frozen snapshot, a summary the optimizer answers aggregate queries from, a data movement for a slow federated join, a materialized table — a new table where you said is created by the agent, anything that replaces, empties or drops an older one waits for your yes | VQL |
 
 **A "tag" alone does not say which server you mean.** Virtual DataPort tags
 (`CREATE TAG`, VQL) and Data Marketplace tags (REST) are different objects on different
@@ -150,8 +151,8 @@ scope — stored procedures are not part of the mart scenario — and is there b
 useful on its own. So are `/denodo:cache`, for the full cache of a view only,
 `/denodo:semantics`, for the Virtual DataPort half of view metadata, `/denodo:metrics`,
 for metric views, `/denodo:security`, for roles and global security policies,
-`/denodo:ai`, for the LLM functions and semantic search, and `/denodo:dml`, for writes through
-views.
+`/denodo:ai`, for the LLM functions and semantic search, `/denodo:dml`, for writes through
+views, and `/denodo:materialize`, for query results stored as tables.
 
 Created in Design Studio, not by the agent: every data source beyond a delimited or JSON file
 on the server and a JDBC table with a password — REST APIs, Excel, XML, Salesforce, SAP, cloud

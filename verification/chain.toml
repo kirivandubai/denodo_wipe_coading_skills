@@ -1,5 +1,5 @@
 # verification/chain.toml
-# Verifies 51 of the templates end to end: catalog database, folders, the DF (CSV), JSON
+# Verifies 59 of the templates end to end: catalog database, folders, the DF (CSV), JSON
 # and JDBC data sources, a hand-written JDBC wrapper and base view, derived views, the union
 # and the array views, the interface view, the association, the column-impact queries, the
 # full cache switched on, loaded and cleared, tags, the metadata audit, profile and
@@ -7,9 +7,10 @@
 # the security reads, a masking policy, a view's tags and the check as a person, and — only
 # with --with-ai, because each sends paid requests to the server's LLM — the AI functions
 # over rows, a cached view of their answers and two semantic searches, and — only with
-# --with-writes, because they create two tables in the server's cache database and write rows
-# into them — updates, inserts, deletes, a view an application writes through and an upsert
-# (vql channel), plus the
+# --with-writes, because they create tables in the server's cache database and write rows
+# into them — updates, inserts, deletes, a view an application writes through and an upsert,
+# and a remote table with its refresh, a summary loaded and used, a data movement, a
+# materialized table and the drop (vql channel), plus the
 # Data Marketplace catalog
 # sync, a tag, a category, an external element and a renamed view that keeps its element
 # (http channel). Bodies of the
@@ -85,6 +86,11 @@ writes = [
   "SELECT * FROM DROP_REMOTE_TABLE() WHERE base_view_database_name = '{database}' AND base_view_name = '{tag_prefix}orders_drop' AND drop_base_view_on_cascade = true",
   "SELECT remote_table, base_view, status FROM CREATE_REMOTE_TABLE() WHERE remote_table_name = '{tag_prefix}customer' AND replace_remote_table_if_exist = true AND query = 'SELECT 1 AS x FROM Dual()' AND datasource_database_name = '{write_datasource_database}' AND datasource_name = '{write_datasource_name}' AND datasource_catalog = '{write_catalog}' AND datasource_schema = '{write_schema}' AND base_view_database_name = '{database}' AND base_view_name = '{tag_prefix}customer_drop' AND replace_base_view_if_exist = true",
   "SELECT * FROM DROP_REMOTE_TABLE() WHERE base_view_database_name = '{database}' AND base_view_name = '{tag_prefix}customer_drop' AND drop_base_view_on_cascade = true",
+  # the materialize steps' remote table and summary table, whether or not materialize-drop ran
+  "SELECT remote_table, base_view, status FROM CREATE_REMOTE_TABLE() WHERE remote_table_name = '{tag_prefix}household_income' AND replace_remote_table_if_exist = true AND query = 'SELECT 1 AS x FROM Dual()' AND datasource_database_name = '{write_datasource_database}' AND datasource_name = '{write_datasource_name}' AND datasource_catalog = '{write_catalog}' AND datasource_schema = '{write_schema}' AND base_view_database_name = '{database}' AND base_view_name = '{tag_prefix}household_income_drop' AND replace_base_view_if_exist = true",
+  "SELECT * FROM DROP_REMOTE_TABLE() WHERE base_view_database_name = '{database}' AND base_view_name = '{tag_prefix}household_income_drop' AND drop_base_view_on_cascade = true",
+  "SELECT remote_table, base_view, status FROM CREATE_REMOTE_TABLE() WHERE remote_table_name = '{tag_prefix}s_household_band' AND replace_remote_table_if_exist = true AND query = 'SELECT 1 AS x FROM Dual()' AND datasource_database_name = '{write_datasource_database}' AND datasource_name = '{write_datasource_name}' AND datasource_catalog = '{write_catalog}' AND datasource_schema = '{write_schema}' AND base_view_database_name = '{database}' AND base_view_name = '{tag_prefix}s_household_band_drop' AND replace_base_view_if_exist = true",
+  "SELECT * FROM DROP_REMOTE_TABLE() WHERE base_view_database_name = '{database}' AND base_view_name = '{tag_prefix}s_household_band_drop' AND drop_base_view_on_cascade = true",
 ]
 vql = [
   # the policy first: a tag a policy names cannot be dropped without CASCADE, and CASCADE is
@@ -1050,6 +1056,120 @@ substitute = { sales_analytics = "{database}", bv_orders_db_orders = "bv_write_o
 database = "{database}"
 # Three imported orders, and the upsert: four customers renamed, two new — twenty in all.
 check = "SELECT COUNT(*) FROM bv_write_customer WHERE segment = 'wholesale' HAVING COUNT(*) = 6"
+
+# --- Tables stored from a query: gated behind --with-writes ------------------------------
+# The eight blocks of skills/materialize/SKILL.md, in its order. A remote table, a summary and a
+# data movement each create a table in a source database, so they write into the same place
+# the dml steps do: the server's cache data source, catalog and schema from [values]. The
+# template's ds_dwh / 'dwh' / 'reporting' are substituted with those, its table names get the
+# verify_ prefix, and its sources are the chain's own iv_household_income (7,200 households)
+# and bv_income_band (the band file). The last template drops the summary and the remote table;
+# [cleanup] writes takes both names over and drops them again, so a run that stops halfway
+# leaves nothing in the cache database.
+
+[[step]]
+id = "materialize-name-check"
+kind = "template"
+channel = "vql"
+writes = true
+address = "skills/materialize/SKILL.md#Before you create: is the name free, and what will land"
+substitute = { "input_database_name = 'sales_analytics' AND input_datasource_name = 'ds_dwh'" = "input_database_name = '{write_datasource_database}' AND input_datasource_name = '{write_datasource_name}'", "input_catalog_name = 'dwh' AND input_schema_name = 'reporting'" = "input_catalog_name = '{write_catalog}' AND input_schema_name = '{write_schema}'", "UPPER('household_income')" = "UPPER('{tag_prefix}household_income')", sales_analytics = "{database}" }
+database = "{database}"
+# The block's claim: the name is free before the create.
+check = "SELECT table_name FROM GET_JDBC_DATASOURCE_TABLES() WHERE input_database_name = '{write_datasource_database}' AND input_datasource_name = '{write_datasource_name}' AND input_catalog_name = '{write_catalog}' AND input_schema_name = '{write_schema}' AND table_name = '{tag_prefix}household_income'"
+expect = "no rows"
+
+[[step]]
+id = "materialize-remote-table"
+kind = "template"
+channel = "vql"
+writes = true
+address = "skills/materialize/SKILL.md#A remote table"
+substitute = { "remote_table_name = 'household_income'" = "remote_table_name = '{tag_prefix}household_income'", "datasource_database_name = 'sales_analytics'" = "datasource_database_name = '{write_datasource_database}'", "datasource_name = 'ds_dwh'" = "datasource_name = '{write_datasource_name}'", "datasource_catalog = 'dwh'" = "datasource_catalog = '{write_catalog}'", "datasource_schema = 'reporting'" = "datasource_schema = '{write_schema}'", sales_analytics = "{database}" }
+database = "{database}"
+# Every household landed, and the base view carries the load query REFRESH needs.
+check = "SELECT COUNT(*) FROM bv_dwh_household_income HAVING COUNT(*) = 7200"
+
+[[step]]
+id = "materialize-refresh"
+kind = "template"
+channel = "vql"
+writes = true
+address = "skills/materialize/SKILL.md#Refresh it"
+substitute = { sales_analytics = "{database}" }
+database = "{database}"
+check = "SELECT COUNT(*) FROM bv_dwh_household_income HAVING COUNT(*) = 7200"
+
+[[step]]
+id = "materialize-summary"
+kind = "template"
+channel = "vql"
+writes = true
+address = "skills/materialize/SKILL.md#A summary — created unloaded, proved by the plan, then loaded"
+substitute = { "INTO ds_dwh" = "INTO {write_datasource_database}.{write_datasource_name}", "CATALOG = 'dwh'" = "CATALOG = '{write_catalog}'", "SCHEMA = 'reporting'" = "SCHEMA = '{write_schema}'", "RELATIONNAME = 's_household_band'" = "RELATIONNAME = '{tag_prefix}s_household_band'", sales_analytics = "{database}" }
+database = "{database}"
+# Unloaded, the optimizer still plans the query over the views; with consider_all_summaries it
+# would use the summary. The check is the first half: no summary in the plain plan yet.
+check = "SELECT 1 FROM GET_QUERY_EXECUTION_PLAN() WHERE input_query = 'SELECT income_band_sk, COUNT(*) AS households FROM iv_household_income GROUP BY income_band_sk' AND execution_plan LIKE '%Summary Acceleration%'"
+expect = "no rows"
+
+[[step]]
+id = "materialize-summary-load"
+kind = "template"
+channel = "vql"
+writes = true
+address = "skills/materialize/SKILL.md#A summary — created unloaded, proved by the plan, then loaded[1]"
+substitute = { sales_analytics = "{database}" }
+database = "{database}"
+# Loaded, the same query is answered from the summary.
+check = "SELECT 1 FROM GET_QUERY_EXECUTION_PLAN() WHERE input_query = 'SELECT income_band_sk, COUNT(*) AS households FROM iv_household_income GROUP BY income_band_sk' AND execution_plan LIKE '%Summary Acceleration%'"
+
+[[step]]
+id = "materialize-data-movement"
+kind = "template"
+channel = "vql"
+writes = true
+address = "skills/materialize/SKILL.md#Data movement for a federated join"
+substitute = { "JDBC ds_dwh" = "JDBC {write_datasource_database}.{write_datasource_name}", sales_analytics = "{database}" }
+database = "{database}"
+# The band file moves next to the remote table, and the join runs there.
+check = "SELECT 1 FROM GET_QUERY_EXECUTION_PLAN() WHERE input_query = 'SELECT buy_potential, COUNT(*) AS households FROM household_band_detail GROUP BY buy_potential' AND execution_plan LIKE '%Data Movement%'"
+
+[[step]]
+id = "materialize-table"
+kind = "template"
+channel = "vql"
+writes = true
+address = "skills/materialize/SKILL.md#A materialized table"
+substitute = { sales_analytics = "{database}" }
+database = "{database}"
+check = "SELECT COUNT(*) FROM income_band_target HAVING COUNT(*) = 3"
+
+[[step]]
+id = "materialize-drop-readers"
+kind = "fixture"
+channel = "vql"
+writes = true
+database = "{database}"
+# The drop template refuses a base view something reads (drop_base_view_on_cascade = false);
+# the data movement view above reads the remote table, so it goes first.
+vql = """
+CONNECT DATABASE {database};
+
+DROP VIEW IF EXISTS household_band_detail;
+"""
+
+[[step]]
+id = "materialize-drop"
+kind = "template"
+channel = "vql"
+writes = true
+address = "skills/materialize/SKILL.md#Drop — on the human's yes"
+substitute = { sales_analytics = "{database}" }
+database = "{database}"
+# Both tables are gone from the database, not only their views.
+check = "SELECT table_name FROM GET_JDBC_DATASOURCE_TABLES() WHERE input_database_name = '{write_datasource_database}' AND input_datasource_name = '{write_datasource_name}' AND input_catalog_name = '{write_catalog}' AND input_schema_name = '{write_schema}' AND (table_name = '{tag_prefix}household_income' OR table_name = '{tag_prefix}s_household_band')"
+expect = "no rows"
 
 [[step]]
 id = "nothing-invalid"

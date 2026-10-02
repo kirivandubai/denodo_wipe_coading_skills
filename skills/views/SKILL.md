@@ -548,6 +548,11 @@ and `household_income_by_band` and the `household_income` contract with them.
   from a changed column with an empty cache: 0 rows for it and everything on it, no error,
   until its load runs again — *verified: 9.5.1 (live, 2026-09-30)*. The load, and the rest
   of what a cache does to a change, is `/denodo:cache`.
+- **A remote table loaded from the view is not in `USED_BY()`** — a summary over it is. The
+  remote table's query is text in its base view's `DATA_LOAD_QUERY`, and its next `REFRESH`
+  after the change fails *after* emptying the table — *verified: 9.5.1 (live, 2026-10-02)*.
+  Search `DESC VQL DATABASE <db>` for the view's name, as for web services
+  (`/denodo:materialize`).
 
 **"Where does this field come from"** is the question `COLUMN_DEPENDENCIES()` does answer:
 with `input_column_name` it walks one field down to the base view and the data source in one

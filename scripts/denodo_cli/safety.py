@@ -20,6 +20,10 @@ with ``'cache_preload'`` or ``'cache_invalidate'`` in its CONTEXT (T27) — the 
 lets both through. A ``CREATE`` of a user, a role or a global security policy, a ``CHOWN`` and
 a ``CREATE DATABASE`` that carries a ``GRANT`` change who may read what across the server, and
 ``CREATE OR REPLACE`` of an existing role or user adds to it rather than replacing it (T31).
+A remote table and a summary are tables in a source database: ``CREATE [OR REPLACE] REMOTE
+TABLE`` and ``CREATE [OR REPLACE] SUMMARY VIEW`` create one there and load it, and ``REFRESH``
+empties one and loads it again; ``CREATE OR REPLACE MATERIALIZED TABLE`` empties a table whose
+rows exist nowhere else (T34).
 HTTP calls are classified by method and path, never
 by words in the body: the Data Marketplace has ``POST`` endpoints that overwrite whole sets
 (spike T11, section 6).
@@ -46,6 +50,9 @@ _VQL_KINDS = {
     "WEBCONTAINER": "setting",
     # the owner of an element decides who may change it and grant on it
     "CHOWN": "security",
+    # empties the table behind a remote table or a summary in its source database and loads the
+    # result of the stored query into it again
+    "REFRESH": "table",
 }
 # Forms that start with one of the keywords above but only touch the caller's session or
 # only read: the ODBC connection settings (SET QUERYTIMEOUT TO …), ALTER SESSION, and
@@ -93,6 +100,13 @@ _CACHE_WRITE = re.compile(r"'cache_invalidate'\s*=|'cache_preload'\s*=\s*'true'"
 _SECURITY_CREATE = re.compile(
     r"CREATE\s+(?:OR\s+REPLACE\s+)?(?:USER|ROLE|GLOBAL_SECURITY_POLICY)\b", re.IGNORECASE)
 _DATABASE_CREATE = re.compile(r"CREATE\s+(?:OR\s+REPLACE\s+)?DATABASE\b", re.IGNORECASE)
+# A table in a source database, created and loaded by the statement itself; OR REPLACE drops a
+# table of that name first, whoever made it. A materialized table keeps rows that were inserted
+# into it and exist nowhere else: OR REPLACE over one empties it (checked on 9.5.1), while a plain
+# CREATE is refused when the name exists.
+_SOURCE_TABLE_CREATE = re.compile(
+    r"CREATE\s+(?:(?:OR\s+REPLACE\s+)?(?:REMOTE\s+TABLE|SUMMARY\s+VIEW)|OR\s+REPLACE\s+MATERIALIZED\s+TABLE)\b",
+    re.IGNORECASE)
 _GRANT_CLAUSE = re.compile(r"\b(?:GRANT|REVOKE)\b", re.IGNORECASE)
 _STRING_LITERAL = re.compile(r"'(?:[^']|'')*'")
 
@@ -127,7 +141,9 @@ def classify_vql(statement: str) -> str | None:
     for a call of a predefined procedure that changes state, ``"cache"`` for a query that
     loads or invalidates the cache of a view, ``"security"`` for a statement that creates a
     user, a role or a global security policy, changes an owner, or grants in ``CREATE
-    DATABASE``, else ``None``."""
+    DATABASE``, ``"table"`` for one that creates, replaces or reloads a table in a source
+    database (a remote table, a summary, ``REFRESH``) or replaces a materialized table, else
+    ``None``."""
     body = _LEADING_NOISE.sub("", statement, count=1)
     match = re.match(r"([A-Za-z_]+)", body)
     if not match:
@@ -137,6 +153,8 @@ def classify_vql(statement: str) -> str | None:
         return kind
     if _SECURITY_CREATE.match(body):
         return "security"
+    if _SOURCE_TABLE_CREATE.match(body):
+        return "table"
     if _DATABASE_CREATE.match(body) and _GRANT_CLAUSE.search(_STRING_LITERAL.sub("''", body)):
         return "security"
     for call in _PROCEDURE_CALL.finditer(body):

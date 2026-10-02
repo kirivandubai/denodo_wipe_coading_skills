@@ -83,6 +83,7 @@ Virtual DataPort — основной адресат, но не единстве
 /denodo:security      who reads what: roles given to users, global security policies over tagged columns (T31, beyond v1)
 /denodo:ai            the server's LLM in a query: text functions over rows, their answers cached, semantic search over stored vectors (T32, beyond v1)
 /denodo:dml           rows changed through a view: INSERT, UPDATE, DELETE, the generated key back, a view an application writes through, upserts (T33, beyond v1)
+/denodo:materialize   query results stored as tables: remote tables and REFRESH, summaries, data movement, materialized tables (T34, beyond v1)
 ```
 
 The dialect has no skill of its own (section 9): it is a table in the body of `/denodo:vql`
@@ -155,9 +156,12 @@ denodo_skills/                        репозиторий = плагин = м
 │   ├── ai/
 │   │   ├── SKILL.md
 │   │   └── references/               functions (each LLM function as measured), vectors (type, distances, model choice, delegation)
-│   └── dml/
+│   ├── dml/
+│   │   ├── SKILL.md
+│   │   └── references/               statements (grammar, RETURNING, upsert, how values land, transactions), writable-views (per view type, CHECK OPTION, wrapper switches, cache, impersonation)
+│   └── materialize/
 │       ├── SKILL.md
-│       └── references/               statements (grammar, RETURNING, upsert, how values land, transactions), writable-views (per view type, CHECK OPTION, wrapper switches, cache, impersonation)
+│       └── references/               remote-tables (procedure, command, types, REFRESH, materialized and temporary tables), summaries (grammar, rewrite measured, staleness, data movement)
 ├── scripts/
 │   ├── denodo                        launcher (только stdlib)
 │   └── denodo_cli/                   реализация
@@ -285,6 +289,22 @@ it is never the "new object" the keyword suggests. `ALTER USER | ROLE | DATABASE
 `ALTER GLOBAL_SECURITY_POLICIES` are already `alter`. A tag assignment that brings a column
 under an existing policy is a security change no text classifier can see: the rule for it
 lives in the skill.
+
+**Tables in source databases (T34, owner's decision on roadmap 9.2, part 3).** `CREATE [OR
+REPLACE] REMOTE TABLE` and `CREATE [OR REPLACE] SUMMARY VIEW` create a table in a source database
+and load it, `OR REPLACE` dropping whatever table had the name; `REFRESH` empties a remote table
+or a summary and loads it again; `CREATE OR REPLACE MATERIALIZED TABLE` over one with rows
+leaves it empty (checked on 9.5.1). All four are flagged `table`; a plain `CREATE MATERIALIZED
+TABLE` and `SELECT … INTO` refuse a name that exists and pass. The rule the skill teaches is the
+owner's: a **new** table, by a statement that cannot overwrite one (`CREATE_REMOTE_TABLE` with
+`replace_remote_table_if_exist = false`), in the data source and schema the human named, under a
+name checked free, is the agent's own, and so is a `REFRESH` or a replacement of that table in
+the same session; replacing, emptying or dropping a table older than the session waits for the
+yes, and so does every load of a summary, because from then on the optimizer answers other
+people's queries from it. A summary created with `DATA_LOAD_IMMEDIATE = FALSE` changes no
+answer and is the agent's; data movement added to a view older than the session is the yes —
+every query of it then creates a table in the target database. The classifier still flags the
+new table: on a production profile every change waits for the yes.
 
 **Для HTTP-канала правило формулируется по методу и пути, а не по глаголу.** `DELETE`
 тега, категории (каскадно с потомками) и external tool server (со всеми его элементами)
@@ -727,6 +747,17 @@ only a table `CREATE_REMOTE_TABLE` made, so each is first taken over by that pro
 still exists. A default run touches no source database at all; `writes` is refused on an http
 step, which writes none.
 
+The templates of `materialize` (T34) run behind the same flag, in the same place: a remote table
+of the chain's `iv_household_income` and its `REFRESH`, a summary created unloaded and then
+loaded — each checked by a plan, the unloaded one must not be used and the loaded one must —
+a data movement that moves the band file next to the remote table, a materialized table, and
+the drop of both tables. The template's warehouse data source and schema are substituted with
+`[values]`'s, its table names take the `verify_` prefix, and `[cleanup] writes` takes both
+names over with `CREATE_REMOTE_TABLE` and drops them again, so a run that stops halfway leaves
+nothing in the cache database. A check can read the plan text:
+`… FROM GET_QUERY_EXECUTION_PLAN() WHERE input_query = '…' AND execution_plan LIKE '%Summary
+Acceleration%'` answers a row only when the optimizer chose the summary.
+
 **Маркетплейс — по флагу `--with-marketplace`, по умолчанию выключенному.** Его объекты
 серверные, а не пообъектные по базам, и цепочке предшествует синхронизация общего
 каталога — единственная операция набора, меняющая состояние за пределами своей базы.
@@ -910,6 +941,28 @@ of a value arrives cut. It cost the execution layer the `affected` field (sectio
 verification chain `--with-writes` (section 11.1), behind which its seven templates run against
 two tables created in the cache database; no classifier rule — `INSERT`, `UPDATE`, `DELETE` were
 already flagged.
+
+**Also beyond v1, `/denodo:materialize`** (T34, from the owner's roadmap review): the result
+of a query stored as a table — a remote table other tools read, created by `CREATE_REMOTE_TABLE`
+and reloaded by `REFRESH`, a frozen snapshot, a summary the optimizer answers aggregate queries
+from, a data movement that copies the small side of a federated join next to the big one, and
+a materialized table. Its rule is the owner's decision on writes to external databases
+(section 6.3): a new table where the human said is the agent's, anything older and every load
+of a summary is the human's. Measured on 9.5.1 against SQL Server: `REFRESH` empties the table
+first and leaves it empty when the load fails (a source down; a column added under a `SELECT *`
+load query); a load that fails after the table was created leaves it empty without a base view;
+the `CREATE REMOTE TABLE` command makes no base view, reports no count and its table can be
+neither refreshed nor dropped by `DROP_REMOTE_TABLE`; `OR REPLACE` replaces another reader's
+table and its base view stays `OK` until a dropped column is queried; a remote table is not in
+`USED_BY` of the view it is loaded from; a summary keeps answering its last load after rows
+changed and after the view under it was re-declared with a new filter — the documented
+invalidation was not observed — and a summary whose load failed stays in every plan, empty, so
+the queries it answers return no rows and a total `NULL` while the sources are fine; a summary
+answers `COUNT(DISTINCT)` only at exactly its grain and never `AVG`; filters answered from a
+summary or a remote table follow that database's collation; characters outside the code page
+land as `?` in a `varchar` column; a data movement into a data source the big side is not in
+moves for nothing; `CREATE OR REPLACE MATERIALIZED TABLE` over rows empties it. It cost the execution layer the `table` kind of the classifier and
+the verification chain eight steps behind `--with-writes`.
 
 ## 13. Риски и открытые вопросы
 

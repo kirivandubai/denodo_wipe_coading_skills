@@ -127,4 +127,4 @@ the database; `GET_CACHE_TABLE` needs the Metadata privilege on the view (docume
 | Cache indexes (`DECLARE CACHE INDEX`), custom table name, table templates, schema evolution (`ONSCHEMACHANGE`), batch size | Design Studio |
 | Refresh on a schedule | Scheduler (Simple or DAG Cache Management job); the load statement is the job's query |
 | Enabling the cache for the server or a database, choosing the cache data source | the administrator, Design Studio |
-| Remote tables, materialized tables, summaries | not a cache — Design Studio |
+| Remote tables, materialized tables, summaries | not a cache — `/denodo:materialize` |

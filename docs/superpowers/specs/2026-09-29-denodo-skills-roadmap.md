@@ -778,8 +778,12 @@ Assistant, Solution Manager environment modelling.
      included); on the test server they are the run's own by prefix only (`verify_`,
      `zq<task>_`) and removed by name;
    - *writes to external databases* (remote tables, materialized tables, writes through views)
-     — settled with `materialize` (item 15) and `dml` (item 22); the owner put the safety of
-     `dml` after the skill itself.
+     — **settled in T34 for tables**: a new table, by a statement that cannot overwrite one, in
+     the data source and schema the human named, under a name checked free, is the agent's own
+     (as is a `REFRESH` or a replacement of it in the same session); replacing, emptying or
+     dropping an older table and every load of a summary wait for the human's yes. Writes of
+     rows through views (`dml`) keep `vql`'s rule — every write waits for the yes; the owner put
+     their safety after the skill itself.
    `publish` no longer needs it — dropped.
 3. **A second, non-admin profile in the transport** — **settled in T31 without one**: the
    check runs as each person with `CONTEXT ('impersonate_user' = …)` (the profile's user needs
@@ -838,6 +842,7 @@ the sections above are edited to match, and section 10 (build order) was rebuilt
 | 14 `metrics` | P2, separate skill | A metric view is a new object the model does not know at all; its own skill rather than a reference in `views` |
 | 14 `metrics` (addition) | rule recorded | Only selection views are built on a metric view; other facts and dimensions are joined to the selection view |
 | 15 `materialize` | P2, separate skill | Remote tables, materialized tables, summaries and data movement in one skill of their own, not folded into `cache` |
+| 9.2 writes to external databases (T34) | new table where the human named — the agent's; anything older, and every summary load — the yes | A non-replacing create is refused by the server when the name exists, so it cannot overwrite; a summary changes other people's answers from its first load |
 | 18 `lakehouse` | dropped | Enterprise Plus with an MPP cluster, nothing to verify it on, and connecting the source is Design Studio's job after item 4 |
 | 19 `dbt` | dropped | A competing authoring path to the plugin's own `.vql` loop, useful only to dbt teams |
 | 21 `ai` | this round, separate skill | Taken at once; check the server's LLM configuration first, never an unbounded AI call over a table |

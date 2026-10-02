@@ -119,6 +119,7 @@ it just means the verification is yours to do, with `DESC` and a `SELECT`.
 | `CREATE` / `CREATE OR REPLACE` of an object | `DROP`, `TRUNCATE`, `DELETE` |
 | Read-only `SELECT`, `DESC`, `GET_*`, `env check` — on any profile, production included | `ALTER` of an object that existed before this session, or that something you did not create already reads. Your own new view takes the `ALTER VIEW … CACHE` line of its file without a yes; a `DROP`, even of your own object, does not |
 | Session settings: `SET QUERYTIMEOUT TO …`, `ALTER SESSION SET 'querytimeout' = …` | `INSERT`, `UPDATE` — the rows land in the source behind the view, at once: over this connection `ROLLBACK` undoes nothing (`/denodo:dml`) |
+| A **new** table in a source database: `CREATE_REMOTE_TABLE` with `replace_remote_table_if_exist = false`, in the data source and schema the human named, under a name you checked is free; its `REFRESH` while it is yours from this session; a summary created unloaded; a new materialized table in your project's database (`/denodo:materialize`) | replacing, emptying or dropping a table in a source database that existed before this session — `replace … = true`, `OR REPLACE` before `REMOTE TABLE`, `SUMMARY VIEW` or `MATERIALIZED TABLE`, `REFRESH`, `DROP_REMOTE_TABLE` — and **every load of a summary**: from then on the optimizer answers other people's queries from it (`/denodo:materialize`) |
 | — | `SET '<property>' = …`, `WEBCONTAINER SET / STOP / START / RELOAD` — the whole server's configuration, not your session |
 | — | `CREATE OR REPLACE` of an existing view that drops or renames a column other objects use — the server accepts it and breaks them without an error (`/denodo:views`, "Before a column changes") |
 | — | loading, reloading or clearing the cache of a view you did not create in this session — `SELECT … CONTEXT ('cache_preload' = 'true', …)`, `ALTER VIEW … CACHE` (`/denodo:cache`) |
@@ -126,13 +127,14 @@ it just means the verification is yours to do, with `DESC` and a `SELECT`.
 | — | the description, field descriptions, primary key or tags of a view you did not create in this session — by `ALTER VIEW`, `ALTER TAG`, or by re-declaring the view with `CREATE OR REPLACE`: the human approves the texts; naming a view to be made visible to an agent is the yes for its tag (`/denodo:semantics`) |
 | — | who may read what: a role, a user or a global security policy, created or changed, a grant of a role or a privilege to a person, or a tag that a policy names put on or taken off a column — unless every object it touches was created by you in this session. A `CREATE` counts: a new policy restricts people who exist, and `CREATE OR REPLACE` of an existing role adds to it (`/denodo:security`) |
 | `…_AI` calls on `Dual()` — to see that the server answers, or to try an expression on up to three texts — and a search whose text is embedded once | an AI function — `CLASSIFY_AI`, `SENTIMENT_AI` and the rest, or an embedding computed per row — evaluated on the rows of a view, a cache load of a view with such a column included: every row is a paid request to an outside provider, and its text goes with it. The human agrees to the number of requests, or names a ceiling (`/denodo:ai`) |
-| — | a predefined procedure that changes state, however it is spelled: `SELECT * FROM DROP_REMOTE_TABLE(…)`, `CALL CLEAN_CACHE_DATABASE(…)`, `GENERATE_STATS(…)` — the list is in `/denodo:procedures` |
+| — | a predefined procedure that changes state, however it is spelled: `SELECT * FROM DROP_REMOTE_TABLE(…)`, `CALL CLEAN_CACHE_DATABASE(…)`, `GENERATE_STATS(…)` — `CREATE_REMOTE_TABLE` of a new table, above, is the exception — the list is in `/denodo:procedures` |
 | `GET` calls to the marketplace | every destructive marketplace call (below) |
 | — | **any change at all on a profile with `production: true`, `CREATE` included** |
 
 Destruction, for this rule, is anything that destroys or overwrites what exists, or changes
 state outside your own project: server settings, data in sources, objects of other
-databases, global objects.
+databases, global objects. One kind of change outside it is yours: a new table in a source
+database, where the human said it should go, by a statement that cannot overwrite one.
 
 The confirmation is a yes in this conversation, after you have shown the exact statements
 or calls. Not a yes to the task in general. "Do it on prod" is the task, not the yes.
@@ -225,6 +227,7 @@ different figures depending on what Denodo pushes down to the source.
 | Who may read what — a role and its grants, giving it to a user, masking columns or filtering rows with a global security policy over tagged columns, checking what a given user gets | `/denodo:security` |
 | The LLM or the embedding model in a query — classifying, scoring, translating, summarising or extracting from a text column (`CLASSIFY_AI` …), a view that keeps those answers, semantic search over stored vectors (`VECTOR_DISTANCE`, `EMBED_AI`) | `/denodo:ai` |
 | Changing rows in the database behind a view — `INSERT`, `UPDATE`, `DELETE`, `INSERT … SELECT`, an upsert, the generated key back, a view an application writes through (`WITH CHECK OPTION`) | `/denodo:dml` |
+| The result of a query stored as a table — a remote table other tools read and its `REFRESH`, a frozen snapshot, a summary the optimizer answers aggregates from, a data movement for a slow federated join, a materialized table | `/denodo:materialize` |
 | What people and AI consumers read about existing views — descriptions, primary keys, associations, the tag the MCP Server shows views by; "why does the agent not see this view" | `/denodo:semantics` |
 | Running anything against a live server, reading its errors | `/denodo:execute` |
 
