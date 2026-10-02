@@ -81,6 +81,7 @@ Virtual DataPort — основной адресат, но не единстве
 /denodo:semantics     metadata AI consumers read: descriptions, keys, associations, MCP tag (T28, beyond v1)
 /denodo:metrics       metric views: KPIs defined once, the views over them, evaluate_metric (T29, beyond v1)
 /denodo:security      who reads what: roles given to users, global security policies over tagged columns (T31, beyond v1)
+/denodo:ai            the server's LLM in a query: text functions over rows, their answers cached, semantic search over stored vectors (T32, beyond v1)
 ```
 
 The dialect has no skill of its own (section 9): it is a table in the body of `/denodo:vql`
@@ -147,9 +148,12 @@ denodo_skills/                        репозиторий = плагин = м
 │   ├── metrics/
 │   │   ├── SKILL.md
 │   │   └── references/metric-views.md  grammar, joins per association measured, query rules, limits
-│   └── security/
+│   ├── security/
+│   │   ├── SKILL.md
+│   │   └── references/               policies (grammar, masks, audience per grant path), privileges
+│   └── ai/
 │       ├── SKILL.md
-│       └── references/               policies (grammar, masks, audience per grant path), privileges
+│       └── references/               functions (each LLM function as measured), vectors (type, distances, model choice, delegation)
 ├── scripts/
 │   ├── denodo                        launcher (только stdlib)
 │   └── denodo_cli/                   реализация
@@ -684,6 +688,15 @@ rows"` — для проверок вида «сломанного нет», н�
 пометку блока не обновляет ни один — хотя вместе они исполняют его целиком. Правило «шаг
 исполнил блок целиком» считает по шагу и этого случая не различает.
 
+**The AI steps — behind `--with-ai`, off by default (T32).** A step with `ai = true` evaluates
+an LLM or embedding function: it writes nothing outside the test database, but every row it
+projects is a paid request to the provider the server is configured with, and a server without
+that configuration or without the Enterprise Plus bundle fails it. A default run stays free and
+portable, so these steps are skipped unless asked for, with the reason in the report; `ai` is
+refused on an http step, which makes no such call. The embedding model the search-view
+template names comes from `[values] embedding_model`, the same way a fork points the chain at
+its own server.
+
 **Маркетплейс — по флагу `--with-marketplace`, по умолчанию выключенному.** Его объекты
 серверные, а не пообъектные по базам, и цепочке предшествует синхронизация общего
 каталога — единственная операция набора, меняющая состояние за пределами своей базы.
@@ -830,6 +843,24 @@ exists. It cost the execution layer the `security` kind in the classifier (secti
 the two flags of `env check` (section 7.3); its four templates and the claim that
 re-applying a view's file takes the mask away run in the `verify` chain, whose checks read
 as an `EXTERNAL` user by impersonation.
+
+**Also beyond v1, `/denodo:ai`** (T32, from the owner's roadmap review): the six LLM functions
+of VQL over a text column (`CLASSIFY_AI`, `SENTIMENT_AI`, `SUMMARIZE_AI`, `TRANSLATE_AI`,
+`EXTRACT_AI`, `ENRICH_AI`), a view that keeps their answers in its full cache, and semantic
+search over a vector column a database already stores (`VECTOR_DISTANCE`, `EMBED_AI`, the
+distance functions), including a search view an application passes a sentence to. The owner's
+rule is its core: an AI function runs over rows only up to a number the human agreed to,
+because every row is a paid request whose text leaves for an outside provider; `vql` carries it
+in its safety table. What makes the rule enforceable is measured on 9.5.1: a `LIMIT` bounds the
+requests only when the function is in the `SELECT` list alone — under `ORDER BY` or `GROUP BY`
+every row is sent, and a condition on an AI result is pushed down and evaluated before the other
+filters, over every row of a file source; the tool's `--max-rows` cuts the printout, not the
+work; a view parameter passed to `VECTOR_DISTANCE` is embedded once per row on every search,
+the documentation's own pattern; and a reader of a view with an AI column needs the
+`use_large_language_model` role unless the view is cached. It cost the execution layer no
+classifier rule — an AI call changes no state, and a text classifier cannot see the rows it
+will touch — and the verification chain one flag, `--with-ai` (section 11.1), behind which its
+seven templates run over a six-row fixture.
 
 ## 13. Риски и открытые вопросы
 

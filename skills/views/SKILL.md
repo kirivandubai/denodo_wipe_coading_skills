@@ -15,7 +15,9 @@ Sources, wrappers and base views are `/denodo:datasources`; databases, folders a
 tags are `/denodo:catalog`. Describing, keying and tagging views that already exist — an
 audit of a database for people and AI consumers — is `/denodo:semantics`. Metric views —
 KPIs declared once over a fact and its dimensions, and the views built on them — are
-`/denodo:metrics`; a mart of one fixed grain stays here. The SELECT inside
+`/denodo:metrics`; a mart of one fixed grain stays here. A view with a column that calls the
+server's LLM or embedding model (`CLASSIFY_AI`, `EMBED_AI`, `VECTOR_DISTANCE` …) is
+`/denodo:ai` first: every row it is read for is a paid request. The SELECT inside
 `AS` has no skill of its own: the expressions
 where VQL returns a wrong value without an error — substrings, casts, date patterns, `SUM`
 over `int` — are the table in `/denodo:vql` and its `references/dialect.md`. Applying files
@@ -39,7 +41,7 @@ silently — keep them in the file (`/denodo:semantics`).
 ### Derived view
 
 ```sql
--- verified: 9.5.1 (live, 2026-09-30)
+-- verified: 9.5.1 (live, 2026-10-02)
 CONNECT DATABASE sales_analytics;
 
 CREATE OR REPLACE VIEW iv_household_income
@@ -144,7 +146,7 @@ Clause order: `FOLDER` → `DESCRIPTION` → `PRIMARY KEY` → `TAGS` → `( fie
 ### Union — one entity from several views
 
 ```sql
--- verified: 9.5.1 (live, 2026-09-30)
+-- verified: 9.5.1 (live, 2026-10-02)
 CONNECT DATABASE sales_analytics;
 
 CREATE OR REPLACE VIEW returns
@@ -209,7 +211,7 @@ One branch per source, and a constant column that says which source a row came f
 ### Arrays — `FLATTEN` to rows, `NEST` back
 
 ```sql
--- verified: 9.5.1 (live, 2026-09-30)
+-- verified: 9.5.1 (live, 2026-10-02)
 CONNECT DATABASE sales_analytics;
 
 CREATE OR REPLACE VIEW iv_oms_order_lines
@@ -282,7 +284,7 @@ elements, a re-nested array), arrays inside registers, two arrays at once, and `
 ### Interface view — a contract you can re-implement
 
 ```sql
--- verified: 9.5.1 (live, 2026-09-30)
+-- verified: 9.5.1 (live, 2026-10-02)
 CREATE OR REPLACE INTERFACE VIEW household_income (
         household_sk:int,
         income_band_sk:int,
@@ -350,7 +352,7 @@ not.
 ### Association — the relationship, recorded
 
 ```sql
--- verified: 9.5.1 (live, 2026-09-30)
+-- verified: 9.5.1 (live, 2026-10-02)
 CREATE OR REPLACE ASSOCIATION a_income_band_household REFERENTIAL CONSTRAINT
     FOLDER = '/06 - associations'
     ENDPOINT income_band bv_household_demographics (0,*)
@@ -480,7 +482,7 @@ return *lines*. Publish both counts under names that say which is which
 a view that already has dependants, before anything is changed. Everything here only reads.
 
 ```sql
--- verified: 9.5.1 (live, 2026-09-30)
+-- verified: 9.5.1 (live, 2026-10-02)
 -- Can ib_income_band_sk go from bv_income_band?
 -- 1. The views that name bv_income_band in their own definition. Only these can use its columns.
 SELECT used_by_database_name, used_by_name

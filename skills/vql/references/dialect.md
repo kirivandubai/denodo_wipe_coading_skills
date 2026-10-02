@@ -36,7 +36,7 @@ rounding. After a parse or a cast over real rows, count the `NULL`s it produced 
 | `s LIKE 'US$%'` | **`$` is the default escape character**: `$%` means a literal `%`, so `'US$5' LIKE 'US$%'` is false | add `ESCAPE '!'` (any character not in the pattern) to every pattern that contains `$` |
 | `s LIKE 'a\_b'` | backslash is an ordinary character — the PostgreSQL escape matches nothing | `LIKE 'a$_b'`, or `ESCAPE` |
 | `ILIKE` | does not exist | `UPPER(s) LIKE 'ABC%'`, or `s REGEXP_ILIKE 'abc.*'` |
-| `LEN(s)` / `LENGTH(s)` | `LENGTH` does not exist; `LEN` counts trailing spaces: `LEN('abc  ')` → `5` | `LEN(TRIM(s))`; `CHAR_LENGTH` also exists |
+| `LEN(s)` / `LENGTH(s)` | `LENGTH` does not exist — inside an aggregate the error does not say so: `MAX(LENGTH(s))` is `The following fields cannot be projected: max(length(s))`; `LEN` counts trailing spaces: `LEN('abc  ')` → `5` | `LEN(TRIM(s))`; `CHAR_LENGTH` also exists |
 | `REPLACE(s, '.', '-')` | literal, as expected. `REGEXP(s, '.', '-')` is the regex one — `'a.b.c'` → `'-----'` | pick by intent; escape regex metacharacters in `REGEXP`, `SPLIT` and `REGEXP_LIKE` |
 | `SPLIT_PART(s, ',', 2)` | does not exist. `SPLIT(',', s)` takes the **regex first** and returns an array, indexed from **0** | parse with `SUBSTR` and `POSITION`, or see `/denodo:views` for arrays |
 | `TRIM(BOTH 'xy' FROM s)` | only the **first** character of the trim set is used: `'xxabcyy'` → `'abcyy'` | a regex, below |

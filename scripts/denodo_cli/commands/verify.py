@@ -53,6 +53,7 @@ class Step:
     check: str | None = None
     expect: str = "rows"
     marketplace: bool = False
+    ai: bool = False
     database: str | None = None
 
 
@@ -146,6 +147,11 @@ def _step(raw: dict) -> Step:
         # guarded behind --with-marketplace. Without this, an http step lacking the flag
         # would fall through into the vql branch of a default run.
         raise ChainError(f"step {step_id!r}: an http-channel step must set marketplace = true")
+    ai = bool(raw.get("ai", False))
+    if ai and channel != "vql":
+        # ai = true gates a VQL step that calls the server's LLM or embedding model; an http
+        # step makes no such call, and the flag on it would claim a gate nothing enforces.
+        raise ChainError(f"step {step_id!r}: ai = true only applies to a vql-channel step")
     database = raw.get("database")
     if database is not None and not isinstance(database, str):
         raise ChainError(f"step {step_id!r}: database must be a string, got {database!r}")
@@ -162,7 +168,8 @@ def _step(raw: dict) -> Step:
                 substitute={str(k): str(v) for k, v in (raw.get("substitute") or {}).items()},
                 capture={str(k): str(v) for k, v in (raw.get("capture") or {}).items()},
                 expect_body={str(k): str(v) for k, v in expect_body.items()},
-                check=raw.get("check"), expect=expect, marketplace=marketplace, database=database)
+                check=raw.get("check"), expect=expect, marketplace=marketplace, ai=ai,
+                database=database)
 
 
 def _int_calls(raw_calls: object, step_id: str) -> list[int]:
@@ -344,6 +351,7 @@ def run_chain(
     rest_factory: Callable | None = None,
     database: str | None = None,
     with_marketplace: bool = False,
+    with_ai: bool = False,
     keep: bool = False,
     update_marks: bool = False,
     today: dt.date | None = None,
@@ -395,6 +403,13 @@ def run_chain(
     run with no http traffic at all — the common case without ``--with-marketplace`` — can
     leave it ``None``.
 
+    ``with_ai`` gates the steps marked ``ai = true`` the same way ``with_marketplace`` gates
+    the marketplace tail, for a different reason: they write nothing outside the test
+    database, but each calls the LLM or the embedding model the server is configured with,
+    one paid request per row the query projects, and a server without that configuration
+    (or without the Enterprise Plus bundle) fails them. A default run must stay free and
+    portable, so they are skipped unless asked for.
+
     ``update_marks`` rewrites the ``-- verified: ...`` mark of every ``template`` step
     that passed, with the version the server actually reported and ``today`` (or
     ``dt.date.today()`` when ``today`` is not given). The version is read once, before
@@ -442,6 +457,10 @@ def run_chain(
                 continue
             if step.marketplace and not with_marketplace:
                 reports.append(_skipped(step, "marketplace steps need --with-marketplace"))
+                continue
+            if step.ai and not with_ai:
+                reports.append(_skipped(
+                    step, "AI steps call the server's LLM, one paid request per row; they need --with-ai"))
                 continue
             report = _run_step(profile, step, values=values, root=root, vql_factory=vql_factory,
                                rest_factory=rest_factory, allow_destructive=allow_destructive,

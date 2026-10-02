@@ -387,7 +387,7 @@ after the tool, as below; do not rename them to `iv_…` to match the table.
 
 
 ```sql
--- verified: 9.5.1 (live, 2026-09-30)
+-- verified: 9.5.1 (live, 2026-10-02)
 CONNECT DATABASE sales_analytics;
 
 -- the two types come from vql-metadata verbatim. The names are part of the contract

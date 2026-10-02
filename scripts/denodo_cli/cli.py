@@ -100,6 +100,9 @@ def build_parser() -> argparse.ArgumentParser:
     verify.add_argument("--database", help="test database to create and drop (default: from the manifest)")
     verify.add_argument("--with-marketplace", action="store_true",
                         help="also run the Data Marketplace tail; it writes outside your own database")
+    verify.add_argument("--with-ai", action="store_true",
+                        help="also run the steps that call the server's LLM; every row they project is "
+                             "a paid request")
     verify.add_argument("--keep", action="store_true", help="leave the created objects on the server")
     verify.add_argument("--update-marks", action="store_true",
                         help="rewrite the verified: mark of every template step that passed")
@@ -220,7 +223,8 @@ def _dispatch(args) -> tuple[dict, int]:
             chain = load_chain(manifest)
             return run_chain(profile, chain, root=repo, vql_factory=resolve_vql_factory(profile),
                              rest_factory=resolve_rest_factory(), database=args.database,
-                             with_marketplace=args.with_marketplace, keep=args.keep,
+                             with_marketplace=args.with_marketplace, with_ai=args.with_ai,
+                             keep=args.keep,
                              update_marks=args.update_marks, allow_destructive=args.allow_destructive)
         except ChainError as exc:
             raise UsageError(str(exc)) from exc

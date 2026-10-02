@@ -33,7 +33,7 @@ in Design Studio by the administrator — say so and stop. Applying files is
 Reads only — they run on any profile, and they are where every decision below comes from.
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-01)
+-- verified: 9.5.1 (live, 2026-10-02)
 -- 1. Who reads the database, and through what: one row per grant. A user's row with
 --    userrolename empty = granted to that user directly; a row with username empty = a
 --    role's own grant (a role nobody holds shows only this way); elementname empty = the
@@ -136,7 +136,7 @@ view's own file, then the check. Names follow the example database of `/denodo:v
 ### A role that reads the marts, given to a user
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-01)
+-- verified: 9.5.1 (live, 2026-10-02)
 CREATE OR REPLACE ROLE sales_analyst 'Sales analysts: read the household marts'
     GRANT CONNECT ON sales_analytics
     GRANT EXECUTE ON sales_analytics.household_income
@@ -162,7 +162,7 @@ ALTER USER mlee GRANT ROLE sales_analyst;
 ### Tag the columns, then the policy
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-01)
+-- verified: 9.5.1 (live, 2026-10-02)
 CREATE OR REPLACE TAG personal_data
     DESCRIPTION = 'Personal data of a household. Masked for sales analysts by policy analyst_masking.';
 
@@ -195,7 +195,7 @@ The view of `/denodo:views`, re-declared with its field properties. This is the 
 re-applied on every change of the view, so this is where the tag has to live:
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-01)
+-- verified: 9.5.1 (live, 2026-10-02)
 CONNECT DATABASE sales_analytics;
 
 CREATE OR REPLACE VIEW iv_household_income
@@ -234,7 +234,7 @@ CREATE OR REPLACE VIEW iv_household_income
 ### Check it as the people it is for
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-01)
+-- verified: 9.5.1 (live, 2026-10-02)
 CONNECT DATABASE sales_analytics;
 
 SELECT buy_potential, dependents FROM household_income LIMIT 5

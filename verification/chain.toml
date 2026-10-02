@@ -1,11 +1,12 @@
 # verification/chain.toml
-# Verifies 37 of the templates end to end: catalog database, folders, the DF (CSV), JSON
+# Verifies 44 of the templates end to end: catalog database, folders, the DF (CSV), JSON
 # and JDBC data sources, a hand-written JDBC wrapper and base view, derived views, the union
 # and the array views, the interface view, the association, the column-impact queries, the
 # full cache switched on, loaded and cleared, tags, the metadata audit, profile and
-# write, the metric view with the views over it, its reads and the totals check, and a role,
-# the security reads, a masking policy, a view's tags and the check as a person (vql
-# channel), plus the
+# write, the metric view with the views over it, its reads and the totals check, a role,
+# the security reads, a masking policy, a view's tags and the check as a person, and — only
+# with --with-ai, because each sends paid requests to the server's LLM — the AI functions
+# over rows, a cached view of their answers and two semantic searches (vql channel), plus the
 # Data Marketplace catalog
 # sync, a tag, a category, an external element and a renamed view that keeps its element
 # (http channel). Bodies of the
@@ -39,6 +40,10 @@
 database = "denodo_skills_test"
 csv_dir = "/opt/denodo/demos/csv"
 tag_prefix = "verify_"
+# The embedding model the server is configured with (Design Studio, Server configuration →
+# Denodo Assistant → Embedding model). The ai search-view step writes it into EMBED_AI, which
+# refuses any other model; a fork verifying against its own server changes it here.
+embedding_model = "text-embedding-3-large"
 # Not a credential and not a literal: the JDBC template carries USERPASSWORD '...' ENCRYPTED,
 # and the server validates the ciphertext at creation time ("error creating new data source:
 # Invalid encrypted value" for anything it did not encrypt itself). A real ciphertext is a
@@ -698,6 +703,139 @@ database = "{database}"
 # — an interface view accepts an implementation that does not match it, and only the SELECT
 # shows it". NEST over the association is exactly where that would surface.
 check = "SELECT id, associations FROM i_acme_bi_elements"
+
+# --- AI functions: the server's LLM and embedding model, gated behind --with-ai ---------------
+# The six blocks of skills/ai/SKILL.md. They write nothing outside {database}, but every one
+# that evaluates an AI function sends paid requests to the LLM or the embedding model the
+# server is configured with, and a server without that configuration (or without the
+# Enterprise Plus bundle) fails them — so they carry ai = true and run only with --with-ai.
+# The fixture keeps every run small and bounded: product_review is six rows of the demo
+# return reasons, so the whole tail sends about 40 requests. product_review_vector embeds
+# those six rows on every read (EMBED_AI in the view): a demo server has no vector table of
+# its own in this database, and a full cache cannot store a vector column (skills/ai,
+# "Common mistakes"). The search blocks read it as if it were a stored column; what they
+# prove is the syntax and that a search answers, not the cost of one.
+
+[[step]]
+id = "ai-fixture"
+kind = "fixture"
+channel = "vql"
+ai = true
+database = "{database}"
+check = "SELECT COUNT(*) AS n FROM product_review HAVING COUNT(*) = 6"
+vql = """
+CONNECT DATABASE {database};
+
+CREATE OR REPLACE DATASOURCE DF ds_retail_reason
+    FOLDER = '/01 - connectivity'
+    IGNOREMATCHINGERRORS = FALSE
+    ROUTE LOCAL 'LocalConnection' '{csv_dir}/reason.csv'
+    CHARSET = 'UTF-8'
+    COLUMNDELIMITER = ','
+    HEADER = TRUE;
+
+CREATE OR REPLACE WRAPPER DF wr_retail_reason
+    FOLDER = '/01 - connectivity'
+    DATASOURCENAME = ds_retail_reason
+    OUTPUTSCHEMA (
+        r_reason_sk = '"R_REASON_SK"',
+        r_reason_id = '"R_REASON_ID"',
+        r_reason_desc = '"R_REASON_DESC"'
+    );
+
+CREATE OR REPLACE TABLE bv_retail_reason I18N us_pst (
+        r_reason_sk:int, r_reason_id:text, r_reason_desc:text
+    )
+    FOLDER = '/01 - connectivity'
+    CACHE OFF
+    TIMETOLIVEINCACHE DEFAULT
+    ADD SEARCHMETHOD wr_retail_reason (
+        OUTPUTLIST ( r_reason_sk, r_reason_id, r_reason_desc )
+        WRAPPER (df wr_retail_reason)
+    );
+
+CREATE OR REPLACE VIEW product_review
+    FOLDER = '/02 - integration'
+    PRIMARY KEY ( 'review_id' )
+    AS SELECT r_reason_sk AS review_id, TRIM(r_reason_desc) AS review_text
+       FROM bv_retail_reason
+       WHERE r_reason_sk <= 6;
+
+CREATE OR REPLACE VIEW product_review_vector
+    FOLDER = '/02 - integration'
+    PRIMARY KEY ( 'review_id' )
+    AS SELECT review_id, review_text, EMBED_AI(review_text, '{embedding_model}') AS review_vector
+       FROM product_review;
+"""
+
+[[step]]
+id = "ai-answer"
+kind = "template"
+channel = "vql"
+ai = true
+address = "skills/ai/SKILL.md#Does the server answer"
+database = "{database}"
+
+[[step]]
+id = "ai-count"
+kind = "template"
+channel = "vql"
+ai = true
+address = "skills/ai/SKILL.md#Count before you run"
+substitute = { sales_analytics = "{database}" }
+database = "{database}"
+# No AI function: the count of rows a full run would send, read without a request.
+check = "SELECT COUNT(*) FROM product_review WHERE TRIM(review_text) <> '' HAVING COUNT(*) = 6"
+
+[[step]]
+id = "ai-classify"
+kind = "template"
+channel = "vql"
+ai = true
+address = "skills/ai/SKILL.md#Classify, score, extract — over rows"
+substitute = { sales_analytics = "{database}" }
+database = "{database}"
+
+[[step]]
+id = "ai-view"
+kind = "template"
+channel = "vql"
+ai = true
+address = "skills/ai/SKILL.md#A view that keeps the answers"
+substitute = { sales_analytics = "{database}" }
+database = "{database}"
+
+[[step]]
+id = "ai-load"
+kind = "template"
+channel = "vql"
+ai = true
+address = "skills/ai/SKILL.md#A view that keeps the answers[1]"
+substitute = { sales_analytics = "{database}" }
+database = "{database}"
+# The block's claims, read from the cache and so sending nothing: every row came back with an
+# answer, and every answer is one of the labels of the scale.
+check = "SELECT COUNT(*) FROM product_review_ai WHERE topic IN ('quality', 'delivery', 'fit', 'other') AND sentiment IS NOT NULL HAVING COUNT(*) = 6"
+
+[[step]]
+id = "ai-search"
+kind = "template"
+channel = "vql"
+ai = true
+address = "skills/ai/SKILL.md#Semantic search over a stored vector column"
+substitute = { sales_analytics = "{database}" }
+database = "{database}"
+
+[[step]]
+id = "ai-search-view"
+kind = "template"
+channel = "vql"
+ai = true
+address = "skills/ai/SKILL.md#A search view the application sends a sentence to"
+substitute = { sales_analytics = "{database}", text-embedding-3-large = "{embedding_model}" }
+database = "{database}"
+# The reader's query: the sentence as an equality, five rows back, closest first.
+check = "SELECT COUNT(*) FROM product_review_search WHERE search_text = 'it stopped working after a week' HAVING COUNT(*) = 5"
 
 [[step]]
 id = "nothing-invalid"

@@ -18,7 +18,10 @@ Scheduler; say so and stop. For a refresh job, give the human the load statement
 put in it. Whether the server has a cache at all is the administrator's setting, not yours.
 
 Building or changing the view itself is `/denodo:views`; base views are
-`/denodo:datasources`. Applying files is `/denodo:execute`. The working loop and the safety
+`/denodo:datasources`. A view whose columns call the server's LLM (`CLASSIFY_AI` …) is
+cached so that readers stop paying for it, and **every load of it is a paid run of every
+row** — the number of rows is the human's (`/denodo:ai`); a column of the vector type
+cannot be cached at all. Applying files is `/denodo:execute`. The working loop and the safety
 rule are `/denodo:vql`.
 
 **Everything here changes what every reader of the view gets, and does it silently.** The
@@ -92,7 +95,7 @@ were empty or partial, and the loaded copy stays behind (Silent failures, 4).
 ### Switch it on — in the view's own file
 
 ```sql
--- verified: 9.5.1 (live, 2026-09-30)
+-- verified: 9.5.1 (live, 2026-10-02)
 CONNECT DATABASE sales_analytics;
 
 ALTER VIEW iv_household_income CACHE FULL WITH_STATUS;
@@ -121,7 +124,7 @@ ALTER VIEW iv_household_income CACHE FULL WITH_STATUS;
 ### Load it — a file of its own
 
 ```sql
--- verified: 9.5.1 (live, 2026-09-30)
+-- verified: 9.5.1 (live, 2026-10-02)
 CONNECT DATABASE sales_analytics;
 
 SELECT * FROM iv_household_income
@@ -182,7 +185,7 @@ are cleaned (Clear it, below).
 ### Clear it, switch it off
 
 ```sql
--- verified: 9.5.1 (live, 2026-09-30)
+-- verified: 9.5.1 (live, 2026-10-02)
 CONNECT DATABASE sales_analytics;
 
 ALTER VIEW iv_household_income CACHE INVALIDATE;

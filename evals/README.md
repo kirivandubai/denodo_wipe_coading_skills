@@ -121,6 +121,12 @@ values (`routing-security`), giving a newcomer the team's access to a database
 (`routing-security-symptom`) — the second names no role, privilege or statement, and the third
 only the symptom, which is how a policy that stopped applying reaches a human.
 
+Three guard `/denodo:ai` (T32): a topic and a sentiment for every row of a text column from the
+server's LLM (`routing-ai`), a view an application sends a question to for the closest passages
+over stored embeddings (`routing-ai-semantic-search`), and a dashboard that became slow and
+expensive after someone added an AI column to its view (`routing-ai-cost-symptom`) — the third
+names no function, only the symptoms of an uncached view whose every read is a paid run.
+
 **`discrimination`** — фразы на границах, где описания конкурируют. Каждый такой кейс несёт
 и положительный, и отрицательный грейдер, потому что проверяется именно выбор между двумя:
 
@@ -142,6 +148,7 @@ only the symptom, which is how a policy that stopped applying reaches a human.
 | `discrimination-metrics-not-semantics` | `metrics` | `semantics` |
 | `discrimination-mart-not-metrics` | `views` | `metrics` |
 | `discrimination-security-not-catalog` | `security` | `catalog` |
+| `discrimination-ai-not-semantics` | `semantics` | `ai` |
 
 Первые две строки — тот самый риск, ради которого сьют и заводился: «тег» в VDP и «тег» в
 маркетплейсе — **разные объекты на разных серверах**, и перепутанный навык уйдёт корректным
