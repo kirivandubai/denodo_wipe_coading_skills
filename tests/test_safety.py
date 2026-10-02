@@ -232,6 +232,71 @@ class SecurityObjectTest(unittest.TestCase):
         )
 
 
+class SourceTableTest(unittest.TestCase):
+    """A remote table and a summary are tables in a source database: the statement creates the
+    table there and loads it, OR REPLACE drops one that exists first, and REFRESH empties it and
+    loads it again (T34). They start with CREATE or REFRESH, so neither the keyword list nor the
+    procedure names see them."""
+
+    def test_create_remote_table(self):
+        self.assertEqual(
+            classify_vql(
+                "CREATE REMOTE TABLE rpt_store_month INTO ds_dwh SCHEMA = 'reporting' "
+                "AS SELECT * FROM store_month_sales"
+            ),
+            "table",
+        )
+
+    def test_create_or_replace_remote_table(self):
+        self.assertEqual(
+            classify_vql(
+                "create or replace remote table rpt_store_month into sales.ds_dwh "
+                "CATALOG = 'dwh' SCHEMA = 'dbo' AS SELECT 1 AS x FROM Dual()"
+            ),
+            "table",
+        )
+
+    def test_create_summary_view(self):
+        self.assertEqual(
+            classify_vql(
+                "CREATE OR REPLACE SUMMARY VIEW s_sales_by_year INTO ds_dwh SCHEMA = 'dbo' "
+                "AS SELECT d_year, SUM(net_paid) AS net_paid, COUNT(*) AS n FROM sales GROUP BY d_year"
+            ),
+            "table",
+        )
+        self.assertEqual(
+            classify_vql("CREATE SUMMARY VIEW s_x INTO ds CATALOG = 'c' AS SELECT a FROM v"), "table"
+        )
+
+    def test_refresh(self):
+        self.assertEqual(classify_vql("REFRESH rpt_store_month"), "table")
+        self.assertEqual(classify_vql('-- nightly\nrefresh "s_sales_by_year" CONTEXT (\'x\' = \'y\')'), "table")
+
+    def test_replacing_a_materialized_table_empties_it(self):
+        # checked on 9.5.1: four inserted rows, CREATE OR REPLACE with the same columns, zero rows
+        self.assertEqual(
+            classify_vql("CREATE OR REPLACE MATERIALIZED TABLE store_target ( store_sk : long, amount : decimal )"),
+            "table",
+        )
+        self.assertEqual(
+            classify_vql("CREATE OR REPLACE MATERIALIZED TABLE snap AS SELECT * FROM store_sales"), "table"
+        )
+
+    def test_a_new_materialized_table_is_a_create(self):
+        # without OR REPLACE the server refuses a name that exists, so nothing is overwritten
+        self.assertIsNone(classify_vql("CREATE MATERIALIZED TABLE store_target ( store_sk : long )"))
+        self.assertIsNone(classify_vql("SELECT store_sk, store_name INTO store_snapshot FROM store"))
+
+    def test_alter_and_drop_keep_their_kinds(self):
+        self.assertEqual(classify_vql("ALTER SUMMARY VIEW s_x QUERY REWRITE ENABLED = FALSE"), "alter")
+        self.assertEqual(classify_vql("DROP VIEW s_x"), "drop")
+
+    def test_the_words_inside_a_query_do_not_count(self):
+        self.assertIsNone(classify_vql("SELECT 'CREATE REMOTE TABLE t' AS s FROM DUAL()"))
+        self.assertIsNone(classify_vql("CREATE OR REPLACE VIEW remote_table_list AS SELECT 1 AS a FROM DUAL()"))
+        self.assertIsNone(classify_vql("CREATE OR REPLACE VIEW summary_view AS SELECT 1 AS a FROM DUAL()"))
+
+
 class StateChangingProcedureTest(unittest.TestCase):
     """Predefined procedures that change state are invoked with SELECT or CALL, so the
     leading keyword says nothing; the name does (T20)."""
