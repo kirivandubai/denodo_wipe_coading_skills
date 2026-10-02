@@ -35,7 +35,7 @@ tool reads host, user and password from `~/.denodo/profiles.toml` itself.
 | Encrypt a source password | `secret encrypt --env dev` — the password is typed into a hidden prompt (in a terminal) or piped in on stdin, never passed as an argument; the answer carries `encrypted` and nothing else. See **A password for a data source** below |
 | Which profiles exist | `env list` (never shows passwords) |
 | Is the server reachable, and who am I on it | `env check --env dev` (VDP, and the marketplace if configured); `vdp.admin` — the profile's user is an administrator, so security policies do not apply to its own queries; `vdp.impersonation` — it may run a query as another user (`/denodo:security`) |
-| Verify the skills' own templates | `verify --env dev` runs the chain in `verification/chain.toml` and removes everything it made: its own test database, and the server-level `verify_` tags, user, role and global security policy beside it — its security checks read as that user by impersonation, so they need `vdp.impersonation: true`; `--with-marketplace` adds the REST tail, which also writes to the shared marketplace catalog and takes those entries back out during cleanup; `--with-ai` adds the steps that call the server's LLM and embedding model — about 40 paid requests, and they fail on a server without them; `--keep` leaves it all for inspection, `--update-marks` rewrites the `verified:` lines that passed, `--allow-destructive` is required on a production profile — without it the whole run is refused before it creates anything |
+| Verify the skills' own templates | `verify --env dev` runs the chain in `verification/chain.toml` and removes everything it made: its own test database, and the server-level `verify_` tags, user, role and global security policy beside it — its security checks read as that user by impersonation, so they need `vdp.impersonation: true`; `--with-marketplace` adds the REST tail, which also writes to the shared marketplace catalog and takes those entries back out during cleanup; `--with-ai` adds the steps that call the server's LLM and embedding model — about 40 paid requests, and they fail on a server without them; `--with-writes` adds the steps that create a table in the source database the manifest names (`[values]`, the server's cache data source by default) and insert, update and delete its rows through a view — the table is dropped in cleanup; `--keep` leaves it all for inspection, `--update-marks` rewrites the `verified:` lines that passed, `--allow-destructive` is required on a production profile — without it the whole run is refused before it creates anything |
 
 Prefix every command with `${CLAUDE_PLUGIN_ROOT}/scripts/denodo`. Keep results
 readable: `--max-rows N` (default 100) caps every result set; `row_count` is the
@@ -63,8 +63,11 @@ so `GET_ELEMENTS()` is where to see what landed where.
 | `3` | driver stack could not be set up | show the human `error.hint` verbatim; do not `pip install` yourself |
 
 **`vql run`** returns `statements[]` (one entry per statement: `index`, `statement`
-head, `destructive`, `ok`, `error`, `columns`, `rows`, `row_count`), `failed_at`,
-`executed`, `total`. The file is split into statements client-side and executed one by
+head, `destructive`, `ok`, `error`, `columns`, `rows`, `row_count`, `affected`), `failed_at`,
+`executed`, `total`. **`affected` is the only trace of a write**: an `INSERT`, `UPDATE` or
+`DELETE` returns no rows, and `affected` is the number of rows the source reports it changed —
+`0` when nothing matched. It is `null` for a read, a `CREATE` or `ALTER`, a failed statement, and
+a write whose `RETURNING` returned rows — those rows are its trace (`/denodo:dml`). The file is split into statements client-side and executed one by
 one in one session. On the first failure execution **stops**: statements before
 `failed_at` are applied, statements after it are not, and nothing is rolled back.
 The server message you match against the error reference is
@@ -224,6 +227,6 @@ rows — the SELECT is what catches it.
 
 Writing the VQL or choosing where an object lives: `/denodo:vql` (conventions,
 safety, idempotency) and the domain skills `/denodo:catalog`, `/denodo:datasources`,
-`/denodo:views`, `/denodo:marketplace`, `/denodo:procedures`, `/denodo:cache`, `/denodo:semantics`, `/denodo:metrics`, `/denodo:security`, `/denodo:ai`. Trigger phrase confusion: VDP tags
+`/denodo:views`, `/denodo:marketplace`, `/denodo:procedures`, `/denodo:cache`, `/denodo:semantics`, `/denodo:metrics`, `/denodo:security`, `/denodo:ai`, `/denodo:dml`. Trigger phrase confusion: VDP tags
 (`CREATE TAG`, VQL) and marketplace tags (`POST /public/api/tags`, REST) are
 different objects on different servers; the tool does not translate between them.

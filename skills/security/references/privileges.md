@@ -141,6 +141,12 @@ The query runs with that user's — or those roles' — privileges and policies,
 password. The profile's user needs the role `impersonator` (a non-administrator also needs
 the server property `com.denodo.vdb.security.allowImpersonateToRegularUsers`).
 
+**Only a `SELECT`.** An `INSERT`, `UPDATE` or `DELETE` carrying the same `CONTEXT` was
+executed with the profile's own privileges — a user with only `EXECUTE` on a view updated
+it, and a base view they had no grant on; a user without `DELETE` deleted a row
+(*verified: 9.5.1 (live, 2026-10-02)*). A write privilege is checked by the writer's own
+login, never by impersonation.
+
 | Answer | Meaning |
 |---|---|
 | `This user cannot impersonate. Only users with role 'impersonator' can impersonate.` | the profile's user lacks the role — granting it is the administrator's decision |

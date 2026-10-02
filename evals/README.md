@@ -127,6 +127,13 @@ over stored embeddings (`routing-ai-semantic-search`), and a dashboard that beca
 expensive after someone added an AI column to its view (`routing-ai-cost-symptom`) — the third
 names no function, only the symptoms of an uncached view whose every read is a paid run.
 
+Three guard `/denodo:dml` (T33): correcting three records of a base view
+(`routing-dml`), what an order-entry application should write to so that it creates only its
+own region's orders and gets the generated number back (`routing-dml-app-view`), and updates
+through views failing with `Update operation is not allowed` and `No update methods ready to be
+run` (`routing-dml-symptom`) — the second names no statement at all, the third only the server's
+errors, which is how a view that takes no writes reaches a human.
+
 **`discrimination`** — фразы на границах, где описания конкурируют. Каждый такой кейс несёт
 и положительный, и отрицательный грейдер, потому что проверяется именно выбор между двумя:
 
@@ -149,6 +156,8 @@ names no function, only the symptoms of an uncached view whose every read is a p
 | `discrimination-mart-not-metrics` | `views` | `metrics` |
 | `discrimination-security-not-catalog` | `security` | `catalog` |
 | `discrimination-ai-not-semantics` | `semantics` | `ai` |
+| `discrimination-views-not-dml` | `views` | `dml` |
+| `discrimination-dml-not-cache` | `dml` | `cache` |
 
 Первые две строки — тот самый риск, ради которого сьют и заводился: «тег» в VDP и «тег» в
 маркетплейсе — **разные объекты на разных серверах**, и перепутанный навык уйдёт корректным

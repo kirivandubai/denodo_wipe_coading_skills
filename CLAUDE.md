@@ -23,12 +23,14 @@ Remote: `github.com/kirivandubai/denodo_wipe_coading_skills` (имя на GitHub
 
 **Текущая очередь работ — `docs/TASKS.md`.** Задача берётся оттуда, а не придумывается.
 
-Слой исполнения (`scripts/denodo` + `scripts/denodo_cli/`) реализован в T5; готовы навыки `vql`, `execute`, `catalog`, `datasources`, `views`, `marketplace`, `procedures` (последний — вне объёма v1). Обе вехи закрыты приёмками: A — T13, B — T19. There is no `query` skill and no reference to one: the dialect is the table of silent deltas in the body of `vql` plus `skills/vql/references/dialect.md` (T24).
+Слой исполнения (`scripts/denodo` + `scripts/denodo_cli/`) реализован в T5; готовы навыки `vql`, `execute`, `catalog`, `datasources`, `views`, `marketplace`, `procedures` (последний — вне объёма v1); beyond v1 since: `cache` (T27), `semantics` (T28), `metrics` (T29), `security` (T31), `ai` (T32), `dml` (T33). Обе вехи закрыты приёмками: A — T13, B — T19. There is no `query` skill and no reference to one: the dialect is the table of silent deltas in the body of `vql` plus `skills/vql/references/dialect.md` (T24).
 Юнит-тесты гоняются без зависимостей: `PYTHONPATH=scripts python3 -m unittest discover -s tests -t .`;
 интеграционные — против стенда: `DENODO_TEST_ENV=dev uv run --with denodo-sqlalchemy
 --with psycopg2-binary python -m unittest tests.integration.test_stand` (с `PYTHONPATH=scripts`).
 Прогон верификации шаблонов — `scripts/denodo verify --env lab`; the AI templates run only
-with `--with-ai` (about 40 paid requests to the stand's LLM). Сам инструмент:
+with `--with-ai` (about 40 paid requests to the stand's LLM), the write templates of `dml` only
+with `--with-writes` (two `verify_` tables created in the server's cache database and dropped in
+cleanup). Сам инструмент:
 `scripts/denodo --help`.
 
 ## Рабочий процесс
@@ -83,6 +85,15 @@ with `--with-ai` (about 40 paid requests to the stand's LLM). Сам инстр�
   `VECTOR_DISTANCE` with a text sends one request per row to the stand's LLM provider. Probes
   and subagent scenarios run them only over views of a few hundred rows at most — a fixture,
   or a small demo view — and a subagent prompt names the only databases it may read.
+- **Source databases on the stand are written only in tables of the run** (T33). A write
+  through Denodo lands in SQL Server or PostgreSQL, outside every Denodo database: the `verify`
+  chain creates and drops its own `verify_` tables; a probe or a subagent fixture that needs a
+  table creates a `zq<task>_` one through Denodo itself (`CREATE REMOTE TABLE` through a data
+  source of your own database, reusing an existing source's ciphertext — no password is read)
+  only after the owner's yes for that task, and drops it at the end
+  (`CREATE_REMOTE_TABLE` with `replace_remote_table_if_exist`, then `DROP_REMOTE_TABLE`).
+  Tables of other teams are read freely and never written to. Over the tool's connection
+  `ROLLBACK` undoes nothing, so a probe write is a real write.
 
 ## Проверки
 

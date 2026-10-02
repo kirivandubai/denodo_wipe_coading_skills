@@ -82,6 +82,7 @@ Virtual DataPort — основной адресат, но не единстве
 /denodo:metrics       metric views: KPIs defined once, the views over them, evaluate_metric (T29, beyond v1)
 /denodo:security      who reads what: roles given to users, global security policies over tagged columns (T31, beyond v1)
 /denodo:ai            the server's LLM in a query: text functions over rows, their answers cached, semantic search over stored vectors (T32, beyond v1)
+/denodo:dml           rows changed through a view: INSERT, UPDATE, DELETE, the generated key back, a view an application writes through, upserts (T33, beyond v1)
 ```
 
 The dialect has no skill of its own (section 9): it is a table in the body of `/denodo:vql`
@@ -151,9 +152,12 @@ denodo_skills/                        репозиторий = плагин = м
 │   ├── security/
 │   │   ├── SKILL.md
 │   │   └── references/               policies (grammar, masks, audience per grant path), privileges
-│   └── ai/
+│   ├── ai/
+│   │   ├── SKILL.md
+│   │   └── references/               functions (each LLM function as measured), vectors (type, distances, model choice, delegation)
+│   └── dml/
 │       ├── SKILL.md
-│       └── references/               functions (each LLM function as measured), vectors (type, distances, model choice, delegation)
+│       └── references/               statements (grammar, RETURNING, upsert, how values land, transactions), writable-views (per view type, CHECK OPTION, wrapper switches, cache, impersonation)
 ├── scripts/
 │   ├── denodo                        launcher (только stdlib)
 │   └── denodo_cli/                   реализация
@@ -416,6 +420,12 @@ scripts/denodo verify    --env dev            прогон шаблонов, с�
   отклонённая разрушительная операция, `3` — не поднято окружение. Ответ всегда один
   JSON-документ на stdout с полями `ok`, `command`, `env {name, production, transport,
   database}`; у ошибок — `error {kind, message}`, у HTTP — `status` отдельно от `body`.
+- **A write reports what it changed (T33).** An `INSERT`, `UPDATE` or `DELETE` returns no
+  result set, so a `vql run` entry carried nothing to tell one row from a whole table. Every
+  entry now has `affected`: the count the server reports for the statement through the
+  driver's `rowcount` — measured on 9.5.1 to match the rows changed, `0` when nothing matched —
+  and `null` for a read, DDL (the driver says `-1`) or a failed statement. It is the only number
+  a preview can be compared with.
 - **`env check` says who the profile's user is (T31, roadmap 2.5).** `vdp.admin` is
   `adminglobal` from `DESC USER <user>`, which any user may run on themselves: global security
   policies and restrictions never apply to an administrator, so their own `SELECT` proves
@@ -704,6 +714,19 @@ refused on an http step, which makes no such call. The embedding model the searc
 template names comes from `[values] embedding_model`, the same way a fork points the chain at
 its own server.
 
+**The write steps — behind `--with-writes`, off by default (T33).** The templates of `dml`
+change rows of a real table, and the only database every server has room for is its cache
+database. A step with `writes = true` runs only with the flag: the `writes-tables` fixture
+creates two tables there with `CREATE REMOTE TABLE` through the data source `[values]` names
+(the server's cache data source by default, with an identity-keyed table in SQL Server DDL that
+a fork on another product rewrites), and base views over them carrying the source's type
+metadata, which `RETURNING` and `GET_VIEW_COLUMNS` need. `[cleanup] writes` — VQL run only under
+the same flag, and **before** the rest of cleanup — drops both tables: `DROP_REMOTE_TABLE` drops
+only a table `CREATE_REMOTE_TABLE` made, so each is first taken over by that procedure with
+`replace_remote_table_if_exist`, then dropped with the base view it made, while `{database}`
+still exists. A default run touches no source database at all; `writes` is refused on an http
+step, which writes none.
+
 **Маркетплейс — по флагу `--with-marketplace`, по умолчанию выключенному.** Его объекты
 серверные, а не пообъектные по базам, и цепочке предшествует синхронизация общего
 каталога — единственная операция набора, меняющая состояние за пределами своей базы.
@@ -868,6 +891,25 @@ the documentation's own pattern; and a reader of a view with an AI column needs 
 classifier rule — an AI call changes no state, and a text classifier cannot see the rows it
 will touch — and the verification chain one flag, `--with-ai` (section 11.1), behind which its
 seven templates run over a six-row fixture.
+
+**Also beyond v1, `/denodo:dml`** (T33, from the owner's roadmap review): rows changed in the
+database behind a view — updating, inserting with the generated key back, deleting, by key; a
+view an application writes through, with `WITH CHECK OPTION`; rows copied from another view or a
+file, and the upsert. The safety of writes to sources was left by the owner for later, so the
+skill keeps `vql`'s rule as it stands — every write waits for the human's yes to the exact
+statements — and makes the yes informed: a preview `SELECT` with the write's `WHERE`, a
+before-image saved as the undo, and what the readers will see. Measured on 9.5.1 against SQL
+Server: over the tool's connection `ROLLBACK` answers `ok` and undoes nothing; a write through a
+view with a full cache, or through any view above one, empties that cache for everyone until
+its next load, while a write below it leaves it stale; `WITH CHECK OPTION` evaluates the view's
+filter on the statement's values only, so a `NULL` (a column left out) passes; impersonation
+does not reach writes; `RETURNING` answers for a one-row insert of the generated key and fails
+or returns nothing otherwise, and on a base view without the source's type metadata it fails
+after inserting the row; an upsert keyed on an identity column fails; the source's own refusal
+of a value arrives cut. It cost the execution layer the `affected` field (section 7.3) and the
+verification chain `--with-writes` (section 11.1), behind which its seven templates run against
+two tables created in the cache database; no classifier rule — `INSERT`, `UPDATE`, `DELETE` were
+already flagged.
 
 ## 13. Риски и открытые вопросы
 
