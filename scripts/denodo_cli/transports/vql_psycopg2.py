@@ -43,7 +43,10 @@ class VqlPsycopg2Transport:
         try:
             cursor.execute(statement)
             if cursor.description is None:
-                return VqlResult(statement=statement, columns=None, rows=None)
+                # INSERT / UPDATE / DELETE return no rows; the server's count is the only trace
+                # of what they changed (T33, measured on 9.5.1). DDL reports -1.
+                affected = cursor.rowcount if cursor.rowcount >= 0 else None
+                return VqlResult(statement=statement, columns=None, rows=None, affected=affected)
             columns = [col[0] for col in cursor.description]
             rows = [list(row) for row in cursor.fetchall()]
             return VqlResult(statement=statement, columns=columns, rows=rows)

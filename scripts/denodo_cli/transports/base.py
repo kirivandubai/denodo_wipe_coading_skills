@@ -14,6 +14,7 @@ class VqlResult:
     statement: str
     columns: list[str] | None      # None when the statement returned no result set
     rows: list[list[Any]] | None
+    affected: int | None = None    # rows a statement without a result set reports changed
 
     @property
     def row_count(self) -> int | None:

@@ -72,14 +72,17 @@ def run_statements(
             try:
                 result = transport.execute(statement)
             except Exception as exc:  # noqa: BLE001 — server error text is the payload
-                entry.update(ok=False, error=normalize_error(exc), **rows_payload(None, None, max_rows))
+                entry.update(ok=False, error=normalize_error(exc), **rows_payload(None, None, max_rows),
+                             affected=None)
                 results.append(entry)
                 if failed_at is None:
                     failed_at = index
                 if not continue_on_error:
                     break
                 continue
-            entry.update(ok=True, error=None, **rows_payload(result.columns, result.rows, max_rows))
+            # a write returns no result set: the count the server reports is all there is to see
+            entry.update(ok=True, error=None, **rows_payload(result.columns, result.rows, max_rows),
+                         affected=result.affected)
             results.append(entry)
     finally:
         transport.close()

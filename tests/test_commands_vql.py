@@ -30,6 +30,8 @@ class FakeTransport:
             raise RuntimeError("ERROR:  boom\nDETAIL:  java.sql.SQLException: Syntax error near 'BOOM'\n")
         if statement.upper().startswith(("SELECT", "DESC")):
             return VqlResult(statement=statement, columns=["n"], rows=[[1], [2], [3]])
+        if statement.upper().startswith(("INSERT", "UPDATE", "DELETE")):
+            return VqlResult(statement=statement, columns=None, rows=None, affected=2)
         return VqlResult(statement=statement, columns=None, rows=None)
 
     def close(self):
@@ -76,6 +78,15 @@ class RunStatementsTest(unittest.TestCase):
         self.assertEqual(doc["failed_at"], 0)
         self.assertEqual(len(doc["statements"]), 2)
         self.assertTrue(doc["statements"][1]["ok"])
+
+    def test_a_write_reports_the_rows_it_changed(self):
+        """A write returns no result set; the count the server reports for it is ``affected``.
+        A read and a DDL statement carry ``None``, and so does a statement that failed."""
+        doc, _ = self.run_it(["UPDATE v SET a = 1 WHERE b = 2", "SELECT 1 FROM DUAL()",
+                              "CREATE OR REPLACE FOLDER '/a'", "DELETE FROM v WHERE BOOM"],
+                             continue_on_error=True)
+        self.assertEqual([s["affected"] for s in doc["statements"]], [2, None, None, None])
+        self.assertIsNone(doc["statements"][0]["rows"])
 
     def test_destructive_flag_is_reported(self):
         doc, _ = self.run_it(["DROP VIEW v", "CREATE OR REPLACE VIEW v AS SELECT 1 AS a FROM DUAL()"])
