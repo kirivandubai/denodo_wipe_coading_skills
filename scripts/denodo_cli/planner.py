@@ -343,7 +343,8 @@ def _alter(entry: dict, st: Statement, walk: _Walk) -> dict:
         if others:
             names = ", ".join(f"{d['database']}.{d['name']}" for d in others)
             return _decision(entry, True, f"something you did not create in this session reads it: {names}")
-    decision = _decision(entry, False, "an ALTER of an object you created in this session, which nothing else reads")
+    readers = "read only by objects of this session" if entry.get("dependents") else "which nothing reads"
+    decision = _decision(entry, False, f"an ALTER of an object you created in this session, {readers}")
     if st.tags_assigned:
         return _tags(decision, st, walk)
     return decision
