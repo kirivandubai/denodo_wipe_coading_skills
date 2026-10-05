@@ -221,8 +221,8 @@ default:
 Skills in this repository are meant to be built together — a new object, a better
 template, a reference file for a source type nobody has covered yet. Start with
 [CONTRIBUTING.md](CONTRIBUTING.md): it has the layout of the repository, the five-block
-shape of a `SKILL.md`, the rule about `verified:` marks, and the four checks that guard
-the plugin.
+shape of a `SKILL.md`, the rule about `verified:` marks, and the checks that guard the
+plugin — the unit tests and the lint of the skills run in CI on every pull request.
 
 One thing to know before you read it: the plugin itself — skills, templates, this README —
 is written in English, while the project's own design documents under `docs/` and
