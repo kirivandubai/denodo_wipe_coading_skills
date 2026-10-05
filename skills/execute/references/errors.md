@@ -90,8 +90,8 @@ datasources → folders → database.
 | `Error executing query. Total time …` + in `raw`: `[DF ROUTE] [PARSE_ERROR] … Error getting input Stream` | `SELECT` from a DF base view | the file path in the datasource `ROUTE` is wrong or unreadable on the *server* (paths are server-side) |
 | `authentication error: The username or password is incorrect` | any (arrives as `error.kind: connection`) | profile password wrong — the human edits `profiles.toml` |
 
-Silent failures worth knowing — `ok:true` and a broken object, every one of them
-*verified: 9.5.1 (live)*:
+Silent failures worth knowing — `ok:true` and a broken object, every one of them reproduced
+on a 9.5.1 server like the rows above:
 
 | What creates cleanly | What is actually wrong | How you find out |
 |---|---|---|
