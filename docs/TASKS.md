@@ -74,9 +74,10 @@ property groups, sync pitfalls) is still to come, as a `marketplace` extension.*
   characters, `vql`'s out of date; **C** — contradictions with `vql`'s safety table (state-changing
   procedures unmentioned in `procedures/SKILL.md`, "cheap and safe" `CREATE OR REPLACE` in
   `datasources`, and the rest listed there); **D** — stale statements: README, `plugin.json`,
-  `marketplace.json`, "outside v1" where a skill now exists; **E** — measured numbers, demo-file
-  quirks and anecdotes stated as general (demo table names stay in templates the chain runs —
-  see E for why); **F** — missing and off-format marks; **G** — the small items. Also in T37:
+  `marketplace.json`, "outside v1" where a skill now exists; **E** — names of the test server's own
+  datasets and of test runs (its marketplace and VDP tags, its Oracle service and schema, a GREEN
+  run's prefix, the probe prefix), measured numbers, demo-file quirks and anecdotes stated as
+  general (TPC-DS table names stay — the owner's decision); **F** — missing and off-format marks; **G** — the small items. Also in T37:
   the owner's decision of 2026-10-05 on when the agent synchronises the marketplace catalog
   (design spec 6.3) — `vql`'s safety table and red flags, `marketplace` (`:186`, `:470`,
   `:542–547`, the rename and move recipes) and `execute` say the same thing; a pressure

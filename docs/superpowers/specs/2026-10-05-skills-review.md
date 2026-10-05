@@ -141,11 +141,28 @@ What the chain does **not** cover, so "works" is narrower than the marks suggest
 - **Demo data as example data.** TPC-DS tables of the demo image (`income_band`,
   `household_demographics`, `web_returns`, `reason`, `store`) are the example data of `views`,
   `metrics`, `materialize`, `security`, `semantics`, `testing`, `scheduler`, `cache`,
-  `datasources`. **Decision for T37:** the verified templates run verbatim in the chain on exactly
-  this data, so renaming them means rebuilding fixtures. Default: keep the names in templates
-  the chain runs; replace them in prose and unverified examples, and remove the TPC-DS-specific
-  tells (`>= 2457754` date key in `views/references/unions.md:89,93`, `'0-500          '`,
-  twenty bands verbatim in `testing/SKILL.md:183–203`, `XEPDB1` in `datasources/SKILL.md:363`).
+  `datasources`. **The owner's decision (2026-10-05): TPC-DS names stay** — a public benchmark,
+  and the chain runs these templates verbatim on that data. What has to go is any name that
+  shows a dataset other than a standard one (next item). The measured TPC-DS values are a
+  separate matter (the numbers item below): the `>= 2457754` date key in
+  `views/references/unions.md:89,93`, `'0-500          '`, twenty bands verbatim in
+  `testing/SKILL.md:183–203`.
+- **Names of the test server's own, non-standard datasets and of test runs** — to replace with
+  invented ones **(checked)**:
+  - `marketplace/SKILL.md:92,109–110`: the server's marketplace tags `pii_data` (with its id
+    `627`) and `Sensitive`;
+  - `marketplace/references/tags.md:55,61–62`: the server's VDP tags `business_views`,
+    `customers`, `sensitive`;
+  - `datasources/SKILL.md:363,384,388`: the server's Oracle — the `XEPDB1` service and the
+    `RETAIL` schema — in the JDBC and introspection examples; the same `RETAIL` in
+    `evals/discrimination-introspection-not-procedures/prompt.md:16`;
+  - `datasources/SKILL.md:607`: `green1_ds_store` / `green1_store`, the prefix of a GREEN test
+    run;
+  - `materialize/references/remote-tables.md:141`: `'ZQ_X'` / `zq_x`, the probe prefix.
+  A scan of snake_case identifiers and demo names over `skills/`, the eval prompts, the README
+  and the CLI found nothing else: no demo database (`verticals`, `sspm_sources`,
+  `denodo_demolets`, `denodo_asset_extensions`), no source database name, no marketplace server
+  name. `vdpcachedatasource` and `/jobs/vdpcache_data` are Denodo's own names.
 - **Numbers measured on one server** stated without that qualifier: row counts and shares
   (`views/SKILL.md:102–109`, `cache`, `datasources/references/df.md:71`, `vql/references/dialect.md:75,78,109,113,203,208`),
   timings (`ai/SKILL.md:27,33,47,310`, `ai/references/vectors.md:80–84`,
