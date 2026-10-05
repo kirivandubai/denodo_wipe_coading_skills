@@ -104,9 +104,13 @@ What the chain does **not** cover, so "works" is narrower than the marks suggest
   session". Use the session criterion.
 - **`cache/SKILL.md:92`** **(checked)**: "Test on a view you created" can read as a probe object,
   which `vql:37` forbids. "…on the view you are building in this session's file."
-- **Not in T37:** `marketplace`'s conditional `synchronize` (`SKILL.md:186,470,542–547`) versus
-  `vql`'s "every `synchronize` waits for a yes". It is already an open question for the owner in
-  TASKS.md ("Two answers to 'may the agent synchronise'") and is fixed only after that decision.
+- **`marketplace`'s conditional `synchronize`** (`SKILL.md:186,470,542–547`) versus `vql`'s
+  "every `synchronize` waits for a yes" — the open question of T30. **Decided by the owner
+  2026-10-05** (design spec 6.3): the agent synchronises itself when `changes`, read right before
+  the call, holds only the session's own objects, in `SERVER_WITH_LOCAL_CHANGES`, not on
+  production, checking `removed` and `inserted` after; any other radius waits for the yes; for a
+  view older than the session, one yes covers the rename and the matched `synchronize` shown
+  together. Both skills, and `execute`, are aligned to it in T37.
 
 ## D. Stale statements
 

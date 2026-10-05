@@ -76,9 +76,12 @@ property groups, sync pitfalls) is still to come, as a `marketplace` extension.*
   `datasources`, and the rest listed there); **D** — stale statements: README, `plugin.json`,
   `marketplace.json`, "outside v1" where a skill now exists; **E** — measured numbers, demo-file
   quirks and anecdotes stated as general (demo table names stay in templates the chain runs —
-  see E for why); **F** — missing and off-format marks; **G** — the small items. Not in T37: the
-  `marketplace` `synchronize` contradiction (open question below, the owner's call) and the
-  document's recommendations. Done when the greps of the review come back clean, every
+  see E for why); **F** — missing and off-format marks; **G** — the small items. Also in T37:
+  the owner's decision of 2026-10-05 on when the agent synchronises the marketplace catalog
+  (design spec 6.3) — `vql`'s safety table and red flags, `marketplace` (`:186`, `:470`,
+  `:542–547`, the rename and move recipes) and `execute` say the same thing; a pressure
+  scenario checks that an agent still stops when the radius holds someone else's element. Not
+  in T37: the document's recommendations. Done when the greps of the review come back clean, every
   description is ≤ 1024 characters, `verify` passes with every tail (AI requests only with the
   owner's number) and `--update-marks`, and the eval suite passes.
 
@@ -87,7 +90,9 @@ property groups, sync pitfalls) is still to come, as a `marketplace` extension.*
 ## Открытые вопросы
 
 - **A matched-rename synchronisation is still the human's yes — should it be?** (T30, for the
-  owner.) A `VIEWS/synchronize` whose only `localElements` entry is the old name of a pair it
+  owner.) **Decided 2026-10-05:** a matched-rename synchronisation of the session's own view is
+  the agent's; for a view older than the session, one yes covers the rename and the
+  `synchronize` with the pair matched, shown together (design spec 6.3; implemented in T37). A `VIEWS/synchronize` whose only `localElements` entry is the old name of a pair it
   matches, and whose `modifiedElements` are only marketplace-edited descriptions, removes
   nothing and keeps everything; one GREEN run of T30, under an earlier wording of the skill,
   ran it alone for a human who was away with a deadline, and the outcome was right. The skill
@@ -98,7 +103,12 @@ property groups, sync pitfalls) is still to come, as a `marketplace` extension.*
   T30). `vql` puts every `synchronize` under the human's yes; `marketplace`'s slot table asks
   the human only "if `changes` shows anything under `localElements` or a modified element that
   is not yours", which reads as "otherwise go" — the case of synchronising so that a new view
-  gets an id for a tag. T30 aligned only its own rename text with `vql`.
+  gets an id for a tag. T30 aligned only its own rename text with `vql`. **Decided 2026-10-05:**
+  neither — the agent synchronises itself when `changes`, read right before the call, holds only
+  the session's own objects (removes only elements of views it created, inserts only databases
+  and views it created), in `SERVER_WITH_LOCAL_CHANGES`, not on production, checking `removed`
+  and `inserted` after; any other radius waits for the yes (design spec 6.3; both skills are
+  aligned in T37).
 - **A yes given in advance** (T30, raised by a GREEN review). `vql` defines the confirmation as
   a yes "after you have shown the exact statements or calls"; it does not say whether a yes
   that names the operations up front ("create it there, drop it here, synchronise") from a
