@@ -14,6 +14,8 @@ import json
 import re
 import secrets
 import shlex
+import subprocess
+import tempfile
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -22,6 +24,7 @@ from typing import Callable
 from . import EXIT_EXECUTION, EXIT_OK, EXIT_USAGE
 from .api import api_call, parse_multipart_specs
 from .secret import encrypt_password
+from .testing import run_testing_tool
 from .vql import run_statements
 from ..output import envelope
 from ..profiles import Profile
@@ -29,7 +32,7 @@ from ..templates import TemplateError, format_mark, load_block, update_mark
 from ..vql_split import split_statements
 
 KINDS = ("template", "fixture")
-CHANNELS = ("vql", "http")
+CHANNELS = ("vql", "http", "denodotest")
 EXPECTS = ("rows", "no rows")
 THROWAWAY = "@encrypt-throwaway"
 PLACEHOLDER = re.compile(r"\{([a-z_][a-z0-9_]*)\}")
@@ -153,16 +156,19 @@ def _step(raw: dict) -> Step:
         # guarded behind --with-marketplace. Without this, an http step lacking the flag
         # would fall through into the vql branch of a default run.
         raise ChainError(f"step {step_id!r}: an http-channel step must set marketplace = true")
+    if channel == "denodotest" and marketplace:
+        raise ChainError(f"step {step_id!r}: a denodotest step runs a test file against VDP; "
+                         "marketplace = true does not apply")
     ai = bool(raw.get("ai", False))
     if ai and channel != "vql":
         # ai = true gates a VQL step that calls the server's LLM or embedding model; an http
         # step makes no such call, and the flag on it would claim a gate nothing enforces.
         raise ChainError(f"step {step_id!r}: ai = true only applies to a vql-channel step")
     writes = bool(raw.get("writes", False))
-    if writes and channel != "vql":
-        # writes = true gates a VQL step that changes rows in a source database the manifest
-        # names; an http step writes nothing there.
-        raise ChainError(f"step {step_id!r}: writes = true only applies to a vql-channel step")
+    if writes and channel == "http":
+        # writes = true gates a step that needs the tables of a source database the manifest
+        # names; an http step writes nothing there. A denodotest step may read them (T35).
+        raise ChainError(f"step {step_id!r}: writes = true only applies to a vql or denodotest step")
     database = raw.get("database")
     if database is not None and not isinstance(database, str):
         raise ChainError(f"step {step_id!r}: database must be a string, got {database!r}")
@@ -368,6 +374,8 @@ def run_chain(
     update_marks: bool = False,
     today: dt.date | None = None,
     allow_destructive: bool = False,
+    testing_tool: Path | None = None,
+    testing_runner: Callable | None = None,
 ) -> tuple[dict, int]:
     """Run every vql-channel step of ``chain`` in order and report what happened.
 
@@ -487,9 +495,15 @@ def run_chain(
                     step, "write steps create a table in a source database and change its rows; "
                           "they need --with-writes"))
                 continue
+            if step.channel == "denodotest" and testing_tool is None:
+                reports.append(_skipped(
+                    step, "Testing Tool steps run a .denodotest file with the Denodo Testing Tool; "
+                          "they need --testing-tool <its install directory>"))
+                continue
             report = _run_step(profile, step, values=values, root=root, vql_factory=vql_factory,
                                rest_factory=rest_factory, allow_destructive=allow_destructive,
-                               update_marks=update_marks, version=version, day=day)
+                               update_marks=update_marks, version=version, day=day,
+                               testing_tool=testing_tool, testing_runner=testing_runner)
             reports.append(report)
             if not report["ok"]:
                 stop = True
@@ -774,7 +788,8 @@ def _summary(reports: list[dict]) -> dict:
 
 def _run_step(profile: Profile, step: Step, *, values: dict[str, str], root: Path, vql_factory: Callable,
              rest_factory: Callable | None = None, allow_destructive: bool = False,
-             update_marks: bool = False, version: str | None = None, day: dt.date | None = None) -> dict:
+             update_marks: bool = False, version: str | None = None, day: dt.date | None = None,
+             testing_tool: Path | None = None, testing_runner: Callable | None = None) -> dict:
     report = {"id": step.id, "kind": step.kind, "channel": step.channel, "source": step.address,
               "ok": False, "skipped": False, "error": None, "check": None, "statements": None, "mark": None}
     try:
@@ -795,6 +810,14 @@ def _run_step(profile: Profile, step: Step, *, values: dict[str, str], root: Pat
                             allow_destructive=allow_destructive)
         report["statements"] = outcome["calls"]
         partial = outcome["partial"]
+        if not outcome["ok"]:
+            report["error"] = outcome["error"]
+            return report
+    elif step.channel == "denodotest":
+        outcome = _run_denodotest(profile, step, body=body, database=database or values.get("database"),
+                                  testing_tool=testing_tool, runner=testing_runner,
+                                  allow_destructive=allow_destructive)
+        report["statements"] = outcome["tests"]
         if not outcome["ok"]:
             report["error"] = outcome["error"]
             return report
@@ -950,6 +973,36 @@ def _run_http(profile: Profile, step: Step, *, body: str, values: dict[str, str]
             "message": f"step {step.id!r}: the last call's response differs — " + "; ".join(mismatches),
         }}
     return {"ok": True, "calls": executed, "partial": partial, "error": None}
+
+
+def _run_denodotest(profile: Profile, step: Step, *, body: str, database: str | None,
+                    testing_tool: Path | None, runner: Callable | None, allow_destructive: bool) -> dict:
+    """Run one ``.denodotest`` block through the Denodo Testing Tool (T35).
+
+    The block becomes the only file of a fresh temporary folder and ``testing run`` runs it:
+    the tool's configuration exists for that run only, the launcher starts from the tool's
+    ``bin``. Passing needs exactly one test run and one OK, besides the tool's own exit code —
+    a block the tool did not recognise as a test is skipped by it without a word.
+    """
+    with tempfile.TemporaryDirectory(prefix="denodo-verify-") as tmp:
+        folder = Path(tmp) / "tests"
+        folder.mkdir()
+        (folder / f"{step.id}.denodotest").write_text(body + "\n", encoding="utf-8")
+        doc, code = run_testing_tool(profile, tests=folder, tool=Path(testing_tool or ""), database=database,
+                                     runner=runner, allow_destructive=allow_destructive)
+    tests = doc.get("tests") or []
+    summary = doc.get("summary")
+    if code == EXIT_OK and summary and summary["run"] == 1 and summary["ok"] == 1:
+        return {"ok": True, "tests": tests, "error": None}
+    if doc.get("error"):
+        error = dict(doc["error"])
+        if error.get("kind") == "usage":
+            error["kind"] = "testing-tool"
+        return {"ok": False, "tests": tests, "error": error}
+    failed = [t["message"] for t in tests if t["status"] != "OK"]
+    message = failed[0] if failed else (f"exit code {doc.get('exit_code')}, summary {summary}: "
+                                        + " | ".join((doc.get("output_tail") or "").splitlines()[-5:]))
+    return {"ok": False, "tests": tests, "error": {"kind": "testing-tool", "message": message}}
 
 
 def _body(step: Step, *, root: Path, values: dict[str, str]) -> str:

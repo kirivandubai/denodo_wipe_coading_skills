@@ -531,6 +531,152 @@ address = "skills/catalog/SKILL.md#No Such Section"
         self.assertIn("No Such Section", doc["steps"][0]["error"]["message"])
 
 
+TESTING_SKILL = """# Testing
+
+### The key is unique
+
+```text
+# verified: 9.5.1 (live, 2026-09-01)
+%NAME iv_household_income_key_is_unique
+%EXECUTION[query] {ds:vdp}
+SELECT household_sk, COUNT(*) AS row_count FROM iv_household_income
+WHERE 'sales_analytics' = 'sales_analytics'
+GROUP BY household_sk HAVING COUNT(*) > 1
+%RESULTS[data]
+household_sk,row_count
+```
+"""
+
+TOOL_OK = """[EXECUTION:START]
+--[TEST:END][OK][/tmp/x/key.denodotest][iv_household_income_key_is_unique][12ms][0] Test run: iv_household_income_key_is_unique. Test executed OK: Obtained and expected results match. Time elapsed: 12ms.
+Results:
+Tests run: 1, OK: 1
+"""
+
+TOOL_FAILED = """[EXECUTION:START]
+--[TEST:END][FAILED][/tmp/x/key.denodotest][iv_household_income_key_is_unique][12ms][1] Test run: iv_household_income_key_is_unique. Test FAILED!: Expected results are only a subset of the obtained data set. Obtained 1 rows, but expected 0. Time elapsed: 12ms.
+--[TEST:END][FAILED][/tmp/x/key.denodotest][iv_household_income_key_is_unique][12ms][1] Test run: iv_household_income_key_is_unique. Test FAILED!: Expected results are only a subset of the obtained data set. Obtained 1 rows, but expected 0. Time elapsed: 12ms.
+Results:
+Tests run: 1, OK: 0 (FAILED: 1)
+"""
+
+
+class FakeTestingTool:
+    """Stands in for ``bin/denodo-test.sh``: records what it was given, answers a canned output."""
+
+    def __init__(self, returncode=0, output=TOOL_OK):
+        self.returncode, self.output, self.calls = returncode, output, []
+
+    def __call__(self, command, cwd, env=None):
+        config = Path(command[2][len("file:"):])
+        tests = Path(command[3][len("file:"):])
+        self.calls.append({
+            "command": command, "cwd": cwd,
+            "config": config.read_text(encoding="iso-8859-1"),
+            "config_mode": config.stat().st_mode & 0o777,
+            "tests": {p.name: p.read_text(encoding="utf-8") for p in tests.iterdir()},
+            "config_path": config,
+        })
+        return self.returncode, self.output
+
+
+class TestingToolStepTest(unittest.TestCase):
+    MANIFEST = """
+[values]
+database = "denodo_skills_test"
+[[step]]
+id = "testing-key"
+kind = "template"
+channel = "denodotest"
+address = "skills/testing/SKILL.md#The key is unique"
+substitute = { sales_analytics = "{database}" }
+database = "{database}"
+"""
+
+    def setUp(self):
+        FakeVql.instances.clear()
+        self.root = Path(tempfile.mkdtemp())
+        (self.root / "skills" / "testing").mkdir(parents=True)
+        self.skill = self.root / "skills" / "testing" / "SKILL.md"
+        self.skill.write_text(TESTING_SKILL, encoding="utf-8")
+        self.manifest = self.root / "chain.toml"
+        self.manifest.write_text(self.MANIFEST, encoding="utf-8")
+        self.tool = Path(tempfile.mkdtemp()) / "denodo-testing-tool"
+        (self.tool / "bin").mkdir(parents=True)
+        (self.tool / "bin" / "denodo-test.sh").write_text("#!/bin/bash\n", encoding="utf-8")
+
+    def run_it(self, runner=None, **kw):
+        return run_chain(profile(jdbc_port=29999), load_chain(self.manifest), root=self.root,
+                         vql_factory=FakeVql, testing_runner=runner, **kw)
+
+    def test_testing_tool_steps_are_skipped_unless_a_tool_is_named(self):
+        runner = FakeTestingTool()
+        doc, code = self.run_it(runner)
+        self.assertEqual(code, 0)
+        self.assertTrue(doc["steps"][0]["skipped"])
+        self.assertIn("--testing-tool", doc["steps"][0]["reason"])
+        self.assertEqual(runner.calls, [])
+
+    def test_the_block_runs_as_a_test_file_through_the_tool(self):
+        runner = FakeTestingTool()
+        doc, code = self.run_it(runner, testing_tool=self.tool)
+        self.assertEqual(code, 0, doc)
+        step = doc["steps"][0]
+        self.assertTrue(step["ok"])
+        call = runner.calls[0]
+        self.assertEqual(call["command"][:2], ["bash", str(self.tool / "bin" / "denodo-test.sh")])
+        self.assertEqual(Path(call["cwd"]), self.tool / "bin")
+        (name, text), = call["tests"].items()
+        self.assertEqual(name, "testing-key.denodotest")
+        self.assertIn("'denodo_skills_test' = 'denodo_skills_test'", text)
+        self.assertIn("vdp.jdbcUrl=jdbc:denodo://h:29999/denodo_skills_test", call["config"])
+        self.assertIn("vdp.password=p", call["config"])
+        self.assertEqual(call["config_mode"], 0o600)
+        self.assertEqual(step["statements"], [{"test": "iv_household_income_key_is_unique", "status": "OK",
+                                               "message": "Test executed OK: Obtained and expected results "
+                                                          "match. Time elapsed: 12ms."}])
+
+    def test_the_configuration_with_the_password_is_gone_after_the_step(self):
+        runner = FakeTestingTool()
+        self.run_it(runner, testing_tool=self.tool)
+        self.assertFalse(runner.calls[0]["config_path"].exists())
+        self.assertFalse(runner.calls[0]["config_path"].parent.exists())
+
+    def test_a_failed_test_fails_the_step_with_the_tool_s_reason(self):
+        doc, code = self.run_it(FakeTestingTool(returncode=1, output=TOOL_FAILED), testing_tool=self.tool)
+        self.assertEqual(code, 1)
+        step = doc["steps"][0]
+        self.assertFalse(step["ok"])
+        self.assertEqual(step["error"]["kind"], "testing-tool")
+        self.assertIn("Obtained 1 rows, but expected 0", step["error"]["message"])
+        self.assertEqual(len(step["statements"]), 1)
+
+    def test_an_exit_code_of_zero_without_a_passed_test_is_a_failure(self):
+        # The tool prints its usage and exits 0 when its arguments are wrong.
+        doc, code = self.run_it(FakeTestingTool(returncode=0, output="Required parameters: ..."),
+                                testing_tool=self.tool)
+        self.assertEqual(code, 1)
+        self.assertEqual(doc["steps"][0]["error"]["kind"], "testing-tool")
+
+    def test_a_directory_without_the_launcher_is_a_failed_step(self):
+        doc, code = self.run_it(FakeTestingTool(), testing_tool=self.tool / "nowhere")
+        self.assertEqual(code, 1)
+        self.assertIn("denodo-test.sh", doc["steps"][0]["error"]["message"])
+
+    def test_a_passed_step_gets_the_hash_mark_rewritten(self):
+        self.run_it(FakeTestingTool(), testing_tool=self.tool, update_marks=True, today=dt.date(2026, 10, 5))
+        self.assertIn("# verified: 9.5.1 (live, 2026-10-05)", self.skill.read_text(encoding="utf-8"))
+
+    def test_the_channel_takes_writes_but_not_ai_or_marketplace(self):
+        for flag, ok in (("writes", True), ("ai", False), ("marketplace", False)):
+            self.manifest.write_text(self.MANIFEST + f"{flag} = true\n", encoding="utf-8")
+            if ok:
+                self.assertTrue(load_chain(self.manifest).steps[0].writes)
+            else:
+                with self.assertRaises(ChainError):
+                    load_chain(self.manifest)
+
+
 class FakeVqlSecondSessionFails:
     """First session (the step's own body) behaves normally; opening a second one fails.
 

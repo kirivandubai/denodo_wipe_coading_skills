@@ -16,6 +16,7 @@ Format::
     transport = "vql_psycopg2"             # vql_psycopg2 (default) | vql_flightsql (not in v1)
     marketplace_url = "http://localhost:9090/denodo-data-catalog"   # optional; enables `api`
     # marketplace_server_id = 1            # optional; only with several VDP servers registered
+    # jdbc_port = 9999                     # optional; the JDBC port `testing config` writes (default 9999)
 """
 
 from __future__ import annotations
@@ -27,13 +28,14 @@ from pathlib import Path
 
 DEFAULT_PATH = Path("~/.denodo/profiles.toml")
 DEFAULT_PORT = 9996
+DEFAULT_JDBC_PORT = 9999
 DEFAULT_DATABASE = "admin"
 DEFAULT_TRANSPORT = "vql_psycopg2"
 KNOWN_TRANSPORTS = ("vql_psycopg2", "vql_flightsql")
 REQUIRED_FIELDS = ("host", "user")
 KNOWN_FIELDS = REQUIRED_FIELDS + (
     "port", "database", "password", "password_env", "production", "transport",
-    "marketplace_url", "marketplace_server_id",
+    "marketplace_url", "marketplace_server_id", "jdbc_port",
 )
 
 
@@ -53,6 +55,10 @@ class Profile:
     transport: str
     marketplace_url: str | None
     marketplace_server_id: int | None
+    # The Virtual DataPort JDBC port. Only the Denodo Testing Tool connects over JDBC (the
+    # transports speak the PostgreSQL protocol on ``port``), so a profile that never runs it
+    # never needs to name it.
+    jdbc_port: int = DEFAULT_JDBC_PORT
 
     def public(self) -> dict:
         """Everything except the password — safe for output and logs."""
@@ -66,6 +72,7 @@ class Profile:
             "transport": self.transport,
             "marketplace_url": self.marketplace_url,
             "marketplace_server_id": self.marketplace_server_id,
+            "jdbc_port": self.jdbc_port,
         }
 
 
@@ -129,6 +136,7 @@ def load_profile(name: str, path: Path | None = None) -> Profile:
         transport=transport,
         marketplace_url=str(marketplace_url).rstrip("/") if marketplace_url else None,
         marketplace_server_id=int(server_id) if server_id is not None else None,
+        jdbc_port=int(raw.get("jdbc_port", DEFAULT_JDBC_PORT)),
     )
 
 
@@ -151,6 +159,7 @@ def list_profiles(path: Path | None = None) -> list[dict]:
             "production": bool(raw.get("production", False)),
             "transport": raw.get("transport", DEFAULT_TRANSPORT),
             "marketplace_url": raw.get("marketplace_url"),
+            "jdbc_port": raw.get("jdbc_port", DEFAULT_JDBC_PORT),
             "password_source": "env:" + str(raw["password_env"]) if "password_env" in raw else "file",
         })
     return listed
@@ -177,6 +186,8 @@ def render_section(profile: Profile) -> str:
         lines.append(f"marketplace_url = {_toml_string(profile.marketplace_url)}")
     if profile.marketplace_server_id is not None:
         lines.append(f"marketplace_server_id = {profile.marketplace_server_id}")
+    if profile.jdbc_port != DEFAULT_JDBC_PORT:
+        lines.append(f"jdbc_port = {profile.jdbc_port}")
     return "\n".join(lines) + "\n"
 
 

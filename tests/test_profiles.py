@@ -32,6 +32,7 @@ production = true
 transport = "vql_psycopg2"
 marketplace_url = "http://mp.example.test:9090/denodo-data-catalog/"
 marketplace_server_id = 2
+jdbc_port = 29999
 """
 
 
@@ -55,6 +56,7 @@ class ProfilesTest(unittest.TestCase):
         self.assertIsNone(p.marketplace_url)
         self.assertIsNone(p.marketplace_server_id)
         self.assertEqual(p.password, "s3cret")
+        self.assertEqual(p.jdbc_port, 9999)
 
     def test_full_profile_and_password_from_environment(self):
         self.write(FULL)
@@ -65,6 +67,7 @@ class ProfilesTest(unittest.TestCase):
         self.assertEqual(p.port, 9997)
         self.assertEqual(p.marketplace_url, "http://mp.example.test:9090/denodo-data-catalog")
         self.assertEqual(p.marketplace_server_id, 2)
+        self.assertEqual(p.jdbc_port, 29999)
 
     def test_password_env_missing_variable_is_an_error(self):
         self.write(FULL)
@@ -114,6 +117,8 @@ class ProfilesTest(unittest.TestCase):
             self.assertNotIn("s3cret", repr(entry))
         self.assertTrue(listed[1]["production"])
         self.assertEqual(listed[0]["host"], "vdp.example.test")
+        self.assertEqual(listed[0]["jdbc_port"], 9999)
+        self.assertEqual(listed[1]["jdbc_port"], 29999)
 
     def test_list_profiles_without_file_is_empty(self):
         self.assertEqual(list_profiles(self.path), [])
