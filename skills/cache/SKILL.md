@@ -59,6 +59,10 @@ with a check, and why the human sees the consequences before you apply them.
 | created by you in this session, read by nothing but your own views of this session | on, load, clear, off | — |
 | any other view | the reads above | on, load, reload, clear, off |
 
+Whether the view was created in this session, and whether anything else reads it, is what
+`vql plan` reports for the file's `ALTER VIEW … CACHE` and load (`own`, `needs_yes`) — not
+your memory (`/denodo:vql`).
+
 On a view other people read, switching the cache on empties it until the load finishes, a
 load replaces its rows with a snapshot, a `WHERE` in the load becomes its content, and
 clearing empties it. The yes is to the statements, shown in this shape:

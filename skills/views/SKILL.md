@@ -441,7 +441,7 @@ can then be written in VQL names. Unchanged either way: `decimal`, `float`, `boo
 | Union branches | one per source of the same entity. Read each with `vql desc`: sources name, order and type their columns differently, and every branch lists them in the union's order, not its source's |
 | What the union is split on | what consumers filter by — a constant per source (`channel`) or a real column (a date). "Fast for one channel" or "only this year's data from the warehouse" is the request for a split |
 | Grain after a flatten | the element (one row per line) or the parent (one row per order, with figures from its lines) — the human. The second joins the element figures, aggregated, to the parent's figures at the result's grain (`references/arrays.md`), never a `SUM` of the parent's measures over flattened rows |
-| Existing dependants | `USED_BY()` before touching anything that already exists; for a column that changes, "Before a column changes" below |
+| Existing dependants | `USED_BY()` before touching anything that already exists; for a column that changes, "Before a column changes" below. Whether the name already exists, and whose it is, is `vql plan` on the file (`exists`, `own`) |
 
 Do not ask about cache, swap, statistics or indexes: they have server defaults, and they
 are not part of creating these objects. When the human asks for a cache, it is

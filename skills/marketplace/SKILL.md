@@ -195,16 +195,16 @@ api post --env dev /public/api/element-management/VIEWS/synchronize \
   cannot be narrowed to one database — it synchronises the whole server. On a shared server
   that means other people's new views land in the catalog with yours. Re-read the response:
   `inserted` says what actually happened.
-- **Who sends it.** You, when both `changes` — both, even when only `VIEWS/synchronize` is
-  needed — read right before the call, hold only what you created in this session — every `serverElements` entry a database or view of yours, every
-  `localElements` entry the element of a view of yours — with `SERVER_WITH_LOCAL_CHANGES`, on a
-  profile that is not production; `modifiedElements` do not change it. Then read `removed` and
-  `inserted` against that radius, and both `changes` again: once a database is gone from VDP,
-  its database and view elements left the catalog with `removed` empty in both responses —
-  *verified: 9.5.1 (live, 2026-10-06)* — so only the second reading shows what went. Tell the
-  human at once about anything you did not expect. One
-  entry you did not create in this session — another team's new database, an orphan you did not
-  make — and the body goes in a file and the call waits for the yes (`/denodo:vql`).
+- **Who sends it.** You, when the same call with `--plan`, right before it, says `needs_yes:
+  false`: it reads both `changes` — both, even when only `VIEWS/synchronize` is needed — and
+  finds only what this session created (`radius.own`): every `serverElements` entry a database
+  or view of yours, every `localElements` entry the element of a view of yours; with
+  `SERVER_WITH_LOCAL_CHANGES`, on a profile that is not production; `modifiedElements` do not
+  change it. Then read `removed` and `inserted` against that radius, and both `changes` again:
+  once a database is gone from VDP, its elements left the catalog with `removed` empty in both
+  responses — *verified: 9.5.1 (live, 2026-10-06)* — so only the second reading shows what went.
+  Tell the human at once about anything you did not expect. One entry in `radius.not_own` —
+  another team's new database, an orphan you did not make — and the body goes in a file and the call waits for the yes (`/denodo:vql`).
 - Measured once, on a catalog of some 600 views: `changes` about 1 s, `VIEWS/synchronize`
   about 1.4 s when it inserts 10 and modifies none — *verified: 9.5.1 (live, 2026-09-10)*.
   Not a long-running job at that size, but a change to a catalog everybody shares.
@@ -479,7 +479,7 @@ that does not match it, and only the `SELECT` shows it (`/denodo:views`).
 | A new category's parent | `GET …/categories/tree` first. A live marketplace's tree is a taxonomy somebody designed — hang the new category inside the branch it belongs to. A **new top-level** category is a question for the human, not a default: it adds an axis to what everybody browsing sees. (`GET …/categories/{id}/potential-parent` is for moving an existing one) |
 | Every numeric id | never a template, never memory: a `GET` in this session. Ids differ per installation and per server |
 | View ids to assign to | `GET /public/api/view-details?databaseName=…&viewName=…`; `id:null` means synchronise first. Save the answer to a file and read `id`, `inLocal` and `inVDP` out of it with a script — it carries the view's whole field list and its connection URIs, and truncating it instead is how the three fields get missed |
-| Whether the catalog may be synchronised | you, when both `changes`, read right before the call, hold only databases and views you created in this session (`modifiedElements` aside) and the profile is not production; the human for any other radius — it is a shared catalog |
+| Whether the catalog may be synchronised | you, when the call with `--plan`, right before it, says `needs_yes: false` — both `changes` hold only databases and views you created in this session (`modifiedElements` aside) and the profile is not production; the human for any other radius — it is a shared catalog |
 | Whether a view about to be renamed, recreated or moved is in the marketplace | `view-details` on it **before** the change — `id` not null and `inLocal: true`. The answer is also what to keep: it is the only copy of the element's metadata |
 | Which removed element is which new one | you renamed it, or the human says so. The same database and the same columns are a hint, not proof |
 | For an external element: the type | `GET /public/api/external-elements-types` — 24 built in; invent one only if none fits |

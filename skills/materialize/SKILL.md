@@ -75,7 +75,7 @@ changes the answers of queries you did not write, waits for the human's yes.
 
 | You do it yourself | Only after the human's yes |
 |---|---|
-| the reads: is the name free, how many rows, what reads the target, the plan | `replace_remote_table_if_exist = true`, `CREATE OR REPLACE REMOTE TABLE` — whatever the name holds |
+| the reads: is the name free, how many rows, what reads the target, the query plan — and `vql plan`, whose `own` says which tables you created in this session (`/denodo:vql`) | `replace_remote_table_if_exist = true`, `CREATE OR REPLACE REMOTE TABLE` — whatever the name holds |
 | a **new** remote table: `CREATE_REMOTE_TABLE` with `replace_remote_table_if_exist = false`, in the data source and schema the human named, under a name the reads show free, after stating the row count | a remote table in a data source or schema the human did not name |
 | `REFRESH` of a remote table you created in this session, and `replace_remote_table_if_exist = true` over one — the empty table a failed load left included | `REFRESH` of any table older than this session — it is emptied first |
 | a summary created **unloaded** (`DATA_LOAD_IMMEDIATE = FALSE`) and its plan checked: unloaded, it writes nothing and the optimizer never uses it — the data source and schema it names become part of the yes for its load. When the human named none, propose the data source the big table already lives in and its data-load schema, and say it is a proposal | **every load of a summary** — the first `REFRESH`, a `CREATE` that loads, every reload: from that moment it answers queries you did not write |

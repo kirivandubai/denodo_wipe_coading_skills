@@ -19,6 +19,7 @@ intent in words
   → read .denodo/conventions.md if the project has one
   → decide placement: database, layer folder, name
   → write the statements into a .vql file in the project
+  → plan it: vql plan says, per statement, whether it is yours or waits for the human's yes
   → apply the file with /denodo:execute
   → verify: DESC, and SELECT for anything that carries rows — a view whose columns call
     the server's LLM is read from its cache, or with a LIMIT the human agreed to (/denodo:ai)
@@ -117,9 +118,21 @@ it just means the verification is yours to do, with `DESC` and a `SELECT`.
 
 ## Safety: you create, the human confirms destruction
 
+**Plan a file before you apply it, and again after you change it.** `vql plan --env dev
+<file>` reads it against the server and against the session's ledger — every `vql run`
+records the objects it created — and executes nothing. Per statement: `exists`; `own` —
+created in this session, by the ledger with the server's id checked, or by an earlier
+statement of the same file; `needs_yes`, with `why` (the row below that decides) and
+`conditions` (what that row also needs and the tool cannot see). `true`: show those
+statements and wait for the yes. `false`: yours, once its `conditions` hold. `null`: the
+plan does not recognise the statement, and this table decides. On a production profile every
+change is `true`. "Created in this session" in the table means what `own` says, not what you
+remember: after a compacted context, in a subagent, or beside an object of the same name, the
+ledger knows and you do not. `vql ledger --env dev` lists what the session created.
+
 | You do it yourself | Only after the human confirms |
 |---|---|
-| `CREATE` / `CREATE OR REPLACE` of an object — a new one, or one your project's own file declares | `DROP`, `TRUNCATE`, `DELETE` |
+| `CREATE` / `CREATE OR REPLACE` of an object — a new one, or one a file of your project declared before this session (the plan's `declared_in`; a file you have just written vouches for nothing) | `DROP`, `TRUNCATE`, `DELETE` |
 | Read-only `SELECT`, `DESC`, `GET_*`, `env check` — on any profile, production included | `ALTER` of an object that existed before this session, or that something you did not create already reads. Your own new view takes the `ALTER VIEW … CACHE` line of its file without a yes; a `DROP`, even of your own object, does not |
 | Session settings: `SET QUERYTIMEOUT TO …`, `ALTER SESSION SET 'querytimeout' = …` | `INSERT`, `UPDATE` — the rows land in the source behind the view, at once: over this connection `ROLLBACK` undoes nothing (`/denodo:dml`). The one `INSERT` that is yours: into a materialized table you created in this session (`/denodo:materialize`) |
 | A **new** table in a source database: `CREATE_REMOTE_TABLE` with `replace_remote_table_if_exist = false`, in the data source and schema the human named, under a name you checked is free; its `REFRESH` while it is yours from this session; a summary created unloaded; a new materialized table in your project's database (`/denodo:materialize`) | replacing, emptying or dropping a table in a source database that existed before this session — `replace … = true`, `OR REPLACE` before `REMOTE TABLE`, `SUMMARY VIEW` or `MATERIALIZED TABLE`, `REFRESH`, `DROP_REMOTE_TABLE` — and **every load of a summary**: from then on the optimizer answers other people's queries from it (`/denodo:materialize`) |
@@ -173,11 +186,14 @@ still replacing a set you did not read out to the human.
 | "I'll list what I removed in the summary" | Disclosure after the fact is not consent. |
 | "Nothing gets removed — the rest of the radius only adds" | Clean is not the test; whose is. Another team's new database or view under `serverElements` lands in the catalog everybody browses before its owner chose to publish it. One entry you did not create in this session, and the body goes in a file with what waiting risks; the human sends it or says yes. |
 | "The pair is matched, so the rename costs nothing" | A view that existed before this session is someone's: the rename and its matched `synchronize` wait for one yes, shown together. |
+| "My file declares it — the table says that is mine" | A file declares whatever you put in it. Your project's file is one that declared the object before this session — the plan's `declared_in`. A name that `exists` and is not `own` waits for the yes. |
+| "The context was compacted and I cannot tell which objects are mine, so everything waits" | `vql plan` and `vql ledger` know: the tool recorded every object this session created. Asking the human about your own work costs their time; guessing costs their objects. |
 
 **Two named exceptions, and only these.** On a `production` profile neither applies: the tool
 refuses every `synchronize` there regardless (`/denodo:marketplace`).
 
-1. **A catalog `synchronize` whose radius is yours.** `VIEWS/synchronize` — preceded by
+1. **A catalog `synchronize` whose radius is yours** — `api post … --plan` reads both
+   `changes` against the ledger and says so (`radius.own`, `needs_yes`). `VIEWS/synchronize` — preceded by
    `DATABASES/synchronize` when the database is new — with `proceedWithConflicts:
    "SERVER_WITH_LOCAL_CHANGES"`, when both `…/changes`, `DATABASES` and `VIEWS`, read right
    before the call, hold only what you created in this session: every
@@ -195,7 +211,8 @@ refuses every `synchronize` there regardless (`/denodo:marketplace`).
 
 Nothing else about a `synchronize` is exempt.
 
-**Red flags — stop and ask:** you are about to send `DELETE`; a `synchronize` whose radius
+**Red flags — stop and ask:** you are applying a file the plan has not read since its last
+change; you are about to send `DELETE`; a `synchronize` whose radius
 you have not read just now, or that holds anything you did not create in this session; you
 are writing `--allow-destructive`; `env.production` is `true`; you are removing something you
 did not create in this session; you are "cleaning up" anything.

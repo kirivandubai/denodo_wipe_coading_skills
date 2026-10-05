@@ -83,6 +83,9 @@ SELECT view_name, column_name, tag_name FROM GET_VIEW_TAGS() WHERE input_databas
 | only objects you created in this session: a role no person holds yet, whose grants name only objects you created in this session, a policy limited by `VIEW_DATABASES` to a database you created in this session and whose audience is such a role, tags on views you created | create, change, check | — |
 | anything that existed before this session — a role, a user, a tag a policy names, a policy, someone else's view; any grant of a role or a privilege to a person; a new policy whose audience or views include existing ones; re-creating a role someone dropped | the reads, the impersonated checks, the files | every statement |
 
+`vql plan` on the file names, per statement, every existing object it touches that this
+session did not create (`touches`) — the first row needs that list empty (`/denodo:vql`).
+
 The second row includes the changes that look safe. A mask the human asked for still
 changes what people's reports compute tomorrow; a `CREATE` of a policy restricts people who
 exist; `CREATE OR REPLACE ROLE` over an existing role adds to it and removes nothing; and a
