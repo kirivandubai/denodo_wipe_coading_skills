@@ -145,9 +145,14 @@ class Ledger:
             })
 
     def record_dropped(self, server: str, ref: ObjectRef, *, now: dt.datetime) -> None:
+        """A dropped database takes every object of the session inside it along."""
         with self._locked() as doc:
             doc["updated"] = _iso(now)
-            for entry in self._present(doc, server, ref):
+            gone = self._present(doc, server, ref)
+            if ref.type == "database":
+                gone += [e for e in doc.get("servers", {}).get(server, {}).get("objects", [])
+                         if e["status"] == "present" and (e.get("database") or "").lower() == ref.name.lower()]
+            for entry in gone:
                 entry["status"] = "dropped"
                 entry["dropped_at"] = _iso(now)
 

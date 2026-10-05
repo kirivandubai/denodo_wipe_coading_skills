@@ -153,7 +153,7 @@ class OtherStatementsTest(unittest.TestCase):
 
     def test_cache_load_names_the_view(self):
         s = p("SELECT * FROM iv_orders CONTEXT ('cache_preload' = 'true', 'cache_invalidate' = 'all_rows')")
-        self.assertEqual(s.cache_view, ("sales", "iv_orders"))
+        self.assertEqual((s.action, s.cache_view), ("cache", ("sales", "iv_orders")))
 
     def test_ai_over_rows_but_not_over_dual(self):
         self.assertTrue(p("SELECT CLASSIFY_AI(txt, 'a,b') FROM tickets").ai_over_rows)

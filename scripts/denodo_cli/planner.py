@@ -44,24 +44,25 @@ def _head(text: str) -> str:
 
 
 class _Walk:
-    """The state of the server as the input changes it, statement by statement."""
+    """The state of the server as the input changes it, statement by statement.
+
+    ``exists`` and ``own`` are tracked apart: a ``CREATE OR REPLACE`` of someone else's object
+    leaves it someone else's, and a rename of it moves the name, not the ownership."""
 
     def __init__(self, ctx: PlanContext):
         self.ctx = ctx
-        self.created: dict[tuple, ObjectRef] = {}   # by an earlier statement of the input
-        self.dropped: set[tuple] = set()
+        self.state: dict[tuple, tuple[bool, bool]] = {}   # key -> (exists, own), set by the input
+        self.new: dict[tuple, ObjectRef] = {}               # created by an earlier statement of the input
 
     def exists(self, ref: ObjectRef) -> bool | None:
-        if ref.key() in self.created:
-            return True
-        if ref.key() in self.dropped:
-            return False
+        if ref.key() in self.state:
+            return self.state[ref.key()][0]
         return self.ctx.catalog.lookup(ref).exists
 
     def own(self, ref: ObjectRef) -> bool:
-        if ref.key() in self.created:
-            return True
-        if ref.key() in self.dropped or self.ctx.ledger is None:
+        if ref.key() in self.state:
+            return self.state[ref.key()][1]
+        if self.ctx.ledger is None:
             return False
         entry = self.ctx.ledger.find(self.ctx.server, ref)
         if entry is None:
@@ -73,17 +74,17 @@ class _Walk:
         return not (recorded and found.internal_id and recorded != found.internal_id)
 
     def kind(self, ref: ObjectRef) -> str | None:
-        if ref.key() in self.created:
-            return self.created[ref.key()].kind
-        if self.ctx.ledger is not None:
+        if ref.key() in self.new:
+            return self.new[ref.key()].kind
+        if self.ctx.ledger is not None and self.own(ref):
             entry = self.ctx.ledger.find(self.ctx.server, ref)
-            if entry and self.own(ref):
+            if entry and entry.get("kind"):
                 return entry.get("kind")
         subtype = self.ctx.catalog.lookup(ref).subtype
         return {"metric": "metric view", "summary": "summary"}.get(subtype or "", subtype)
 
     def dependents(self, ref: ObjectRef) -> list[dict] | None:
-        if ref.type != "view" or ref.key() in self.created:
+        if ref.type != "view" or ref.key() in self.new:
             return []
         rows = self.ctx.catalog.used_by(ref.database, ref.name)
         if rows is None:
@@ -96,12 +97,20 @@ class _Walk:
         return out
 
     def create(self, ref: ObjectRef) -> None:
-        self.created[ref.key()] = ref
-        self.dropped.discard(ref.key())
+        self.state[ref.key()] = (True, True)
+        self.new[ref.key()] = ref
 
     def drop(self, ref: ObjectRef) -> None:
-        self.created.pop(ref.key(), None)
-        self.dropped.add(ref.key())
+        self.state[ref.key()] = (False, False)
+        self.new.pop(ref.key(), None)
+
+    def rename(self, ref: ObjectRef, new_name: str) -> None:
+        own, kind = self.own(ref), self.kind(ref)
+        renamed = ObjectRef(ref.type, ref.database, new_name, kind)
+        self.drop(ref)
+        self.state[renamed.key()] = (True, own)
+        if own:
+            self.new[renamed.key()] = renamed
 
 
 def _decision(entry: dict, needs_yes: bool | None, why: str, conditions: list[str] | None = None) -> dict:
@@ -121,24 +130,22 @@ def plan_statements(statements: list[str], ctx: PlanContext) -> list[dict]:
             database = st.connect
         entry = _plan_one(index, st, walk, ctx)
         entries.append(entry)
-        _advance(st, walk)
+        _advance(st, walk, entry)
     return entries
 
 
-def _advance(st: Statement, walk: _Walk) -> None:
+def _advance(st: Statement, walk: _Walk, entry: dict) -> None:
+    """What the statement leaves behind, for the statements after it."""
     if st.action == "create" and st.obj is not None:
-        walk.create(st.obj)
+        if entry["exists"] is False:
+            walk.create(st.obj)          # new: the input's own from here on
     elif st.action == "drop" and st.obj is not None:
         walk.drop(st.obj)
     elif st.action == "rename" and st.obj is not None and st.new_name:
-        own = walk.own(st.obj)
-        walk.drop(st.obj)
-        renamed = ObjectRef(st.obj.type, st.obj.database, st.new_name, st.obj.kind)
-        if own:
-            walk.create(renamed)
+        walk.rename(st.obj, st.new_name)
     elif st.action == "call" and st.procedure == "CREATE_REMOTE_TABLE":
         view = _remote_table_view(st)
-        if view is not None:
+        if view is not None and entry["exists"] is False:
             walk.create(view)
 
 
@@ -175,9 +182,9 @@ def _plan_one(index: int, st: Statement, walk: _Walk, ctx: PlanContext) -> dict:
         return _decision(entry, True, "the profile is production: every change waits for the human's yes")
 
     action = st.action
+    if action == "cache":
+        return _cache(entry, st, walk)
     if action == "read":
-        if st.cache_view:
-            return _cache(entry, st, walk)
         if st.ai_over_rows:
             return _decision(entry, True, "an AI function evaluated over the rows of a view: every row is a paid "
                                           "request to the provider; the human agrees to the number (/denodo:ai)")
@@ -293,12 +300,12 @@ def _replace_older(entry: dict, st: Statement, walk: _Walk, ctx: PlanContext) ->
         return _decision(entry, True, "replaces a metric view you did not create in this session: a changed join, "
                                       "filter or metric changes every figure built on it (/denodo:metrics)")
     if ref.kind in _TABLE_KINDS or kind in _TABLE_KINDS:
-        return _decision(entry, True, "OR REPLACE drops or empties a table that existed before this session "
+        return _decision(entry, True, "OR REPLACE drops or empties a table this session did not create "
                                       "(/denodo:materialize)")
     declaration = ctx.declarations.get(ref)
     if declaration is None:
-        return _decision(entry, True, "replaces an object that existed before this session and that no project "
-                                      "file declared before it — its whole configuration goes (/denodo:vql)")
+        return _decision(entry, True, "replaces an object this session did not create and that no project file "
+                                      "declared before the session — its whole configuration goes (/denodo:vql)")
     entry["declared_in"] = declaration.path
     if normalize(declaration.text) == normalize(st.text):
         return _decision(entry, False, f"re-applies the declaration of {declaration.path} unchanged")
@@ -318,7 +325,7 @@ def _alter(entry: dict, st: Statement, walk: _Walk) -> dict:
     if entry["exists"] is None:
         return _decision(entry, True, "the server could not be read: whose object this is is unknown")
     if not entry["own"]:
-        return _decision(entry, True, "an ALTER of an object that existed before this session")
+        return _decision(entry, True, "an ALTER of an object this session did not create")
     if ref.type == "view":
         dependents = walk.dependents(ref)
         entry["dependents"] = dependents
@@ -363,7 +370,7 @@ def _security(entry: dict, st: Statement, walk: _Walk) -> dict:
         return _decision(entry, True, "a user is a person: creating one, or granting to one, is the human's "
                                       "(/denodo:security)")
     if ref is not None and entry["exists"] and not entry["own"]:
-        return _decision(entry, True, "re-declaring or changing a role or policy that existed before this session — "
+        return _decision(entry, True, "re-declaring or changing a role or policy this session did not create — "
                                       "CREATE OR REPLACE of a role adds to it (/denodo:security)")
     touches = []
     for name in st.identifiers:

@@ -101,7 +101,7 @@ class PlannerTest(unittest.TestCase):
         entry = self.one("CREATE OR REPLACE VIEW theirs AS SELECT 2 AS a FROM Dual()")
         self.assertEqual((entry["own"], entry["needs_yes"]), (False, True))
         self.assertEqual(entry["dependents"], [{"database": "sales", "name": "dashboard", "own": False}])
-        self.assertIn("existed before this session", entry["why"])
+        self.assertIn("did not create", entry["why"])
 
     def test_a_project_declaration_makes_the_replacement_yours_with_conditions(self):
         self.declarations = Declarations(root=Path("/repo"), base="abc", entries={
@@ -128,6 +128,16 @@ class PlannerTest(unittest.TestCase):
         entries = self.plan("CREATE OR REPLACE VIEW fresh AS SELECT 1 AS a FROM Dual()",
                             "ALTER VIEW fresh CACHE FULL")
         self.assertEqual((entries[1]["exists"], entries[1]["own"], entries[1]["needs_yes"]), (True, True, False))
+
+    def test_replacing_someone_elses_object_does_not_make_it_yours(self):
+        entries = self.plan("CREATE OR REPLACE VIEW theirs AS SELECT 2 AS a FROM Dual()",
+                            "ALTER VIEW theirs RENAME theirs2", "ALTER VIEW theirs2 CACHE FULL")
+        self.assertEqual([e["needs_yes"] for e in entries], [True, True, True])
+        self.assertEqual((entries[2]["exists"], entries[2]["own"]), (True, False))
+
+    def test_a_renamed_own_view_stays_yours(self):
+        entries = self.plan("ALTER VIEW mine RENAME mine2", "ALTER VIEW mine2 CACHE FULL")
+        self.assertEqual([e["needs_yes"] for e in entries], [False, False])
 
     def test_identity_decides_not_the_name(self):
         catalog = FakeCatalog({**self.existing, ("view", "sales", "mine"): ("_other", "derived")})

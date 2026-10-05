@@ -37,7 +37,7 @@ class ObjectRef:
 class Statement:
     text: str
     action: str                       # read, session, create, alter, rename, drop, insert, update,
-                                      # delete, refresh, call, setting, other
+                                      # delete, refresh, call, cache, setting, other
     obj: ObjectRef | None = None
     or_replace: bool = False
     new_name: str | None = None       # ALTER … RENAME
@@ -389,6 +389,8 @@ def parse_statement(text: str, database: str | None) -> Statement:
             st.proc_named = _named_arguments(toks)
         if _CACHE_WRITE.search(text):
             st.cache_view = _from_target(toks, database)
+            if st.action == "read" and st.cache_view:
+                st.action = "cache"
         if head == "SELECT" and _AI_CALL.search(text) and not _over_dual(toks):
             st.ai_over_rows = True
         return st

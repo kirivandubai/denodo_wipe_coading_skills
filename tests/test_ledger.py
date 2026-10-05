@@ -68,6 +68,13 @@ class LedgerTest(unittest.TestCase):
         self.assertIsNone(self.ledger.find(SERVER, VIEW))
         self.assertEqual(self.ledger.former(SERVER, VIEW)["status"], "dropped")
 
+    def test_a_dropped_database_takes_its_objects_along(self):
+        self.ledger.record_created(SERVER, ObjectRef("database", None, "sales"), internal_id=None, source=None,
+                                   statement="", now=NOW)
+        self.ledger.record_created(SERVER, VIEW, internal_id="_a1", source=None, statement="", now=NOW)
+        self.ledger.record_dropped(SERVER, ObjectRef("database", None, "SALES"), now=NOW)
+        self.assertEqual([e["status"] for e in self.ledger.objects(SERVER)], ["dropped", "dropped"])
+
     def test_a_rename_moves_the_name_and_keeps_the_history(self):
         self.ledger.record_created(SERVER, VIEW, internal_id="_a1", source=None, statement="", now=NOW)
         self.ledger.record_renamed(SERVER, VIEW, "orders_report", now=NOW)
