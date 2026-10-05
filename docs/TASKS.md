@@ -86,6 +86,67 @@ property groups, sync pitfalls) is still to come, as a `marketplace` extension.*
   description is ≤ 1024 characters, `verify` passes with every tail (AI requests only with the
   owner's number) and `--update-marks`, and the eval suite passes.
 
+**The development the review recommends (2026-10-05).** Agreed with the owner in this order;
+the reasoning is in the review document's last section. No new object skill: the review found
+the bottlenecks in trust on another server, in rules kept as prose, and in bulk work.
+
+- **T38. CI on every pull request, with a lint of the skills.** `next`, after T37 (the lint must
+  be green on the fixed tree). A GitHub Actions workflow running the unit tests and `claude
+  plugin validate .` (if it runs without credentials; otherwise a schema check of the two
+  manifests). The lint is a stdlib unit test in `tests/`, so it runs locally the same way, and it
+  fails on what the review found by hand: Cyrillic in anything a plugin user sees; the
+  installation names of the review's section E (the test server's tags, Oracle service and
+  schema, demo databases, run prefixes `green<n>_`, `zq`, `verify_` outside the chain); a
+  description over 1024 characters; a fenced template without a mark nearby, or a mark not in
+  the canonical form (grammar and diagram blocks on an explicit allowlist); a `references/`
+  link or a `/denodo:<name>` that does not resolve; "outside v1". `SKILL.md` files over 500
+  lines are listed with their current length, so they can only shrink. `CONTRIBUTING.md` gets
+  the description budget of about 900 characters, to leave room for the next trigger.
+- **T39. A ledger of the session's own objects, and `vql plan`.** `next`. Most contradictions
+  in section C of the review — and the `synchronize` decision of 2026-10-05 — turn on "created
+  in this session", which every skill re-derives in prose. `scripts/denodo` records what the
+  session created (a local state file outside the repository; how a session is identified is
+  settled in the task), and `vql plan <file>` reports per statement: new, replaces an existing
+  object, destructive, the session's own, and whether `vql`'s table puts it under the human's
+  yes; the marketplace `changes` radius is checked against the same ledger. It informs and never
+  refuses — the refusal stays the production profile's (the owner's decision on the core's
+  safety, roadmap 2.1). Then `vql`'s table and the skills point to the plan instead of
+  restating the rule. Done when unit tests and a live run pass and a RED/GREEN pair shows the
+  plan changing what the agent asks for.
+- **T40. A verification chain any server can run.** `next`, after T37 (both edit
+  `verification/chain.toml`). Today the chain needs the Denodo demo image (`csv_dir`, SQL
+  Server DDL for the write tables, a fixed embedding model), so a user cannot learn which
+  templates hold on their server, and the SQL Server assumptions of section A stay invisible on
+  ours. The values come from a local file; the fixtures reach a server without the demo files
+  (an HTTP route to the repository, or rows written through the cache data source — settled in
+  the task, synthetic rows under the TPC-DS names); the 170 `verified` marks of `references/`
+  join the chain; `env check` reports the Enterprise Plus features the server has (summaries,
+  global security policies, LLM, MPP) and `verify` skips a tail the server lacks, saying so.
+  Done when the chain passes unchanged on the demo image and on a second configuration — at
+  least once with the cache database on PostgreSQL (a server setting: the owner's yes).
+- **T41. Bulk work in the existing skills.** `next`, after T39 (it builds on the plan). The gap
+  three reviewers hit independently: base views for every table of a JDBC schema
+  (`datasources`), one tag on every column matching a pattern (`catalog`, `security`),
+  descriptions for hundreds of views in batches (`semantics`). One pattern in `vql`, applied in
+  each: a plan file listing the N objects, one yes for the plan, apply, a per-object check
+  report. No new skill. Done when a RED/GREEN pair on a 20-or-more-table scenario passes and
+  eval cases cover the bulk phrases.
+- **T42. Outcome evals beside the routing ones.** `next`. The 64 routing cases say which skill
+  fires, not what the agent does next; that is measured today only by hand-run RED/GREEN
+  scenarios. Five to seven scenarios as repeatable runs against a test server — a mart from CSV,
+  a marketplace tag with its synchronisation, a full cache on the agent's own view, a metric
+  view, a write through `dml` with its preview, and one under pressure (a `DROP` asked for with a
+  deadline) — graded deterministically on the trace (the change went through a file, a check
+  ran after the create, no `--allow-destructive`, no yes-requiring call before the yes), an LLM
+  judge only where the trace cannot tell. A tag of their own, a fixture reset script, the cost in
+  `evals/README.md`; run before a release, not in CI.
+- **T43. Narrow template gaps, by how often they are asked.** `next`, taken one at a time, each
+  with its RED/GREEN pair, a chain step and the eval suite when a description changes:
+  de-duplication and the current row per key (`views`); year-over-year, month-to-date and
+  running totals (`metrics`); revoking access and "each person sees their own rows"
+  (`security`); incremental loads (`materialize`, `scheduler`); deleting a Scheduler job;
+  removing a marketplace tag or category from a view.
+
 ---
 
 ## Открытые вопросы
@@ -400,6 +461,12 @@ property groups, sync pitfalls) is still to come, as a `marketplace` extension.*
   Это единственный кусок навыка `marketplace`, который приёмка прошла мимо; закрывается
   сценарием, где витрина создана, но `element-management/VIEWS/synchronize` ещё не звучал.
   Задачи нет.
+- **Starting the file of a view that exists only on the server** (review of 2026-10-05, for the
+  owner). On a server with existing objects, changing a view that has no file in the project is
+  ordinary vibe-coding; `views` forbids re-applying `DESC VQL` output but never says how to start
+  the file (`DESC VQL VIEW v ('includeDependencies'='no','dropElements'='no')`, then the parts to
+  remove). The roadmap review dropped exporting server objects into the project together with
+  `deploy`; whether this one recipe in `views` comes back is the owner's call.
 
 ---
 

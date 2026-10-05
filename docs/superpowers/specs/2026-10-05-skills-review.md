@@ -4,7 +4,7 @@ The owner asked for a full review of the skills on four points: the texts are ge
 lean on the server they were written against; every skill is in English; every skill works when
 it creates objects on a live server; what else would help vibe-coding on Denodo. This document is
 the result. The fixes are task T37 in [TASKS.md](../../TASKS.md); the recommendations at the end
-are not part of it.
+are tasks T38–T43.
 
 **Base commit:** `0083642` (after T36). Line numbers below are as of that commit.
 
@@ -211,26 +211,54 @@ says `NEST`/`REGISTER` leave `_array_register_*` types behind; `materialize/SKIL
 request; `marketplace/SKILL.md:523` puts the `403` of a missing `serverId` under the paging row;
 `external-elements.md:52` "A own type"; `ai/references/functions.md:45` mark "(documentation)".
 
-## Recommendations for vibe-coding (not part of T37)
+## Recommendations for developing the skills
 
-1. **CI on every pull request** — none exists. Unit tests, `claude plugin validate`, and a lint
-   for what this review checked by hand: Cyrillic, installation words, description ≤ 1024,
-   a mark next to every template, `references/` links and skill names that resolve.
-2. **A verification chain any server can run** — fixtures shipped in the repository, the values
-   (`csv_dir`, embedding model, write data source and its DDL) overridable from a local file, and
-   the `references/` templates added. "Run `verify` on your server" becomes a new user's first
-   step and tells them which templates to trust there.
-3. **A preview before apply** (`vql plan` or `--dry-run`): which objects are new, which are
-   replaced, which statements are destructive — before anything runs.
-4. **Outcome evals beside the routing ones** — the acceptance scenarios (T13, T19) as repeatable
-   runs against a test server, graded on the objects they leave.
-5. **A first-run command** (`/denodo:init` or similar): the profile, `env check`,
-   `.denodo/conventions.md` — today manual steps in the README.
-6. **Bulk work** — three reviewers hit the same gap independently: base views for forty tables,
-   one tag on every email column, descriptions for hundreds of views.
-7. **Bringing an existing view into the project's files** (`DESC VQL` with safe options → `.vql`)
-   came up in `views` and `vql`; the roadmap review dropped exporting server objects into the
-   project with `deploy` — the owner's call whether this narrower case returns.
-8. **Narrow template gaps**, under the narrow-scope policy: de-duplication / current row per key
-   (`views`), year-over-year and running totals (`metrics`), "each person sees their own rows" and
-   revoking access (`security`), deleting a Scheduler job, removing a marketplace tag from a view.
+Agreed with the owner on 2026-10-05 and queued in this order as T38–T43 in
+[TASKS.md](../../TASKS.md). The review's main conclusion: no new object skill now. The skills
+are deep — silent failures documented, templates green live — and the bottlenecks are
+elsewhere: trust in the templates on someone else's server, the rules of "what the agent does
+itself" kept as prose that the skills read differently, and bulk work, the most frequent ask
+nothing covers.
+
+**Trust on another server.**
+
+- **T38 — CI with a lint of the skills.** Nearly everything this review found by hand is
+  mechanical: Cyrillic, installation names, description length, a mark next to every template,
+  links and skill names that resolve, "outside v1". Without a lint the same findings return
+  within a few tasks.
+- **T40 — a verification chain any server can run.** The chain is tied to the demo image, so
+  the SQL Server assumptions of section A cannot show on the server the skills were written
+  against; they would show on the first server whose cache database is PostgreSQL. With values
+  from a local file, fixtures that reach any server, the `references/` templates added and the
+  server's features read from `env check`, "run `verify` on your server" becomes a new user's
+  first step.
+
+**Speed and safety of the loop.**
+
+- **T39 — a ledger of the session's own objects and `vql plan`.** Most contradictions in
+  section C turn on "created in this session"; so did the `synchronize` decision. A ledger kept by
+  the tool and a plan that marks each statement new / replacing / destructive / own / needing a
+  yes move that judgement out of sixteen prose restatements. The plan informs; the refusal stays
+  the production profile's, as the owner decided for the core's safety (roadmap 2.1).
+- **T42 — outcome evals.** 64/64 routing says which skill fires, not what the agent then does.
+  Five to seven scenarios graded on the trace replace part of the hand-run RED/GREEN work, run
+  before a release.
+
+**Coverage, by how often it is asked, within the narrow-scope policy.**
+
+- **T41 — bulk work** in `datasources`, `catalog`/`security` and `semantics`: one plan file for N
+  objects, one yes, a per-object check report.
+- **T43 — narrow template gaps:** de-duplication and the current row per key, year-over-year and
+  running totals, revoking access and per-person rows, incremental loads, deleting a Scheduler
+  job, removing a marketplace tag.
+- **Open, the owner's call:** a recipe in `views` for starting the file of a view that exists only
+  on the server — the roadmap review dropped exporting server objects into the project with
+  `deploy`.
+
+**Hygiene, folded into the tasks above.** A description budget of about 900 characters
+(`views`, `materialize`, `metrics` and `dml` are at the limit already, and syntax in parentheses
+does little for routing) and `SKILL.md` files that shrink rather than grow (`views` 722 lines,
+`datasources` 691), the reference material moving to `references/` — both in T38.
+
+**Not now:** new object skills (`publish`, `deploy`, lakehouse) — the review showed no demand
+there.
