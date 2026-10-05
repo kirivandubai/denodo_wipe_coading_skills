@@ -58,8 +58,29 @@ property groups, sync pitfalls) is still to come, as a `marketplace` extension.*
 **Позже:** `scheduler` — отдельным навыком (р. 4.12). Снятое на ревью перечислено в разделе
 10 роадмапа.
 
-*T36 (`scheduler`) is done — under «Сделано» below. The queue is empty: what is left are the
-open questions below, for the owner.*
+*T36 (`scheduler`) is done — under «Сделано» below.*
+
+**After the review of all skills (2026-10-05).**
+
+- **T37. Fix what the review of all skills found.** `next`. The owner's review of the sixteen
+  skills — generic texts, English only, every skill working live, vibe-coding — is
+  [2026-10-05-skills-review.md](superpowers/specs/2026-10-05-skills-review.md). English passed;
+  the live checks passed (`verify` with every tail 80/80, eval 64/64, unit tests, `plugin
+  validate`). What is left to fix, in that document's order: **A** — values of one installation
+  inside templates that fail on another server (the embedding model in `ai`, marketplace and
+  Scheduler ids, the fixed date in `dialect.md`, SQL Server types in `materialize`, `I18N us_pst`
+  as a default, "128 procedures"), changing the matching `substitute` keys in
+  `verification/chain.toml` with them; **B** — descriptions of `views` and `materialize` over 1024
+  characters, `vql`'s out of date; **C** — contradictions with `vql`'s safety table (state-changing
+  procedures unmentioned in `procedures/SKILL.md`, "cheap and safe" `CREATE OR REPLACE` in
+  `datasources`, and the rest listed there); **D** — stale statements: README, `plugin.json`,
+  `marketplace.json`, "outside v1" where a skill now exists; **E** — measured numbers, demo-file
+  quirks and anecdotes stated as general (demo table names stay in templates the chain runs —
+  see E for why); **F** — missing and off-format marks; **G** — the small items. Not in T37: the
+  `marketplace` `synchronize` contradiction (open question below, the owner's call) and the
+  document's recommendations. Done when the greps of the review come back clean, every
+  description is ≤ 1024 characters, `verify` passes with every tail (AI requests only with the
+  owner's number) and `--update-marks`, and the eval suite passes.
 
 ---
 
