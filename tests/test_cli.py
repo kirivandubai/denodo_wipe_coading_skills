@@ -43,9 +43,10 @@ class FakeVql:
 
 class FakeRest:
     calls = []
+    servers = []
 
-    def __init__(self, profile):
-        pass
+    def __init__(self, profile, server="marketplace"):
+        FakeRest.servers.append(server)
 
     def call(self, method, path, **kw):
         FakeRest.calls.append((method, path, kw))
@@ -75,6 +76,7 @@ class CliHarness:
             self.addCleanup(p.stop)
         FakeVql.executed.clear()
         FakeRest.calls.clear()
+        FakeRest.servers.clear()
 
     def run_cli(self, *argv):
         out = io.StringIO()
@@ -180,6 +182,21 @@ class CliTest(CliHarness, unittest.TestCase):
         self.assertEqual(parts["icon"][1], b"<svg/>")
         self.assertEqual(parts["request"][2], "application/json")
 
+    def test_api_to_the_scheduler(self):
+        doc, code = self.run_cli("api", "--server", "scheduler", "get", "/public/api/projects", "--env", "dev")
+        self.assertEqual(code, 0)
+        self.assertEqual(FakeRest.servers, ["scheduler"])
+        self.assertEqual(doc["server"], "scheduler")
+
+    def test_api_defaults_to_the_marketplace(self):
+        self.run_cli("api", "get", "/public/api/tags", "--env", "dev")
+        self.assertEqual(FakeRest.servers, ["marketplace"])
+
+    def test_api_unknown_server_is_a_usage_error(self):
+        doc, code = self.run_cli("api", "--server", "nope", "get", "/x", "--env", "dev")
+        self.assertEqual(code, 2)
+        self.assertEqual(doc["error"]["kind"], "usage")
+
     def test_api_delete_on_prod_is_refused(self):
         doc, code = self.run_cli("api", "delete", "/public/api/tags/1", "--env", "prod")
         self.assertEqual(code, 2)
@@ -216,12 +233,13 @@ class CliTest(CliHarness, unittest.TestCase):
 class VerifyCommandTest(CliHarness, unittest.TestCase):
     def test_parser_accepts_the_flags(self):
         args = cli.build_parser().parse_args(["verify", "--env", "lab", "--with-marketplace", "--with-ai",
-                                              "--with-writes", "--keep", "--update-marks",
+                                              "--with-writes", "--with-scheduler", "--keep", "--update-marks",
                                               "--allow-destructive", "--chain", "verification/chain.toml"])
         self.assertEqual(args.group, "verify")
         self.assertTrue(args.with_marketplace)
         self.assertTrue(args.with_ai)
         self.assertTrue(args.with_writes)
+        self.assertTrue(args.with_scheduler)
         self.assertTrue(args.keep)
         self.assertTrue(args.update_marks)
         self.assertTrue(args.allow_destructive)
@@ -232,6 +250,7 @@ class VerifyCommandTest(CliHarness, unittest.TestCase):
         self.assertFalse(args.with_marketplace)
         self.assertFalse(args.with_ai)
         self.assertFalse(args.with_writes)
+        self.assertFalse(args.with_scheduler)
         self.assertFalse(args.keep)
         self.assertFalse(args.update_marks)
         self.assertFalse(args.allow_destructive)

@@ -26,7 +26,11 @@ empties one and loads it again; ``CREATE OR REPLACE MATERIALIZED TABLE`` empties
 rows exist nowhere else (T34).
 HTTP calls are classified by method and path, never
 by words in the body: the Data Marketplace has ``POST`` endpoints that overwrite whole sets
-(spike T11, section 6).
+(spike T11, section 6). The Scheduler (T36) has its own rules: every ``PUT`` replaces a
+definition or a setting that exists, a status change starts, stops, enables or disables a job,
+and a new job is classified by what it will run on every trigger with nobody watching — a cache
+job loads view caches, a VDP job runs its VQL (classified as VQL) and writes what its database
+exporters write. That is the one place a body is read: the VQL is the operation.
 """
 
 from __future__ import annotations
@@ -165,10 +169,66 @@ def classify_vql(statement: str) -> str | None:
     return None
 
 
-def classify_http(method: str, path: str, body=None) -> str | None:
-    """``"delete"`` for any DELETE, ``"replace"`` for set-replacing POSTs, else ``None``."""
+# The Scheduler's REST API (T36, checked against the 9.5.1 OpenAPI of the administration tool).
+_SCHEDULER_STATUS = re.compile(r"^/public/api/projects/[^/]+/jobs(?:/[^/]+)?/status$")
+_SCHEDULER_NEW_JOB = re.compile(r"^/public/api/projects/[^/]+/jobs$")
+_SCHEDULER_DELETE_POSTS = re.compile(r"^/public/api/reports/delete-(?:batch|by-job-batch)$")
+_SCHEDULER_SECURITY = re.compile(
+    r"^/public/api/(?:roles(?:/.*)?|changePassword|tool-configuration/(?:change|reset)-password)$")
+_SCHEDULER_SETTINGS = re.compile(
+    r"^/public/api/(?:configuration|tool-configuration)(?:/.*)?$|^/public/api/(?:drivers|plugins)$")
+# exporters that write into another system's tables or indexes
+_WRITING_EXPORTERS = frozenset({"JDBC", "ELASTICSEARCH"})
+
+
+def _classify_scheduler(method: str, route: str, body) -> str | None:
+    if method == "DELETE" or (method == "POST" and _SCHEDULER_DELETE_POSTS.match(route)):
+        return "delete"
+    if _SCHEDULER_SECURITY.match(route) and method in ("POST", "PUT"):
+        return "security"
+    if route == "/public/api/serverMetadata/import" and method == "POST":
+        return "replace"  # the whole metadata of the server: projects, jobs, data sources
+    if _SCHEDULER_SETTINGS.match(route) and method in ("POST", "PUT"):
+        return "setting"
+    if method == "PUT":
+        return "job" if _SCHEDULER_STATUS.match(route) else "alter"
+    if method == "POST" and _SCHEDULER_NEW_JOB.match(route):
+        return _classify_scheduler_job(body)
+    return None
+
+
+def _classify_scheduler_job(body) -> str | None:
+    """What a new job will do on every trigger: load caches, or run its VQL and export it."""
+    if not isinstance(body, dict):
+        return None
+    kind = str(body.get("type") or "").upper()
+    if kind in ("VDPCACHE", "VDPDAGLOAD"):
+        return "cache"
+    if kind == "VDPDATALOAD":
+        return "table"
+    if kind != "VDP":
+        return None
+    extraction = (body.get("extractionSection") or {}).get("extractionData") or {}
+    query_kind = classify_vql(str(extraction.get("parameterizedQuery") or ""))
+    if query_kind:
+        return query_kind
+    exporters = (body.get("exportationSection") or {}).get("exporters") or []
+    if any(str((e or {}).get("type") or "").upper() in _WRITING_EXPORTERS for e in exporters):
+        return "write"
+    return None
+
+
+def classify_http(method: str, path: str, body=None, server: str = "marketplace") -> str | None:
+    """For the Data Marketplace: ``"delete"`` for any DELETE, ``"replace"`` for set-replacing
+    POSTs. For the Scheduler: ``"delete"``, ``"alter"`` for a PUT that replaces a job, a project
+    or a data source, ``"job"`` for starting, stopping, enabling or disabling jobs, the kind of
+    what a new job will run (``"cache"``, ``"table"``, ``"write"`` or a VQL kind), ``"setting"``,
+    ``"security"`` and ``"replace"`` for server configuration, roles and a metadata import.
+    Else ``None``."""
     method = method.upper()
     route = urlsplit(path).path.rstrip("/")
+    if server == "scheduler":
+        return _classify_scheduler(method, route, body)
     if method == "DELETE":
         return "delete"
     if method == "POST" and any(p.match(route) for p in _REPLACING_POSTS):

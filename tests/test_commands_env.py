@@ -44,7 +44,7 @@ def scripted(answers, seen=None):
 class OkRest:
     calls = []
 
-    def __init__(self, profile):
+    def __init__(self, profile, server="marketplace"):
         pass
 
     def call(self, method, path, **kw):
@@ -96,6 +96,51 @@ class CheckTest(unittest.TestCase):
         self.assertFalse(doc["vdp"]["ok"])
         self.assertIn("connection refused", doc["vdp"]["error"]["message"])
         self.assertTrue(doc["marketplace"]["ok"])
+
+    def test_scheduler_is_checked_beside_the_marketplace(self):
+        seen = []
+
+        class Rest(OkRest):
+            def __init__(self, profile, server="marketplace"):
+                self.server = server
+
+            def call(self, method, path, **kw):
+                seen.append((self.server, path))
+                if self.server == "scheduler":
+                    return HttpResult(status=200, body={
+                        "username": "u", "schedulerMode": "STANDALONE",
+                        "serverData": {"version": {"full": "9.5.1"}},
+                        "permissions": [{"roleData": {"roleName": "scheduler_admin"}}]}, headers={})
+                return HttpResult(status=200, body={"count": 3}, headers={})
+
+        doc, code = check_environment(profile(marketplace_url="http://mp:9090/ctx"), vql_factory=OkVql,
+                                      rest_factory=Rest)
+        self.assertEqual(code, 0)
+        self.assertIn(("scheduler", "/public/api/me"), seen)
+        self.assertEqual(doc["scheduler"], {
+            "ok": True, "status": 200, "url": "http://mp:9090/webadmin/denodo-scheduler-admin",
+            "uri": "//h:8000", "server_version": "9.5.1", "mode": "STANDALONE", "roles": ["scheduler_admin"]})
+
+    def test_scheduler_is_not_probed_for_a_vdp_only_profile(self):
+        doc, _ = check_environment(profile(), vql_factory=OkVql, rest_factory=OkRest)
+        self.assertIsNone(doc["scheduler"])
+
+    def test_scheduler_failure_does_not_fail_the_check(self):
+        # an installation without a Scheduler is normal; the check reports it and goes on
+        class Rest(OkRest):
+            def __init__(self, profile, server="marketplace"):
+                self.server = server
+
+            def call(self, method, path, **kw):
+                if self.server == "scheduler":
+                    raise OSError("connection refused")
+                return HttpResult(status=200, body={"count": 3}, headers={})
+
+        doc, code = check_environment(profile(marketplace_url="http://mp/ctx"), vql_factory=OkVql, rest_factory=Rest)
+        self.assertEqual(code, 0)
+        self.assertTrue(doc["ok"])
+        self.assertFalse(doc["scheduler"]["ok"])
+        self.assertIn("connection refused", doc["scheduler"]["error"]["message"])
 
     def test_admin_and_impersonation_are_reported(self):
         doc, code = check_environment(profile(), vql_factory=scripted({

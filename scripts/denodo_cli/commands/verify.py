@@ -16,6 +16,7 @@ import secrets
 import shlex
 import subprocess
 import tempfile
+import time
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -35,6 +36,7 @@ KINDS = ("template", "fixture")
 CHANNELS = ("vql", "http", "denodotest")
 EXPECTS = ("rows", "no rows")
 THROWAWAY = "@encrypt-throwaway"
+HTTP_SERVERS = ("marketplace", "scheduler")
 PLACEHOLDER = re.compile(r"\{([a-z_][a-z0-9_]*)\}")
 
 
@@ -59,6 +61,12 @@ class Step:
     ai: bool = False
     writes: bool = False
     database: str | None = None
+    # T36, the Scheduler tail: its own gate; a file an api call reads (--json-file) mapped to
+    # a block of a skill; which call's body a capture reads; waiting for a started job.
+    scheduler: bool = False
+    files: dict[str, dict] = field(default_factory=dict)
+    capture_from: int | None = None
+    poll: dict | None = None
 
 
 @dataclass(frozen=True)
@@ -125,7 +133,11 @@ def _cleanup_http_entries(raw: object, path: Path) -> list[dict]:
         body = item.get("json")
         if body is not None and not isinstance(body, dict):
             raise ChainError(f"[cleanup] http entry in {path} needs a table for json, got {body!r}")
-        entries.append({"method": method, "path": call_path, "params": params, "json": body})
+        server = item.get("server", "marketplace")
+        if server not in HTTP_SERVERS:
+            raise ChainError(f"[cleanup] http entry in {path}: server must be one of {HTTP_SERVERS}, "
+                             f"got {server!r}")
+        entries.append({"server": server, "method": method, "path": call_path, "params": params, "json": body})
     return entries
 
 
@@ -151,11 +163,15 @@ def _step(raw: dict) -> Step:
     if kind == "fixture" and not (isinstance(vql, str) and vql):
         raise ChainError(f"step {step_id!r}: a fixture step needs a string vql body")
     marketplace = bool(raw.get("marketplace", False))
-    if channel == "http" and not marketplace:
-        # The executor (a later task) only implements the vql channel; http steps are
-        # guarded behind --with-marketplace. Without this, an http step lacking the flag
-        # would fall through into the vql branch of a default run.
-        raise ChainError(f"step {step_id!r}: an http-channel step must set marketplace = true")
+    scheduler = bool(raw.get("scheduler", False))
+    if channel == "http" and marketplace == scheduler:
+        # Every http step writes server-wide objects — the shared marketplace catalog or the
+        # Scheduler's projects and jobs — so each is behind its own flag and a default run
+        # stays inside its database. Without a gate an http step would run on every run.
+        raise ChainError(f"step {step_id!r}: an http-channel step must set exactly one of "
+                         "marketplace = true or scheduler = true")
+    if scheduler and channel != "http":
+        raise ChainError(f"step {step_id!r}: scheduler = true only applies to an http-channel step")
     if channel == "denodotest" and marketplace:
         raise ChainError(f"step {step_id!r}: a denodotest step runs a test file against VDP; "
                          "marketplace = true does not apply")
@@ -180,13 +196,57 @@ def _step(raw: dict) -> Step:
         # Only an http step has a response body to compare; on a vql step the table would
         # be read by nothing and the run would report a check it never made.
         raise ChainError(f"step {step_id!r}: expect_body only applies to an http-channel step")
+    files = _files(raw.get("files"), step_id)
+    poll = _poll(raw.get("poll"), step_id)
+    capture_from = raw.get("capture_from")
+    if capture_from is not None and type(capture_from) is not int:
+        raise ChainError(f"step {step_id!r}: capture_from must be an integer, got {capture_from!r}")
+    if (files or poll or capture_from is not None) and channel != "http":
+        raise ChainError(f"step {step_id!r}: files, poll and capture_from only apply to an http-channel step")
     return Step(id=step_id, kind=kind, channel=channel, address=address, vql=vql,
+                scheduler=scheduler, files=files, poll=poll, capture_from=capture_from,
                 calls=_int_calls(raw.get("calls", []), step_id),
                 substitute={str(k): str(v) for k, v in (raw.get("substitute") or {}).items()},
                 capture={str(k): str(v) for k, v in (raw.get("capture") or {}).items()},
                 expect_body={str(k): str(v) for k, v in expect_body.items()},
                 check=raw.get("check"), expect=expect, marketplace=marketplace, ai=ai, writes=writes,
                 database=database)
+
+
+def _files(raw: object, step_id: str) -> dict[str, dict]:
+    """``files = { "<path an api line names in --json-file>" = { address, substitute } }``.
+
+    A Scheduler job is a JSON file in the project, created with ``--json-file``; in a skill
+    the file is the json block beside the call. The step names which block stands for which
+    path, so the run sends exactly the text the skill shows (T36).
+    """
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict):
+        raise ChainError(f"step {step_id!r}: files must be a table of path = {{ address, substitute }}, got {raw!r}")
+    files: dict[str, dict] = {}
+    for path, spec in raw.items():
+        if not isinstance(spec, dict) or not isinstance(spec.get("address"), str) or not spec["address"]:
+            raise ChainError(f"step {step_id!r}: files entry {path!r} needs a string address")
+        substitute = spec.get("substitute") or {}
+        if not isinstance(substitute, dict):
+            raise ChainError(f"step {step_id!r}: files entry {path!r}: substitute must be a table")
+        files[str(path)] = {"address": spec["address"],
+                            "substitute": {str(k): str(v) for k, v in substitute.items()}}
+    return files
+
+
+def _poll(raw: object, step_id: str) -> dict | None:
+    """``poll = { field, until, seconds, every }``: repeat the step's last call until ``field``
+    of its answer equals ``until`` — a started Scheduler job runs on its own (T36)."""
+    if raw is None:
+        return None
+    if not isinstance(raw, dict) or not isinstance(raw.get("field"), str) or "until" not in raw:
+        raise ChainError(f"step {step_id!r}: poll needs a string field and an until value, got {raw!r}")
+    seconds, every = raw.get("seconds", 120), raw.get("every", 2)
+    if not all(isinstance(n, (int, float)) and not isinstance(n, bool) and n > 0 for n in (seconds, every)):
+        raise ChainError(f"step {step_id!r}: poll seconds and every must be positive numbers")
+    return {"field": raw["field"], "until": str(raw["until"]), "seconds": seconds, "every": every}
 
 
 def _int_calls(raw_calls: object, step_id: str) -> list[int]:
@@ -284,46 +344,60 @@ def _parses(line: str) -> bool:
 
 
 def _api_call(line: str) -> dict:
-    """One ``api ...`` line as ``{method, path, params, json, multipart}``.
+    """One ``api ...`` line as ``{server, method, path, params, json, json_file, multipart}``.
 
     ``--part`` is parsed rather than dropped like the other flags this does not recognise
     (``--env`` and friends): the marketplace has exactly one multipart call — creating an
     external provider type — and dropping a flag drops its value too, which turned that
     line into a POST with an empty body and sent it that way. A step may leave a call out
     (``calls``); sending a call the template does not describe is a different thing.
+
+    Flags may stand anywhere: the Scheduler's lines name their server first
+    (``api --server scheduler post …``), so the method is the first word that is not a flag
+    or a flag's value, and the path the second. ``--json-file`` is kept as a path, for the
+    step's ``files`` to resolve.
     """
     try:
         tokens = shlex.split(line)[1:]
     except ValueError as exc:
         raise ChainError(f"api line {line!r} does not parse: {exc}") from exc
-    if not tokens:
-        # Unreachable through parse_api_calls, whose own `startswith("api ")` filter on an
-        # already-stripped line guarantees a token follows. Kept because that filter is the
-        # only thing standing between shlex and an IndexError here.
-        raise ChainError(f"api line {line!r} names no method")
-    method, path = tokens[0].upper(), None
+    positional: list[str] = []
+    server = "marketplace"
     params: dict[str, str] = {}
     body_text: str | None = None
+    json_file: str | None = None
     part_specs: list[str] = []
-    index = 1
+    index = 0
     while index < len(tokens):
         token = tokens[index]
         if not token.startswith("-"):
-            path = token
+            positional.append(token)
             index += 1
             continue
         if index + 1 >= len(tokens):
             raise ChainError(f"api line {line!r}: {token} has no value")
+        value = tokens[index + 1]
         if token == "--param":
-            key, _, value = tokens[index + 1].partition("=")
-            params[key] = value
+            key, _, param_value = value.partition("=")
+            params[key] = param_value
         elif token == "--json":
-            body_text = tokens[index + 1]
+            body_text = value
+        elif token == "--json-file":
+            json_file = value
         elif token == "--part":
-            part_specs.append(tokens[index + 1])
+            part_specs.append(value)
+        elif token == "--server":
+            if value not in HTTP_SERVERS:
+                raise ChainError(f"api line {line!r}: --server must be one of {HTTP_SERVERS}, got {value!r}")
+            server = value
         index += 2       # --env, and every other flag, is dropped together with its value
-    if path is None:
+    if not positional:
+        raise ChainError(f"api line {line!r} names no method")
+    if len(positional) < 2:
         raise ChainError(f"api line {line!r} names no path")
+    method, path = positional[0].upper(), positional[1]
+    if body_text is not None and json_file is not None:
+        raise ChainError(f"api line {line!r} gives both --json and --json-file")
     try:
         json_body = json.loads(body_text) if body_text else None
     except json.JSONDecodeError as exc:
@@ -335,8 +409,8 @@ def _api_call(line: str) -> dict:
         # so a template and a hand-run call fail on the same inputs; only the wrapper
         # differs, because a manifest-level failure has to arrive as ChainError.
         raise ChainError(f"api line {line!r}: --part does not parse: {exc}") from exc
-    return {"method": method, "path": path, "params": params, "json": json_body,
-            "multipart": multipart}
+    return {"server": server, "method": method, "path": path, "params": params, "json": json_body,
+            "json_file": json_file, "multipart": multipart}
 
 
 def _select_calls(calls: list[dict], indexes: list[int]) -> list[dict]:
@@ -370,6 +444,7 @@ def run_chain(
     with_marketplace: bool = False,
     with_ai: bool = False,
     with_writes: bool = False,
+    with_scheduler: bool = False,
     keep: bool = False,
     update_marks: bool = False,
     today: dt.date | None = None,
@@ -486,6 +561,11 @@ def run_chain(
             if step.marketplace and not with_marketplace:
                 reports.append(_skipped(step, "marketplace steps need --with-marketplace"))
                 continue
+            if step.scheduler and not with_scheduler:
+                reports.append(_skipped(
+                    step, "Scheduler steps create a project and jobs on the shared Scheduler and run "
+                          "them; they need --with-scheduler"))
+                continue
             if step.ai and not with_ai:
                 reports.append(_skipped(
                     step, "AI steps call the server's LLM, one paid request per row; they need --with-ai"))
@@ -513,7 +593,8 @@ def run_chain(
         # here (see the docstring) still leaves cleanup done before it surfaces.
         cleanup_report = _cleanup(profile, chain, values=values, vql_factory=vql_factory,
                                   rest_factory=rest_factory, allow_destructive=allow_destructive,
-                                  keep=keep, with_marketplace=with_marketplace, with_writes=with_writes)
+                                  keep=keep, with_marketplace=with_marketplace, with_writes=with_writes,
+                                  with_scheduler=with_scheduler)
     ok = all(r["ok"] for r in reports if not r["skipped"])
     ok = ok and (cleanup_report["ran"] is False or (
         all(s["ok"] for s in cleanup_report["statements"]) and
@@ -609,7 +690,7 @@ def _check_cleanup_placeholders(chain: Chain, values: dict[str, str]) -> None:
 
 def _cleanup(profile: Profile, chain: Chain, *, values: dict[str, str], vql_factory: Callable,
              rest_factory: Callable | None, allow_destructive: bool, keep: bool,
-             with_marketplace: bool = False, with_writes: bool = False) -> dict:
+             with_marketplace: bool = False, with_writes: bool = False, with_scheduler: bool = False) -> dict:
     """Always runs, including after a failure: a run that did not clean up must say so.
 
     Cleanup statements are destructive by definition (``DROP ...``, ``DELETE``, and the
@@ -670,7 +751,8 @@ def _cleanup(profile: Profile, chain: Chain, *, values: dict[str, str], vql_fact
             vql_report = [{"statement": s["statement"], "ok": s["ok"], "error": s["error"]}
                          for s in doc["statements"]]
     http_report = _cleanup_http(profile, chain.cleanup_http, values=values, rest_factory=rest_factory,
-                                allow_destructive=allow_destructive, with_marketplace=with_marketplace)
+                                allow_destructive=allow_destructive, with_marketplace=with_marketplace,
+                                with_scheduler=with_scheduler)
     return {"ran": True, "reason": None, "statements": vql_report, "http": http_report}
 
 
@@ -696,7 +778,7 @@ def _unresolved(value: object) -> bool:
 
 def _cleanup_http(profile: Profile, entries: list[dict], *, values: dict[str, str],
                   rest_factory: Callable | None, allow_destructive: bool,
-                  with_marketplace: bool) -> list[dict]:
+                  with_marketplace: bool, with_scheduler: bool = False) -> list[dict]:
     """Run each ``[cleanup] http`` entry, skipping the ones nothing was ever captured for.
 
     Unlike ``chain.cleanup`` (vql), whose placeholders are all known before the run even
@@ -720,10 +802,13 @@ def _cleanup_http(profile: Profile, entries: list[dict], *, values: dict[str, st
         path = render(entry["path"], {}, values)
         params = {key: render(val, {}, values) for key, val in entry["params"].items()}
         body = _fill(entry["json"], values)
-        described = {"method": entry["method"], "path": path, "params": params, "json": body}
+        server = entry.get("server", "marketplace")
+        described = {"server": server, "method": entry["method"], "path": path, "params": params, "json": body}
         skipped = None
-        if not with_marketplace:
+        if server == "marketplace" and not with_marketplace:
             skipped = "the marketplace tail did not run; pass --with-marketplace"
+        elif server == "scheduler" and not with_scheduler:
+            skipped = "the Scheduler tail did not run; pass --with-scheduler"
         elif _unresolved(path) or _unresolved(params) or _unresolved(body):
             skipped = "nothing was captured for a placeholder of this entry"
         if skipped:
@@ -731,7 +816,8 @@ def _cleanup_http(profile: Profile, entries: list[dict], *, values: dict[str, st
                             "status": None, "error": None})
             continue
         doc, code = api_call(profile, entry["method"], path, transport_factory=rest_factory,
-                             json_body=body, params=params, allow_destructive=allow_destructive)
+                             json_body=body, params=params, allow_destructive=allow_destructive,
+                             server=server)
         reports.append({**described, "ok": bool(doc.get("ok")) and code == EXIT_OK, "skipped": False,
                         "reason": None, "status": doc.get("status"), "error": doc.get("error")})
     return reports
@@ -793,7 +879,10 @@ def _run_step(profile: Profile, step: Step, *, values: dict[str, str], root: Pat
     report = {"id": step.id, "kind": step.kind, "channel": step.channel, "source": step.address,
               "ok": False, "skipped": False, "error": None, "check": None, "statements": None, "mark": None}
     try:
-        body = _body(step, root=root, values=values)
+        # A value this step captures itself (a job's id, read back by the step's next call)
+        # is not known yet when the block is rendered: it stays a placeholder until then.
+        own = {key: "{" + key + "}" for key in step.capture if key not in values}
+        body = _body(step, root=root, values={**values, **own})
         # Optional per-step database, e.g. "{database}" — the mechanism a check already
         # uses (see _run_check below), now available to the step's own body too: a
         # template that does not carry its own CONNECT DATABASE (an unqualified SET
@@ -807,7 +896,7 @@ def _run_step(profile: Profile, step: Step, *, values: dict[str, str], root: Pat
     partial = None
     if step.channel == "http":
         outcome = _run_http(profile, step, body=body, values=values, rest_factory=rest_factory,
-                            allow_destructive=allow_destructive)
+                            allow_destructive=allow_destructive, root=root)
         report["statements"] = outcome["calls"]
         partial = outcome["partial"]
         if not outcome["ok"]:
@@ -892,8 +981,38 @@ def _http_failure(doc: dict) -> dict:
     return error
 
 
+def _field(body: object, path: str) -> object:
+    """``a.b.0.c`` of a parsed JSON body; ``None`` when any part is missing. A field name
+    without dots is a top-level field, as it always was."""
+    current = body
+    for part in path.split("."):
+        if isinstance(current, dict):
+            current = current.get(part)
+        elif isinstance(current, list) and part.isdigit() and int(part) < len(current):
+            current = current[int(part)]
+        else:
+            return None
+        if current is None:
+            return None
+    return current
+
+
+def _file_body(step: Step, json_file: str, *, root: Path, values: dict[str, str]) -> object:
+    """The JSON a ``--json-file`` call sends: the block ``step.files`` maps its path to."""
+    spec = step.files.get(json_file)
+    if spec is None:
+        raise ChainError(f"the call reads --json-file {json_file!r}, which the step's files do not map "
+                         f"to a block (files: {sorted(step.files)})")
+    block = load_block(root, spec["address"])
+    text = render(block.body, spec["substitute"], values)
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise ChainError(f"the block for {json_file!r} ({spec['address']}) is not valid JSON: {exc}") from exc
+
+
 def _run_http(profile: Profile, step: Step, *, body: str, values: dict[str, str],
-              rest_factory: Callable | None, allow_destructive: bool) -> dict:
+              rest_factory: Callable | None, allow_destructive: bool, root: Path | None = None) -> dict:
     """Run the http-channel calls ``step.calls`` names out of ``body``'s ``api ...`` lines.
 
     ``step.calls`` is a list of indexes into ``parse_api_calls(body)`` (resolved by
@@ -932,39 +1051,72 @@ def _run_http(profile: Profile, step: Step, *, body: str, values: dict[str, str]
     try:
         calls = parse_api_calls(body)
         selected = _select_calls(calls, step.calls)
-    except ChainError as exc:
+        for call in selected:
+            if call.get("json_file"):
+                call["json"] = _file_body(step, call["json_file"], root=root or Path("."), values=values)
+    except (ChainError, TemplateError) as exc:
         return {"ok": False, "calls": [], "partial": None,
                 "error": {"kind": "template", "message": f"step {step.id!r}: {exc}"}}
     partial = (f"the step ran {len(selected)} of the block's {len(calls)} calls"
                if len(selected) < len(calls) else None)
     executed: list[dict] = []
+    bodies: list[object] = []
     last_body: object = None
-    for call in selected:
-        doc, code = api_call(profile, call["method"], call["path"], transport_factory=rest_factory,
-                             json_body=call["json"], params=call["params"],
-                             multipart=call["multipart"], allow_destructive=allow_destructive)
+
+    def send(call: dict) -> tuple[dict, int]:
+        doc, code = api_call(profile, call["method"], render(call["path"], {}, values),
+                             transport_factory=rest_factory, json_body=call["json"], params=call["params"],
+                             multipart=call["multipart"], allow_destructive=allow_destructive,
+                             server=call.get("server", "marketplace"))
         executed.append({"method": call["method"], "path": call["path"],
                          "status": doc.get("status"), "ok": bool(doc.get("ok"))})
+        return doc, code
+
+    for index, call in enumerate(selected):
+        doc, code = send(call)
         if code != EXIT_OK:
             error = doc.get("error") or _http_failure(doc)
             return {"ok": False, "calls": executed, "partial": partial, "error": error}
         last_body = doc.get("body")
-    if step.capture:
-        missing = [field for field in step.capture.values()
-                  if not (isinstance(last_body, dict) and field in last_body)]
-        if missing:
-            shape = sorted(last_body) if isinstance(last_body, dict) else type(last_body).__name__
-            return {"ok": False, "calls": executed, "partial": partial, "error": {
-                "kind": "capture",
-                "message": (f"step {step.id!r}: capture field(s) {missing} not found in the last "
-                           f"call's response body (shape: {shape!r})"),
-            }}
-        for key, field_name in step.capture.items():
-            values[key] = str(last_body[field_name])
+        bodies.append(last_body)
+        if step.capture and index == (step.capture_from if step.capture_from is not None else len(selected) - 1):
+            # Captured as soon as the call answers: a later call of the same step may name
+            # the value (the read-back of a job just created names its id).
+            captured_body = last_body
+            missing = [f for f in step.capture.values() if _field(captured_body, f) is None]
+            if missing:
+                shape = sorted(captured_body) if isinstance(captured_body, dict) else type(captured_body).__name__
+                return {"ok": False, "calls": executed, "partial": partial, "error": {
+                    "kind": "capture",
+                    "message": (f"step {step.id!r}: capture field(s) {missing} not found in the "
+                               f"response body of call {index} (shape: {shape!r})"),
+                }}
+            for key, field_name in step.capture.items():
+                values[key] = str(_field(captured_body, field_name))
+    if step.poll and selected:
+        # A number of attempts rather than a clock: every attempt waits `every` seconds, so
+        # the budget is the same however slow each call is.
+        attempts = max(1, int(step.poll["seconds"] / step.poll["every"]))
+        seen = _field(last_body, step.poll["field"])
+        while str(seen) != step.poll["until"]:
+            if attempts == 0:
+                return {"ok": False, "calls": executed, "partial": partial, "error": {
+                    "kind": "poll",
+                    "message": (f"step {step.id!r}: {step.poll['field']} was still {seen!r} after "
+                               f"{step.poll['seconds']} s; waited for {step.poll['until']!r}"),
+                }}
+            attempts -= 1
+            time.sleep(step.poll["every"])
+            doc, code = send(selected[-1])
+            if code != EXIT_OK:
+                error = doc.get("error") or _http_failure(doc)
+                return {"ok": False, "calls": executed, "partial": partial, "error": error}
+            last_body = doc.get("body")
+            seen = _field(last_body, step.poll["field"])
     mismatches = []
     for field_name, expected in step.expect_body.items():
         wanted = render(expected, {}, values)
-        got = last_body.get(field_name) if isinstance(last_body, dict) else None
+        got = _field(last_body, field_name)
         if got is None or str(got) != wanted:
             mismatches.append(f"{field_name}: expected {wanted!r}, got {got!r}")
     if mismatches:

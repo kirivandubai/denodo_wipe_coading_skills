@@ -17,6 +17,13 @@ Format::
     marketplace_url = "http://localhost:9090/denodo-data-catalog"   # optional; enables `api`
     # marketplace_server_id = 1            # optional; only with several VDP servers registered
     # jdbc_port = 9999                     # optional; the JDBC port `testing config` writes (default 9999)
+    # scheduler_url = "http://localhost:9090/webadmin/denodo-scheduler-admin"   # optional; see below
+    # scheduler_uri = "//localhost:8000"   # optional; the Scheduler server as the administration tool reaches it
+
+The Scheduler is reached through its administration tool, a web application of the same web
+container as the Data Marketplace: without ``scheduler_url`` the address is the origin of
+``marketplace_url`` (or ``http://<host>:9090``) plus ``/webadmin/denodo-scheduler-admin``, and
+without ``scheduler_uri`` the server is ``//<host>:8000``.
 """
 
 from __future__ import annotations
@@ -25,17 +32,21 @@ import os
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlsplit
 
 DEFAULT_PATH = Path("~/.denodo/profiles.toml")
 DEFAULT_PORT = 9996
 DEFAULT_JDBC_PORT = 9999
 DEFAULT_DATABASE = "admin"
 DEFAULT_TRANSPORT = "vql_psycopg2"
+DEFAULT_WEB_PORT = 9090
+DEFAULT_SCHEDULER_PORT = 8000
+SCHEDULER_ADMIN_PATH = "/webadmin/denodo-scheduler-admin"
 KNOWN_TRANSPORTS = ("vql_psycopg2", "vql_flightsql")
 REQUIRED_FIELDS = ("host", "user")
 KNOWN_FIELDS = REQUIRED_FIELDS + (
     "port", "database", "password", "password_env", "production", "transport",
-    "marketplace_url", "marketplace_server_id", "jdbc_port",
+    "marketplace_url", "marketplace_server_id", "jdbc_port", "scheduler_url", "scheduler_uri",
 )
 
 
@@ -59,6 +70,25 @@ class Profile:
     # transports speak the PostgreSQL protocol on ``port``), so a profile that never runs it
     # never needs to name it.
     jdbc_port: int = DEFAULT_JDBC_PORT
+    # The Scheduler's administration tool and the server it talks to, as the profile names
+    # them; None means the default, which scheduler_admin_url() and scheduler_server_uri() give.
+    scheduler_url: str | None = None
+    scheduler_uri: str | None = None
+
+    def scheduler_admin_url(self) -> str:
+        """Base URL of the Scheduler REST API: the administration tool is a web application of
+        the web container that also serves the Data Marketplace."""
+        if self.scheduler_url:
+            return self.scheduler_url
+        if self.marketplace_url:
+            parts = urlsplit(self.marketplace_url)
+            return f"{parts.scheme}://{parts.netloc}{SCHEDULER_ADMIN_PATH}"
+        return f"http://{self.host}:{DEFAULT_WEB_PORT}{SCHEDULER_ADMIN_PATH}"
+
+    def scheduler_server_uri(self) -> str:
+        """The ``uri`` query parameter every Scheduler call carries: the Scheduler server as
+        the administration tool reaches it."""
+        return self.scheduler_uri or f"//{self.host}:{DEFAULT_SCHEDULER_PORT}"
 
     def public(self) -> dict:
         """Everything except the password — safe for output and logs."""
@@ -73,6 +103,8 @@ class Profile:
             "marketplace_url": self.marketplace_url,
             "marketplace_server_id": self.marketplace_server_id,
             "jdbc_port": self.jdbc_port,
+            "scheduler_url": self.scheduler_admin_url(),
+            "scheduler_uri": self.scheduler_server_uri(),
         }
 
 
@@ -125,6 +157,8 @@ def load_profile(name: str, path: Path | None = None) -> Profile:
                            f"known: {', '.join(KNOWN_TRANSPORTS)}")
     marketplace_url = raw.get("marketplace_url")
     server_id = raw.get("marketplace_server_id")
+    scheduler_url = raw.get("scheduler_url")
+    scheduler_uri = raw.get("scheduler_uri")
     return Profile(
         name=name,
         host=str(raw["host"]),
@@ -137,6 +171,8 @@ def load_profile(name: str, path: Path | None = None) -> Profile:
         marketplace_url=str(marketplace_url).rstrip("/") if marketplace_url else None,
         marketplace_server_id=int(server_id) if server_id is not None else None,
         jdbc_port=int(raw.get("jdbc_port", DEFAULT_JDBC_PORT)),
+        scheduler_url=str(scheduler_url).rstrip("/") if scheduler_url else None,
+        scheduler_uri=str(scheduler_uri) if scheduler_uri else None,
     )
 
 
@@ -188,6 +224,10 @@ def render_section(profile: Profile) -> str:
         lines.append(f"marketplace_server_id = {profile.marketplace_server_id}")
     if profile.jdbc_port != DEFAULT_JDBC_PORT:
         lines.append(f"jdbc_port = {profile.jdbc_port}")
+    if profile.scheduler_url:
+        lines.append(f"scheduler_url = {_toml_string(profile.scheduler_url)}")
+    if profile.scheduler_uri:
+        lines.append(f"scheduler_uri = {_toml_string(profile.scheduler_uri)}")
     return "\n".join(lines) + "\n"
 
 

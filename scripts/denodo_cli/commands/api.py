@@ -1,4 +1,5 @@
-"""``api``: one REST call to Data Marketplace, status reported separately from body."""
+"""``api``: one REST call to Data Marketplace or the Scheduler, status reported separately
+from body."""
 
 from __future__ import annotations
 
@@ -26,10 +27,11 @@ def api_call(
     multipart: dict | None = None,
     timeout: float = DEFAULT_TIMEOUT,
     allow_destructive: bool = False,
+    server: str = "marketplace",
 ) -> tuple[dict, int]:
     method = method.upper()
-    destructive = classify_http(method, path, json_body)
-    base = {"method": method, "path": path, "destructive": destructive}
+    destructive = classify_http(method, path, json_body, server=server)
+    base = {"server": server, "method": method, "path": path, "destructive": destructive}
 
     if destructive and profile.production and not allow_destructive:
         error = {
@@ -42,7 +44,7 @@ def api_call(
         return envelope(False, profile, "api", **base, error=error), EXIT_USAGE
 
     try:
-        transport = transport_factory(profile)
+        transport = transport_factory(profile, server=server)
     except ValueError as exc:  # profile lacks marketplace_url
         return envelope(False, profile, "api", **base, error={"kind": "config", "message": str(exc)}), EXIT_USAGE
 
