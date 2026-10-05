@@ -82,8 +82,7 @@ def list_ledger(profile: Profile, *, transport_factory: Callable, ledger, sessio
     try:
         catalog = Catalog(transport)
         for entry in entries:
-            item = {k: entry.get(k) for k in ("type", "kind", "database", "name", "names", "created_at", "source",
-                                              "status")}
+            item = {k: entry.get(k) for k in ("type", "kind", "database", "name", "names", "created_at", "source")}
             if entry["status"] == "present":
                 found = catalog.lookup(ObjectRef(entry["type"], entry.get("database"), entry["name"]))
                 recorded = entry.get("internal_id")
@@ -100,5 +99,10 @@ def list_ledger(profile: Profile, *, transport_factory: Callable, ledger, sessio
             objects.append(item)
     finally:
         transport.close()
-    return envelope(True, profile, "vql ledger", session=_session(ledger, session_source, server),
-                    objects=objects), EXIT_OK
+    counts: dict[str, int] = {}
+    for item in objects:
+        counts[item["state"]] = counts.get(item["state"], 0) + 1
+    session = _session(ledger, session_source, server)
+    if session is not None:
+        session["objects"] = len(objects)
+    return envelope(True, profile, "vql ledger", session=session, states=counts, objects=objects), EXIT_OK

@@ -194,6 +194,9 @@ class PlanCommandTest(LedgerCase):
         self.assertEqual(code, 0)
         states = {o["name"]: o["state"] for o in doc["objects"]}
         self.assertEqual(states, {"keep": "present", "gone": "missing"})
+        self.assertNotIn("status", doc["objects"][0])     # one field says where an object stands
+        self.assertEqual(doc["states"], {"present": 1, "missing": 1})
+        self.assertEqual(doc["session"]["objects"], 2)
 
 
 class FakeRest:
