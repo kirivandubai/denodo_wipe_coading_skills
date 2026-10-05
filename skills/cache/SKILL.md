@@ -1,6 +1,6 @@
 ---
 name: cache
-description: Use when a Denodo 9.5 view should be answered from a stored copy instead of its sources, or when that copy misbehaves — putting a full cache (materialization) on a view or a base view (ALTER VIEW … CACHE FULL), loading or refreshing it with a preload query (CONTEXT 'cache_preload', 'cache_invalidate'), caching only some rows, clearing it, switching it off, "the view is slow, cache it", "materialize this view", "give me the statement for the nightly cache refresh", a cached view that returns 0 rows, old rows, every row twice, or fails with "Invalid object name" on its cache table. Also for any other cache setting — partial or query-results cache, time to live, incremental loads, cache indexes, a scheduled refresh job. Not for building or changing what the view computes — /denodo:views.
+description: Use when a Denodo 9.5 view should be answered from a stored copy instead of its sources, or when that copy misbehaves — putting a full cache (materialization) on a view or a base view (ALTER VIEW … CACHE FULL), loading or refreshing it with a preload query (CONTEXT 'cache_preload', 'cache_invalidate'), caching only some rows, clearing it, switching it off, "the view is slow, cache it", "materialize this view", "give me the statement that loads the cache", a cached view that returns 0 rows, old rows, every row twice, or fails with "Invalid object name" on its cache table. Also for any other cache setting — partial or query-results cache, time to live, incremental loads, cache indexes. Not for building or changing what the view computes — /denodo:views; not for refreshing it on a schedule, a Scheduler cache job — /denodo:scheduler.
 ---
 
 # Full cache of a view
@@ -13,9 +13,10 @@ materialization*; `CACHE FULL` in VQL.
 **This skill covers the full cache only:** switch it on or off for a view, load it with the
 rows the human names, clear it. The other settings — partial (*Query results*) cache, time
 to live, incremental loads, cache indexes, a custom table name, schema-evolution options, a
-scheduled refresh — are set in Design Studio (view → **Options** → *Materialization*) and
-Scheduler; say so and stop. For a refresh job, give the human the load statement below to
-put in it. Whether the server has a cache at all is the administrator's setting, not yours.
+scheduled refresh — are set in Design Studio (view → **Options** → *Materialization*); say
+so and stop. A refresh on a schedule is a Scheduler cache job, `/denodo:scheduler`: it runs
+the load statement below. Whether the server has a cache at all is the administrator's
+setting, not yours.
 
 Building or changing the view itself is `/denodo:views`; base views are
 `/denodo:datasources`. A view whose columns call the server's LLM (`CLASSIFY_AI` …) is
@@ -137,8 +138,9 @@ CONTEXT ('cache_preload' = 'true',
 The file is what a refresh job runs, and what you run again after the view's columns change.
 Keep it out of the view's file: that one is applied on every change, a load only when the
 data should move. The tool marks it `destructive: cache`. In a Scheduler cache job the same
-choice is the *Invalidate* option: set it to *All rows* — the default for a new job is
-*Matching rows* (documentation), which with a query condition keeps every other row.
+choice is its *Invalidate* option, `cacheInvalidationMode`: `ALL_ROWS`. Its default is `NONE`,
+whatever the documentation says — every scheduled run appends, the first row of the table
+below, every night — *verified: 9.5.1 (live, 2026-10-05)* (`/denodo:scheduler`).
 
 Each of the four parameters prevents a silent failure:
 
@@ -207,7 +209,8 @@ ALTER VIEW iv_household_income CACHE OFF;
 - Only clearing, the cache staying on: `INVALIDATE` alone. The view returns 0 rows until the
   next load.
 - Switching off for good: also delete the `ALTER VIEW … CACHE FULL` line from the view's
-  file, or its next apply switches the cache back on; and stop the refresh job — a load of a
+  file, or its next apply switches the cache back on; and stop the refresh job
+  (`/denodo:scheduler`) — a load of a
   view whose cache is off answers `ok` and does nothing, every night. Readers get the
   sources' answers back, with the sources' rules (Silent failures, 9, in reverse).
 - The empty table itself stays in the cache database until the view is dropped
@@ -223,7 +226,7 @@ ALTER VIEW iv_household_income CACHE OFF;
 | View and database | the human; the view must exist (`/denodo:views`, `/denodo:datasources`) |
 | Whole view or a subset | the human. Not said → the whole view |
 | Its readers | `USED_BY()` and the human (dashboards, reports) |
-| When it is refreshed | the human. A job is set up in Scheduler, outside this plugin; you give the load file |
+| When it is refreshed | the human; the Scheduler job that does it is `/denodo:scheduler` |
 | Rows now | `SELECT COUNT(*) FROM <view> CONTEXT ('cache' = 'off')` — the source, whatever the cache holds |
 
 ## Verify

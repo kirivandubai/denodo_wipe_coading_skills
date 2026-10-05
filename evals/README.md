@@ -146,6 +146,13 @@ every CI run after it, whether a dashboard would see a difference (`routing-test
 — it names neither the tool nor a test — and a Testing Tool header mismatch after a view gained a
 column (`routing-testing-symptom`).
 
+Three guard `/denodo:scheduler` (T36): a Scheduler job that reloads the cache of a view every
+night (`routing-scheduler`), a CSV file the platform writes on its own every week
+(`routing-scheduler-export`) — it names neither the Scheduler nor a job — and figures that grow
+after every nightly refresh while the job reports `COMPLETE` (`routing-scheduler-symptom`), the
+default invalidation mode of a cache job seen only through its symptom. `/denodo:cache` may fire
+on the way in the first and the third; it is not forbidden.
+
 **`discrimination`** — фразы на границах, где описания конкурируют. Каждый такой кейс несёт
 и положительный, и отрицательный грейдер, потому что проверяется именно выбор между двумя:
 
@@ -173,6 +180,7 @@ column (`routing-testing-symptom`).
 | `discrimination-cache-not-materialize` | `cache` | `materialize` |
 | `discrimination-materialize-not-dml` | `materialize` | `dml` |
 | `discrimination-views-not-testing` | `views` | `testing` |
+| `discrimination-cache-not-scheduler` | `cache` | `scheduler` |
 
 Первые две строки — тот самый риск, ради которого сьют и заводился: «тег» в VDP и «тег» в
 маркетплейсе — **разные объекты на разных серверах**, и перепутанный навык уйдёт корректным

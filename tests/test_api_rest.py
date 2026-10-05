@@ -131,6 +131,32 @@ class RestTransportTest(unittest.TestCase):
         with self.assertRaises(OSError):
             RestTransport(dead).call("GET", "/Ping", timeout=2)
 
+    def scheduler_profile(self, server_id=None):
+        return Profile(name="dev", host="h", port=9996, database="admin", user="alice", password="pw:1",
+                       production=False, transport="vql_psycopg2", marketplace_url=None,
+                       marketplace_server_id=server_id, scheduler_url=self.base + "/sched",
+                       scheduler_uri="//sched.example.test:8000")
+
+    def test_scheduler_calls_go_to_the_administration_tool_with_the_server_uri(self):
+        t = RestTransport(self.scheduler_profile(server_id=7), server="scheduler")
+        t.call("GET", "/public/api/projects")
+        t.call("GET", "/public/api/projects", params={"uri": "//other:8000", "name": "p"})
+        self.assertEqual(RECEIVED[0]["path"], "/ctx/sched/public/api/projects?uri=%2F%2Fsched.example.test%3A8000")
+        self.assertEqual(RECEIVED[1]["path"], "/ctx/sched/public/api/projects?uri=%2F%2Fother%3A8000&name=p")
+        expected = "Basic " + base64.b64encode(b"alice:pw:1").decode()
+        self.assertEqual(RECEIVED[0]["headers"]["Authorization"], expected)
+
+    def test_scheduler_needs_no_marketplace_url(self):
+        # serverId is a Data Marketplace parameter; it never reaches the Scheduler
+        t = RestTransport(self.scheduler_profile(server_id=7), server="scheduler")
+        t.call("GET", "/public/api/jobs")
+        self.assertNotIn("serverId", RECEIVED[0]["path"])
+
+    def test_unknown_server_is_rejected(self):
+        with self.assertRaises(ValueError) as ctx:
+            RestTransport(self.scheduler_profile(), server="solution-manager")
+        self.assertIn("solution-manager", str(ctx.exception))
+
     def test_profile_without_marketplace_url_is_rejected(self):
         p = Profile(name="dev", host="h", port=9996, database="admin", user="u", password="p",
                     production=False, transport="vql_psycopg2", marketplace_url=None, marketplace_server_id=None)

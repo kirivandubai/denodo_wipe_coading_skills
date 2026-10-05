@@ -98,11 +98,34 @@ def _check_marketplace(profile: Profile, rest_factory: Callable) -> dict:
     return doc
 
 
+def _check_scheduler(profile: Profile, rest_factory: Callable) -> dict:
+    """Whether the Scheduler answers, its version and mode, and the Scheduler roles of the
+    profile's user (``/public/api/me``)."""
+    doc = {"ok": False, "url": profile.scheduler_admin_url(), "uri": profile.scheduler_server_uri()}
+    try:
+        result = rest_factory(profile, server="scheduler").call("GET", "/public/api/me", timeout=30)
+    except Exception as exc:  # noqa: BLE001
+        return {**doc, "error": normalize_error(exc)}
+    doc.update(ok=result.ok, status=result.status)
+    body = result.body if isinstance(result.body, dict) else {}
+    if not result.ok:
+        return {**doc, "body": result.body}
+    version = ((body.get("serverData") or {}).get("version") or {}).get("full")
+    roles = [((p or {}).get("roleData") or {}).get("roleName") for p in body.get("permissions") or []]
+    return {**doc, "server_version": version, "mode": body.get("schedulerMode"),
+            "roles": [r for r in roles if r]}
+
+
 def check_environment(profile: Profile, *, vql_factory: Callable, rest_factory: Callable) -> tuple[dict, int]:
     vdp = _check_vdp(profile, vql_factory)
     marketplace = _check_marketplace(profile, rest_factory) if profile.marketplace_url else None
+    # The Scheduler is probed where the profile names a web container (its own address or the
+    # marketplace's). An installation without one is normal, so it never fails the check.
+    scheduler = (_check_scheduler(profile, rest_factory)
+                 if profile.scheduler_url or profile.marketplace_url else None)
     ok = vdp["ok"] and (marketplace is None or marketplace["ok"])
-    doc = envelope(ok, profile, "env check", vdp=vdp, marketplace=marketplace, connection=profile.public())
+    doc = envelope(ok, profile, "env check", vdp=vdp, marketplace=marketplace, scheduler=scheduler,
+                   connection=profile.public())
     return doc, EXIT_OK if ok else EXIT_EXECUTION
 
 

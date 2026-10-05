@@ -524,6 +524,12 @@ and XML; RESTful URLs are case-sensitive.
 
 **Owner review: not now; a separate skill later (see section 11).** Nothing is taken in this round — no spike, no transport, no pointer from `cache`. When it comes back it is a skill of its own, and the notes below are its starting point.
 
+**Built as T36 (2026-10-05)**, once every wave was closed: `skills/scheduler/`, the transport
+`api --server scheduler`, and the Scheduler tail of `verify`. The spike was the server's own
+OpenAPI (91 paths) and probes; the notes below held, except that the job types are fewer than
+listed here (the API creates `VDP`, `VDPCache` and `VDPIndexer` jobs) and that a new cache job's
+invalidation mode is `NONE`, not the documentation's *Matching rows*.
+
 **Scope.** Jobs: Simple and DAG Cache Management ("refresh the cache every night"), Data Loader,
 Individual Query with CSV, Excel or JDBC exporters ("export this mart"), time-based triggers,
 dependencies, mail handlers, retries, enable/disable, execution reports; projects and the VDP data
@@ -801,7 +807,7 @@ Assistant, Solution Manager environment modelling.
 | 2 | New VQL skills: `cache`, FULL only (item 6); `semantics`, VDP half (item 7); `metrics` (item 14) | VQL only; `metrics` stands on the associations `views` already builds |
 | 3 | `marketplace`: carry metadata of a renamed view over (item 8), spike on the OpenAPI first | REST on the existing marketplace transport |
 | 4 | `security`, basic actions (item 13); `ai` (item 21); `dml` (item 22); `materialize` (item 15); `testing` with the Testing Tool (item 9) | each needs a decision or an installation first: global objects and a second profile, an LLM on the server, writes to external databases, the Testing Tool |
-| later | `scheduler` as a separate skill (item 12) | not in this round |
+| later | `scheduler` as a separate skill (item 12) — built as T36 | not in this round |
 
 Dropped: 2.2, 2.3, items 10, 11, 16–20, 23–28; 2.4 has no item of its own. Every new skill or
 description change goes through the eval suite (`evals/`); the pairs most likely to compete are
@@ -838,6 +844,7 @@ the sections above are edited to match, and section 10 (build order) was rebuilt
 | 10 `deploy`, 20 Solution Manager, 28 `vcs` | dropped | Moving between environments and bringing objects into git are not part of the plugin |
 | 11 `publish` | dropped | Serving data to applications is not part of the plugin, in either form |
 | 12 `scheduler` | later, a separate skill | Not in this round at all; when it returns it is its own skill, starting from section 4.12 |
+| 12 `scheduler` — scope and rule (T36, decided in the task) | a cache job and a VDP job (one statement, or a `SELECT` exported to CSV); run, stop, enable, disable, reports; data sources and every other job type, exporter, handler, retry, condition and dependency in the administration tool. A job is its statement, run every time it fires: created disabled by the agent, enabled on the yes its statement would need now; anything on a job older than the session is the human's | the narrow first scope of every new skill; a data source holds a password the plugin must not handle; the baseline wanted to fix another team's job and reload what others read without the yes, and the existing rules of `cache` and `materialize` already make a reload and a `REFRESH` of older objects the human's — a job that does them every night cannot be less |
 | 13 `security` | basic skill in this round, scope set when taken | Tag an element, assign a role, create a global security policy — little more than that at first; details later |
 | 14 `metrics` | P2, separate skill | A metric view is a new object the model does not know at all; its own skill rather than a reference in `views` |
 | 14 `metrics` (addition) | rule recorded | Only selection views are built on a metric view; other facts and dimensions are joined to the selection view |

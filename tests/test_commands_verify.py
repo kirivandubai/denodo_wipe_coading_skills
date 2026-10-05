@@ -1054,7 +1054,7 @@ class HttpStepTest(unittest.TestCase):
     class FakeRest:
         calls = []
 
-        def __init__(self, profile):
+        def __init__(self, profile, server="marketplace"):
             self.profile = profile
 
         def call(self, method, path, *, json_body=None, params=None, multipart=None, timeout=None):
@@ -1279,7 +1279,7 @@ class HttpDestructiveGateTest(unittest.TestCase):
     class FakeRest:
         calls = []
 
-        def __init__(self, profile):
+        def __init__(self, profile, server="marketplace"):
             self.profile = profile
 
         def call(self, method, path, *, json_body=None, params=None, multipart=None, timeout=None):
@@ -1345,7 +1345,7 @@ class CaptureFailurePartialCleanupTest(unittest.TestCase):
     class FakeRest:
         calls = []
 
-        def __init__(self, profile):
+        def __init__(self, profile, server="marketplace"):
             self.profile = profile
 
         def call(self, method, path, *, json_body=None, params=None, multipart=None, timeout=None):
@@ -1503,7 +1503,7 @@ class CleanupHttpBodyTest(unittest.TestCase):
     class FakeRest:
         calls = []
 
-        def __init__(self, profile):
+        def __init__(self, profile, server="marketplace"):
             self.profile = profile
 
         def call(self, method, path, *, json_body=None, params=None, multipart=None, timeout=None):
@@ -1629,7 +1629,7 @@ class PartialBlockMarkTest(unittest.TestCase):
     """
 
     class FakeRest:
-        def __init__(self, profile):
+        def __init__(self, profile, server="marketplace"):
             self.profile = profile
 
         def call(self, method, path, *, json_body=None, params=None, multipart=None, timeout=None):
@@ -1917,7 +1917,7 @@ class MultipartStepTest(unittest.TestCase):
     class FakeRest:
         calls = []
 
-        def __init__(self, profile):
+        def __init__(self, profile, server="marketplace"):
             self.profile = profile
 
         def call(self, method, path, *, json_body=None, params=None, multipart=None, timeout=None):
@@ -2010,3 +2010,202 @@ class ExternalElementBlockTest(unittest.TestCase):
         self.assertEqual(calls[1]["json"]["type"], "CUSTOM")
         self.assertIn("vql-metadata", calls[2]["path"])
         self.assertEqual(calls[3]["json"], {"externalToolServerIds": [217]})
+
+
+SCHEDULER_SKILL = """### Refresh a cache
+
+```json
+{
+  "type": "VDPCache",
+  "name": "iv_household_income_cache",
+  "extractionSection": {"loadprocesses": [{"viewName": "sales_analytics.iv_household_income",
+                                           "cacheInvalidationMode": "ALL_ROWS"}]}
+}
+```
+
+```bash
+# create the job from its file
+api --server scheduler post /public/api/projects/<project_id>/jobs --json-file scheduler/iv_household_income_cache.json --env dev
+api --server scheduler get /public/api/projects/<project_id>/jobs/<job_id> --env dev
+```
+
+### Run it once
+
+```bash
+api --server scheduler put /public/api/projects/<project_id>/jobs/<job_id>/status --json '{"action": "start"}' --env dev
+api --server scheduler get /public/api/projects/<project_id>/jobs/<job_id>/status --env dev
+```
+"""
+
+SCHEDULER_MANIFEST = """
+[values]
+database = "denodo_skills_test"
+
+[cleanup]
+http = [
+  { server = "scheduler", method = "delete", path = "/public/api/projects/{project_id}" },
+]
+
+[[step]]
+id = "scheduler-project"
+kind = "fixture"
+channel = "http"
+scheduler = true
+vql = "api --server scheduler post /public/api/projects --json '{\\"name\\": \\"verify_jobs\\"}'"
+capture = { project_id = "id" }
+
+[[step]]
+id = "scheduler-cache-job"
+kind = "template"
+channel = "http"
+scheduler = true
+address = "skills/scheduler/SKILL.md#Refresh a cache[1]"
+substitute = { "<project_id>" = "{project_id}", "<job_id>" = "{job_id}" }
+files = { "scheduler/iv_household_income_cache.json" = { address = "skills/scheduler/SKILL.md#Refresh a cache[0]", substitute = { sales_analytics = "{database}" } } }
+capture = { job_id = "id" }
+capture_from = 0
+expect_body = { "extractionSection.loadprocesses.0.cacheInvalidationMode" = "ALL_ROWS" }
+
+[[step]]
+id = "scheduler-run"
+kind = "template"
+channel = "http"
+scheduler = true
+address = "skills/scheduler/SKILL.md#Run it once"
+substitute = { "<project_id>" = "{project_id}", "<job_id>" = "{job_id}" }
+poll = { field = "state", until = "NOT_RUNNING", seconds = 10, every = 1 }
+expect_body = { result = "COMPLETE" }
+"""
+
+
+class FakeScheduler:
+    """A Scheduler that keeps one project and one job; a started job runs for two polls."""
+    calls = []
+    jobs = {}
+    polls_while_running = 2
+
+    def __init__(self, profile, server="marketplace"):
+        self.server = server
+
+    def call(self, method, path, *, json_body=None, params=None, multipart=None, timeout=None):
+        from denodo_cli.transports.base import HttpResult
+        FakeScheduler.calls.append((self.server, method, path, json_body))
+        if method == "POST" and path == "/public/api/projects":
+            return HttpResult(status=201, body={"id": 101, "projectDetails": json_body})
+        if method == "POST" and path == "/public/api/projects/101/jobs":
+            FakeScheduler.jobs[7] = dict(json_body, id=7, state="NOT_RUNNING", result="NEVER_EXECUTED")
+            return HttpResult(status=201, body=FakeScheduler.jobs[7])
+        if method == "GET" and path == "/public/api/projects/101/jobs/7":
+            return HttpResult(status=200, body=FakeScheduler.jobs[7])
+        if method == "PUT" and path == "/public/api/projects/101/jobs/7/status":
+            FakeScheduler.jobs[7]["remaining"] = FakeScheduler.polls_while_running
+            return HttpResult(status=204, body=None)
+        if method == "GET" and path == "/public/api/projects/101/jobs/7/status":
+            job = FakeScheduler.jobs[7]
+            if job.get("remaining", 0) > 0:
+                job["remaining"] -= 1
+                return HttpResult(status=200, body={"state": "RUNNING", "result": "NEVER_EXECUTED"})
+            return HttpResult(status=200, body={"state": "NOT_RUNNING", "result": "COMPLETE"})
+        if method == "DELETE":
+            return HttpResult(status=204, body=None)
+        return HttpResult(status=404, body={"message": f"unexpected {method} {path}"})
+
+
+class SchedulerChainTest(unittest.TestCase):
+    """The Scheduler tail (T36): its own gate, the server named on each api line, a job body
+    taken from the json block of the same skill, nested fields, and waiting for a run."""
+
+    def setUp(self):
+        FakeVql.instances.clear()
+        FakeScheduler.calls.clear()
+        FakeScheduler.jobs.clear()
+        FakeScheduler.polls_while_running = 2
+        self.root = Path(tempfile.mkdtemp())
+        (self.root / "skills" / "scheduler").mkdir(parents=True)
+        (self.root / "skills" / "scheduler" / "SKILL.md").write_text(SCHEDULER_SKILL, encoding="utf-8")
+        self.manifest = self.root / "chain.toml"
+        self.manifest.write_text(SCHEDULER_MANIFEST, encoding="utf-8")
+        sleeper = mock.patch.object(verify_module.time, "sleep", lambda seconds: None)
+        sleeper.start()
+        self.addCleanup(sleeper.stop)
+
+    def run_chain(self, **kw):
+        kw.setdefault("with_scheduler", True)
+        return run_chain(profile(), load_chain(self.manifest), root=self.root, vql_factory=FakeVql,
+                         rest_factory=FakeScheduler, **kw)
+
+    def test_parse_api_calls_reads_the_server_and_the_json_file(self):
+        calls = parse_api_calls("api --server scheduler post /p/jobs --json-file x/job.json --env dev\n")
+        self.assertEqual(calls[0]["server"], "scheduler")
+        self.assertEqual((calls[0]["method"], calls[0]["path"]), ("POST", "/p/jobs"))
+        self.assertEqual(calls[0]["json_file"], "x/job.json")
+        self.assertEqual(parse_api_calls("api get /public/api/tags\n")[0]["server"], "marketplace")
+
+    def test_the_chain_creates_reads_back_runs_and_cleans_up(self):
+        doc, code = self.run_chain()
+        self.assertEqual(code, 0, json.dumps(doc, indent=1)[:3000])
+        self.assertEqual(doc["values"]["project_id"], "101")
+        self.assertEqual(doc["values"]["job_id"], "7")
+        self.assertTrue(all(server == "scheduler" for server, *_ in FakeScheduler.calls))
+        created = [body for _, method, path, body in FakeScheduler.calls
+                   if method == "POST" and path.endswith("/jobs")][0]
+        # the body is the json block, with the step's file substitution applied
+        self.assertEqual(created["extractionSection"]["loadprocesses"][0]["viewName"],
+                         "denodo_skills_test.iv_household_income")
+        status_reads = [c for c in FakeScheduler.calls if c[1] == "GET" and c[2].endswith("/status")]
+        self.assertEqual(len(status_reads), 3)  # RUNNING, RUNNING, NOT_RUNNING
+        self.assertEqual(doc["cleanup"]["http"][0]["status"], 204)
+        self.assertEqual(FakeScheduler.calls[-1][1:3], ("DELETE", "/public/api/projects/101"))
+
+    def test_scheduler_steps_and_their_cleanup_are_skipped_unless_asked_for(self):
+        doc, code = self.run_chain(with_scheduler=False)
+        self.assertEqual(code, 0)
+        self.assertTrue(all(s["skipped"] for s in doc["steps"]))
+        self.assertIn("--with-scheduler", doc["steps"][0]["reason"])
+        self.assertTrue(doc["cleanup"]["http"][0]["skipped"])
+        self.assertEqual(FakeScheduler.calls, [])
+
+    def test_a_nested_expected_field_that_differs_fails_the_step(self):
+        self.manifest.write_text(SCHEDULER_MANIFEST.replace('= "ALL_ROWS" }', '= "NONE" }'), encoding="utf-8")
+        doc, code = self.run_chain()
+        self.assertEqual(code, 1)
+        step = doc["steps"][1]
+        self.assertEqual(step["error"]["kind"], "expect_body")
+        self.assertIn("extractionSection.loadprocesses.0.cacheInvalidationMode", step["error"]["message"])
+
+    def test_a_run_that_does_not_finish_in_time_fails_the_step(self):
+        FakeScheduler.polls_while_running = 100
+        doc, code = self.run_chain()
+        self.assertEqual(code, 1)
+        self.assertEqual(doc["steps"][2]["error"]["kind"], "poll")
+        self.assertIn("RUNNING", doc["steps"][2]["error"]["message"])
+        self.assertTrue(doc["cleanup"]["ran"])  # the project is still removed
+
+    def test_a_json_file_the_step_does_not_map_is_a_template_error(self):
+        self.manifest.write_text(SCHEDULER_MANIFEST.replace(
+            'files = { "scheduler/iv_household_income_cache.json"', 'files = { "scheduler/other.json"'),
+            encoding="utf-8")
+        doc, code = self.run_chain()
+        self.assertEqual(code, 1)
+        self.assertEqual(doc["steps"][1]["error"]["kind"], "template")
+        self.assertIn("scheduler/iv_household_income_cache.json", doc["steps"][1]["error"]["message"])
+
+    def test_capture_from_names_the_call_whose_body_is_captured(self):
+        # the create call answers with the new job's id; the read-back after it is what
+        # expect_body judges
+        doc, _ = self.run_chain()
+        self.assertEqual(doc["values"]["job_id"], "7")
+
+    def test_manifest_shape_errors(self):
+        bad = {
+            "scheduler on a vql step": '[[step]]\nid = "x"\nkind = "fixture"\nchannel = "vql"\nvql = "SELECT 1"\nscheduler = true\n',
+            "both gates": '[[step]]\nid = "x"\nkind = "fixture"\nchannel = "http"\nvql = "api get /x"\nscheduler = true\nmarketplace = true\n',
+            "poll without until": '[[step]]\nid = "x"\nkind = "fixture"\nchannel = "http"\nvql = "api get /x"\nscheduler = true\npoll = { field = "state" }\n',
+            "files not a table": '[[step]]\nid = "x"\nkind = "fixture"\nchannel = "http"\nvql = "api get /x"\nscheduler = true\nfiles = "a.json"\n',
+            "unknown cleanup server": '[cleanup]\nhttp = [ { server = "nope", method = "delete", path = "/x" } ]\n[[step]]\nid = "a"\nkind = "fixture"\nchannel = "vql"\nvql = "SELECT 1"\n',
+        }
+        for name, text in bad.items():
+            with self.subTest(name):
+                self.manifest.write_text(text, encoding="utf-8")
+                with self.assertRaises(ChainError):
+                    load_chain(self.manifest)

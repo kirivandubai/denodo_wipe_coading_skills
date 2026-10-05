@@ -69,6 +69,33 @@ class ProfilesTest(unittest.TestCase):
         self.assertEqual(p.marketplace_server_id, 2)
         self.assertEqual(p.jdbc_port, 29999)
 
+    def test_scheduler_defaults_to_the_web_container_of_the_marketplace(self):
+        # The Scheduler administration tool and the Data Marketplace are web applications of
+        # the same web container, and the Scheduler server listens on 8000 by default.
+        self.write(FULL)
+        with mock.patch.dict(os.environ, {"DENODO_PROD_PASSWORD": "x"}):
+            p = load_profile("prod", self.path)
+        self.assertIsNone(p.scheduler_url)
+        self.assertEqual(p.scheduler_admin_url(), "http://mp.example.test:9090/webadmin/denodo-scheduler-admin")
+        self.assertEqual(p.scheduler_server_uri(), "//vdp.example.test:8000")
+
+    def test_scheduler_defaults_to_the_host_without_a_marketplace(self):
+        self.write(MINIMAL)
+        p = load_profile("dev", self.path)
+        self.assertEqual(p.scheduler_admin_url(), "http://vdp.example.test:9090/webadmin/denodo-scheduler-admin")
+        self.assertEqual(p.scheduler_server_uri(), "//vdp.example.test:8000")
+
+    def test_scheduler_fields_override_the_defaults(self):
+        self.write(MINIMAL.replace('password = "s3cret"', 'password = "s3cret"\n'
+                                   'scheduler_url = "https://web.example.test/webadmin/denodo-scheduler-admin/"\n'
+                                   'scheduler_uri = "//sched.example.test:8010"'))
+        p = load_profile("dev", self.path)
+        self.assertEqual(p.scheduler_admin_url(), "https://web.example.test/webadmin/denodo-scheduler-admin")
+        self.assertEqual(p.scheduler_server_uri(), "//sched.example.test:8010")
+        public = p.public()
+        self.assertEqual(public["scheduler_url"], "https://web.example.test/webadmin/denodo-scheduler-admin")
+        self.assertEqual(public["scheduler_uri"], "//sched.example.test:8010")
+
     def test_password_env_missing_variable_is_an_error(self):
         self.write(FULL)
         with mock.patch.dict(os.environ, {}, clear=True):

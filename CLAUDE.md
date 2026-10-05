@@ -23,7 +23,7 @@ Remote: `github.com/kirivandubai/denodo_wipe_coading_skills` (имя на GitHub
 
 **Текущая очередь работ — `docs/TASKS.md`.** Задача берётся оттуда, а не придумывается.
 
-Слой исполнения (`scripts/denodo` + `scripts/denodo_cli/`) реализован в T5; готовы навыки `vql`, `execute`, `catalog`, `datasources`, `views`, `marketplace`, `procedures` (последний — вне объёма v1); beyond v1 since: `cache` (T27), `semantics` (T28), `metrics` (T29), `security` (T31), `ai` (T32), `dml` (T33), `materialize` (T34), `testing` (T35). Обе вехи закрыты приёмками: A — T13, B — T19. There is no `query` skill and no reference to one: the dialect is the table of silent deltas in the body of `vql` plus `skills/vql/references/dialect.md` (T24).
+Слой исполнения (`scripts/denodo` + `scripts/denodo_cli/`) реализован в T5; готовы навыки `vql`, `execute`, `catalog`, `datasources`, `views`, `marketplace`, `procedures` (последний — вне объёма v1); beyond v1 since: `cache` (T27), `semantics` (T28), `metrics` (T29), `security` (T31), `ai` (T32), `dml` (T33), `materialize` (T34), `testing` (T35), `scheduler` (T36). Обе вехи закрыты приёмками: A — T13, B — T19. There is no `query` skill and no reference to one: the dialect is the table of silent deltas in the body of `vql` plus `skills/vql/references/dialect.md` (T24).
 Юнит-тесты гоняются без зависимостей: `PYTHONPATH=scripts python3 -m unittest discover -s tests -t .`;
 интеграционные — против стенда: `DENODO_TEST_ENV=dev uv run --with denodo-sqlalchemy
 --with psycopg2-binary python -m unittest tests.integration.test_stand` (с `PYTHONPATH=scripts`).
@@ -32,7 +32,9 @@ with `--with-ai` (about 40 paid requests to the stand's LLM), the write template
 `materialize` only with `--with-writes` (`verify_` tables, a summary and a materialized table
 created in the server's cache database and dropped in cleanup), the `.denodotest` templates of `testing`
 only with `--testing-tool <dir>` (the Denodo Testing Tool installed there, Java on `PATH` or in
-`JAVA_HOME`). Сам инструмент:
+`JAVA_HOME`), the Scheduler templates of `scheduler` only with `--with-scheduler` (a `verify_`
+project with two jobs, run and deleted; the export leaves its file in the Scheduler's export
+folder). Сам инструмент:
 `scripts/denodo --help`.
 
 ## Рабочий процесс
@@ -75,6 +77,11 @@ only with `--testing-tool <dir>` (the Denodo Testing Tool installed there, Java 
   базы **читаются свободно**: `SELECT`, `DESC`, `DESC VQL`, `GET_ELEMENTS()` — это лучший
   источник примеров синтаксиса, точнее документации. Ни одного изменяющего запроса за
   пределами своей базы, включая «безобидные» правки и уборку.
+- **Scheduler objects are server-wide too** (T36). A Scheduler project, its jobs and their
+  reports are seen by everyone on the Scheduler: probes and subagent fixtures live in a
+  `zq<task>_` project and are deleted by that name; another team's project is read, never
+  changed. A job runs as the login of its VDP data source and keeps running after the session —
+  a probe job is created disabled, or deleted before the session ends.
 - **Server-wide objects are yours by name only** (T31). Users, roles, tags and global
   security policies belong to no database. For a check they are created under a prefix
   that names the run — `verify_` for the verification chain, `zq<task>_` for manual probes

@@ -411,5 +411,86 @@ class ClassifyHttpTest(unittest.TestCase):
         self.assertEqual(classify_http("DELETE", "/public/api/tags/delete-multiple?tagIds=1"), "delete")
 
 
+def vdp_job(query, exporters=()):
+    return {"type": "VDP", "name": "j",
+            "extractionSection": {"type": "VDP", "dataSourceID": 2,
+                                  "extractionData": {"parameterizedQuery": query}},
+            "exportationSection": {"exporters": [{"type": t} for t in exporters]}}
+
+
+class ClassifySchedulerTest(unittest.TestCase):
+    """The Scheduler's REST API: every PUT replaces something that exists, a job's status
+    change starts, stops, enables or disables it, and a new job is classified by what it will
+    run unattended — a cache job loads caches, a VDP job runs its VQL on every trigger."""
+
+    def classify(self, method, path, body=None):
+        return classify_http(method, path, body, server="scheduler")
+
+    def test_deletes(self):
+        self.assertEqual(self.classify("DELETE", "/public/api/projects/3/jobs/12?uri=//h:8000"), "delete")
+        self.assertEqual(self.classify("DELETE", "/public/api/projects/3/jobs/12/reports"), "delete")
+        self.assertEqual(self.classify("POST", "/public/api/reports/delete-batch"), "delete")
+        self.assertEqual(self.classify("POST", "/public/api/reports/delete-by-job-batch"), "delete")
+
+    def test_updates_replace_the_definition(self):
+        self.assertEqual(self.classify("PUT", "/public/api/projects/3/jobs/12", vdp_job("SELECT 1 FROM dual()")),
+                         "alter")
+        self.assertEqual(self.classify("PUT", "/public/api/projects/3"), "alter")
+        self.assertEqual(self.classify("PUT", "/public/api/projects/3/dataSources/2"), "alter")
+        self.assertEqual(self.classify("PUT", "/public/api/projects/3/draftJobs/12"), "alter")
+
+    def test_status_changes_run_or_stop_jobs(self):
+        self.assertEqual(self.classify("PUT", "/public/api/projects/3/jobs/12/status", {"action": "start"}), "job")
+        self.assertEqual(self.classify("PUT", "/public/api/projects/3/jobs/12/status", {"action": "disable"}), "job")
+        self.assertEqual(self.classify("PUT", "/public/api/projects/3/jobs/status", {"action": "stop", "IDs": "1,2"}),
+                         "job")
+
+    def test_a_new_cache_job_loads_caches(self):
+        body = {"type": "VDPCache", "name": "c",
+                "extractionSection": {"type": "VDPCache", "dataSourceID": 2,
+                                      "loadprocesses": [{"viewName": "v", "parameterizedQuery": ""}]}}
+        self.assertEqual(self.classify("POST", "/public/api/projects/3/jobs", body), "cache")
+
+    def test_a_new_vdp_job_is_classified_by_its_query(self):
+        self.assertEqual(self.classify("POST", "/public/api/projects/3/jobs", vdp_job("REFRESH rt_sales")), "table")
+        self.assertEqual(self.classify("POST", "/public/api/projects/3/jobs", vdp_job("DROP VIEW v")), "drop")
+        self.assertEqual(self.classify("POST", "/public/api/projects/3/jobs",
+                                       vdp_job("CALL CLEAN_CACHE_DATABASE('db', 'v')")), "procedure")
+        self.assertIsNone(self.classify("POST", "/public/api/projects/3/jobs", vdp_job("SELECT * FROM v")))
+
+    def test_a_vdp_job_with_an_exporter_writes(self):
+        # every exporter writes outside Denodo — a table, an index, or a file on the Scheduler
+        # host that it may overwrite or delete (an empty run with allowEmptyFile false)
+        for exporters in (("CSV",), ("Excel",), ("JDBC",), ("CSV", "JDBC"), ("Scheduler-Index",)):
+            with self.subTest(exporters):
+                self.assertEqual(self.classify("POST", "/public/api/projects/3/jobs",
+                                               vdp_job("SELECT * FROM v", exporters=exporters)), "write")
+        self.assertIsNone(self.classify("POST", "/public/api/projects/3/jobs", vdp_job("SELECT * FROM v")))
+
+    def test_a_draft_never_runs(self):
+        self.assertIsNone(self.classify("POST", "/public/api/projects/3/draftJobs", vdp_job("REFRESH rt")))
+
+    def test_server_settings_and_security(self):
+        self.assertEqual(self.classify("PUT", "/public/api/configuration/mail"), "setting")
+        self.assertEqual(self.classify("PUT", "/public/api/tool-configuration/logging-configuration"), "setting")
+        self.assertEqual(self.classify("POST", "/public/api/drivers"), "setting")
+        self.assertEqual(self.classify("POST", "/public/api/plugins"), "setting")
+        self.assertEqual(self.classify("POST", "/public/api/serverMetadata/import"), "replace")
+        self.assertEqual(self.classify("POST", "/public/api/roles"), "security")
+        self.assertEqual(self.classify("PUT", "/public/api/roles"), "security")
+        self.assertEqual(self.classify("POST", "/public/api/changePassword"), "security")
+        self.assertEqual(self.classify("PUT", "/public/api/tool-configuration/reset-password"), "security")
+
+    def test_creates_and_reads_are_not_flagged(self):
+        self.assertIsNone(self.classify("POST", "/public/api/projects", {"name": "p"}))
+        self.assertIsNone(self.classify("GET", "/public/api/projects/3/jobs/12/reports?start=0&count=5"))
+        self.assertIsNone(self.classify("POST", "/public/api/projects/jobs/validateCronExpressions", ["0 0 2 * * ?"]))
+        self.assertIsNone(self.classify("POST", "/public/api/serverMetadata/export"))
+
+    def test_marketplace_rules_do_not_apply_to_the_scheduler_and_back(self):
+        self.assertIsNone(classify_http("PUT", "/public/api/projects/3/jobs/12/status"))
+        self.assertIsNone(self.classify("POST", "/public/api/views/42/tags"))
+
+
 if __name__ == "__main__":
     unittest.main()

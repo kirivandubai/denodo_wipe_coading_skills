@@ -18,11 +18,13 @@ def profile(**over):
 
 class FakeRest:
     calls = []
+    servers = []
     status = 200
     body = {"id": 1}
 
-    def __init__(self, profile):
-        if not profile.marketplace_url:
+    def __init__(self, profile, server="marketplace"):
+        FakeRest.servers.append(server)
+        if server == "marketplace" and not profile.marketplace_url:
             raise ValueError("profile has no marketplace_url")
 
     def call(self, method, path, **kw):
@@ -33,6 +35,7 @@ class FakeRest:
 class ApiCallTest(unittest.TestCase):
     def setUp(self):
         FakeRest.calls.clear()
+        FakeRest.servers.clear()
         FakeRest.status, FakeRest.body = 200, {"id": 1}
 
     def call(self, method="GET", path="/public/api/tags", **kw):
@@ -88,6 +91,38 @@ class ApiCallTest(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertEqual(doc["error"]["kind"], "config")
         self.assertIn("marketplace_url", doc["error"]["message"])
+
+    def test_scheduler_call_goes_to_the_scheduler_transport(self):
+        doc, code = self.call("GET", "/public/api/projects", server="scheduler",
+                              profile_over={"marketplace_url": None})
+        self.assertEqual(code, 0)
+        self.assertEqual(FakeRest.servers, ["scheduler"])
+        self.assertEqual(doc["server"], "scheduler")
+
+    def test_scheduler_calls_are_classified_by_the_scheduler_rules(self):
+        doc, _ = self.call("PUT", "/public/api/projects/3/jobs/12/status", server="scheduler",
+                           json_body={"action": "start"})
+        self.assertEqual(doc["destructive"], "job")
+        doc, _ = self.call("PUT", "/public/api/projects/3/jobs/12/status", json_body={"action": "start"})
+        self.assertIsNone(doc["destructive"])  # the same path means nothing to the marketplace
+
+    def test_scheduler_job_start_on_production_is_refused(self):
+        doc, code = self.call("PUT", "/public/api/projects/3/jobs/12/status", server="scheduler",
+                              json_body={"action": "start"}, profile_over={"production": True})
+        self.assertEqual(code, 2)
+        self.assertEqual(doc["error"]["kind"], "refused")
+        self.assertEqual(FakeRest.calls, [])
+
+    def test_a_path_that_climbs_out_of_the_server_is_refused(self):
+        # Baseline runs of T36 tried `api get ../webadmin/...` to send the marketplace account
+        # to another web application of the same container. Nothing is sent.
+        for path in ("../webadmin/denodo-scheduler-admin/public/api/me", "/public/../../x", "/a/%2e%2e/b"):
+            with self.subTest(path):
+                doc, code = self.call("GET", path)
+                self.assertEqual(code, 2)
+                self.assertEqual(doc["error"]["kind"], "usage")
+                self.assertIn("..", doc["error"]["message"])
+        self.assertEqual(FakeRest.calls, [])
 
     def test_network_failure_is_a_connection_error(self):
         class Dead(FakeRest):

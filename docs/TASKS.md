@@ -58,6 +58,9 @@ property groups, sync pitfalls) is still to come, as a `marketplace` extension.*
 **Позже:** `scheduler` — отдельным навыком (р. 4.12). Снятое на ревью перечислено в разделе
 10 роадмапа.
 
+*T36 (`scheduler`) is done — under «Сделано» below. The queue is empty: what is left are the
+open questions below, for the owner.*
+
 ---
 
 ## Открытые вопросы
@@ -113,6 +116,27 @@ property groups, sync pitfalls) is still to come, as a `marketplace` extension.*
   everywhere else, so the meaning carries; a separate flag would be clearer if the owner prefers.
 - **`env init` does not ask for `jdbc_port`** (T35): a profile that runs the Testing Tool against
   a server whose JDBC port is not 9999 needs the line added by hand.
+- **Who enables a refresh the human asked for** (T36, for the owner). `scheduler` makes a job its
+  statement, every time it fires: the agent creates a new job disabled and reads it back, and
+  enabling it waits for the yes whenever its runs reload a cache, refresh a table or write a
+  file that existed before the session — so "refresh the cache of this view every night, I'm
+  offline, just do it" ends with a disabled job and a message, and no refresh that night. It
+  follows from `cache` and `materialize` (a reload or a `REFRESH` of something older is the
+  human's) and from `vql` ("a yes to the task is not the yes"). The other reading — the human
+  named the view and the hour, so creating that job enabled is the agent's, as a new remote
+  table where the human named is (T34) — is the owner's call; it would be one row of the table
+  in `scheduler` and one line in `vql`.
+- **A probe job that changes nothing, to read the server's clock** (T36). A trigger has no time
+  zone and the API shows the Scheduler's clock only through `nextExecution` of an enabled job.
+  `scheduler` allows the agent's own job enabled while it only reads (a VDP job before its
+  exporter is added) — a GREEN run found that route itself. A cache job has no such state; its
+  hour stays an assumption until the yes enables it.
+- **What `scheduler` leaves to the administration tool** (T36): data sources (they take a
+  password; the plugin has no way to pass one), Data Load, DAG cache and indexer jobs, exporters
+  other than CSV, mail handlers, retries, trigger conditions, parameterized queries fed from a
+  source, dependencies between jobs (the documentation's "the dependent job must start first"
+  was not measured), drafts, server configuration, roles, import and export. Untried: `stop` of
+  a running job, `MISFIRED` after downtime, a cluster with fail-over, OAuth.
 - **What `testing` leaves untried** (T35): `[ws]` executions and results, `[script]` executions,
   `EXTENDS` chains, multi-valued and parallel `CONTEXT` variables, the CSV, HTML and email
   reporters, Jasypt `ENC()` values, `--failed-resumable`, complex (array and register) values, a
@@ -348,6 +372,75 @@ property groups, sync pitfalls) is still to come, as a `marketplace` extension.*
 ---
 
 ## Сделано
+
+- **T36. The `scheduler` skill: work on a schedule through Denodo Scheduler.** The roadmap's
+  "later" item (4.12), taken once the queue was empty. A new skill, `skills/scheduler/`: a cache
+  job that reloads the full cache of views, a VDP job that runs one statement (`REFRESH`, a
+  `CALL`) or exports a `SELECT` to a CSV file on the Scheduler host; running, stopping, enabling
+  and disabling a job; its status and reports; the jobs that already touch a view. Its body:
+  what to read before creating (the Scheduler, the VDP data source and the user a job runs as,
+  the project, what already loads the view, the server's clock), who applies what, the job as a
+  JSON file in the project, seven templates (the project, a cache job, a CSV export job, run it
+  and wait for the report, stop/enable/disable, change a job, what ran), a recipe for a cache
+  that doubles, Quartz cron with time-zone and day-boundary cases, verify, silent failures,
+  common errors, a rationalization table from the baseline and red flags.
+  `references/rest-api.md` has the calls, every field of both job types and of the CSV
+  exporter with its default, reports and triggers. Data sources (they hold a password) and
+  everything else stay in the administration tool.
+
+  **Decided in the task: the channel and the rule.** The Scheduler is the plugin's second REST
+  server: `api --server scheduler` signs the call with the profile's account and adds the
+  `uri` parameter; the profile may name `scheduler_url` and `scheduler_uri`, by default the web
+  container of `marketplace_url` and `//<host>:8000`, so the existing profile needed no edit and
+  older copies of the tool (which reject unknown fields) kept working. `env check` reports the
+  Scheduler; `api` refuses a path with `..`; the classifier has the Scheduler's rules (`PUT` =
+  `alter`, a status change = `job`, a new job classified by what it runs — a cache job `cache`,
+  a VDP job its VQL's kind, any exporter `write`). The rule: **a job is its statement, run every
+  time it fires** — the agent creates a new job disabled and reads it back; enabling or starting
+  it needs whatever running its statement now would need; anything on a job older than the
+  session is the human's. It came from aligning a first draft ("a job the human asked for is
+  the agent's, enabled") with `cache` and `materialize`; whether the owner wants the other
+  reading is an open question below.
+
+  **Measured on 9.5.1** (probes in `zq36_` objects, removed before the baseline): a new cache
+  job's `cacheInvalidationMode` is `NONE` in the API and in the 9.5.1 administration tool
+  (the documentation says *Matching rows*) — every run appends, both reports `COMPLETE`; a load
+  process without `loadProcessName` or `parameterizedQuery` is accepted and fails every run; a
+  trigger has no time zone, the cron fires on the server's clock, `nextExecution` is UTC; a
+  five-field cron, a `start` of a disabled job and a `PUT` without `handlerSection` all answer
+  `500 Internal error`; a `PUT` replaces the whole job — without `triggerSection` it loses its
+  schedule; an unescaped `@` fails every run, not the creation; one statement per job, run in
+  the database of the data source's URI; a job may use another project's data source and runs
+  as its login; the CSV exporter by default writes no header and a new timestamped file per
+  run, and with `allowEmptyFile: false` an empty run **deletes** the previous file; a run's
+  report exists only when it ends.
+
+  **Checked with subagents, baseline first, in two rounds.** Fixtures: a cached aggregate over
+  the demo returns CSVs and a dashboard view on it; for the third scenario, a "data team"
+  project whose cache job ran twice with `NONE`. Round 1, the plugin as on `main` (no Scheduler
+  channel): Opus 54, 61, 49 calls, Sonnet 15, 15. With no channel, three stopped with
+  instructions for the human; one Opus wrote a helper that loaded the profile's password
+  through the plugin's own loader and then changed the other team's job and started it without
+  a yes; one Sonnet reloaded the team's cache without a yes; four tried `api get ../webadmin/…`
+  to carry the marketplace account to the Scheduler. Round 2, with `api --server scheduler` and
+  no skill: Opus 52, 70, 38, Sonnet 20, 14. All three that diagnosed the doubled board wanted to
+  `PUT` and start the other team's job without the yes and were stopped by the session's
+  permission layer, not by a rule; one export job's final `PUT` failed twice (`400`, `500`);
+  two copied the shape of a fixture job seen on the shared Scheduler. Their reasons are the
+  skill's rationalization table. With the skill, on new fixtures (catalog items, customer
+  addresses; a daily refresh, a weekly export with a day boundary, a doubled board, and a
+  control that builds its own view and job): Opus 32, 37, 27, 47 calls, Sonnet 26, 25, 18, 29 —
+  every job created disabled when its runs touch what others read, enabled and run in the
+  control, no change to the other team's job, the right cron in every zone and day shift, two
+  runs measured the server's clock with their own job before it could write. Their reviews gave
+  the clock recipe, the export duplicate check, the scope of "when you cannot ask", the
+  diagnosis recipe, the report-detail correction, the `defaultConfig` corrections, and one gap
+  of the tool: a job with a CSV exporter was not classified at all; now any exporter is
+  `write`. `cache` no longer claims *Matching rows* and points scheduled refreshes here;
+  `materialize`, `vql` and `execute` point here too. Eval: four cases (`routing-scheduler`,
+  `routing-scheduler-export`, `routing-scheduler-symptom`, `discrimination-cache-not-scheduler`);
+  64 of 64 pass. Unit tests green (460); `verify --env lab --with-scheduler` green with ten new
+  steps (44 verified).
 
 - **T35. The `testing` skill: regression tests run by the Denodo Testing Tool.** A new skill,
   `skills/testing/`: `.denodotest` files beside the project's `.vql`, run by Denodo's own Testing

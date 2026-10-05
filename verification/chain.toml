@@ -1,5 +1,5 @@
 # verification/chain.toml
-# Verifies 65 of the templates end to end: catalog database, folders, the DF (CSV), JSON
+# Verifies 72 of the templates end to end: catalog database, folders, the DF (CSV), JSON
 # and JDBC data sources, a hand-written JDBC wrapper and base view, derived views, the union
 # and the array views, the interface view, the association, the column-impact queries, the
 # full cache switched on, loaded and cleared, tags, the metadata audit, profile and
@@ -11,7 +11,9 @@
 # into them — updates, inserts, deletes, a view an application writes through and an upsert,
 # and a remote table with its refresh, a summary loaded and used, a data movement, a
 # materialized table and the drop (vql channel), and — only with --testing-tool — the
-# .denodotest templates run by the Denodo Testing Tool (denodotest channel), plus the
+# .denodotest templates run by the Denodo Testing Tool (denodotest channel), and — only with
+# --with-scheduler — a Scheduler project with a cache job and a CSV export job, created disabled,
+# read back, enabled, changed, run and reported on (http channel), plus the
 # Data Marketplace catalog
 # sync, a tag, a category, an external element and a renamed view that keeps its element
 # (http channel). Bodies of the
@@ -66,6 +68,13 @@ write_schema = "dbo"
 # _encrypt_throwaways). The alternative — rewriting the template to a plaintext password and
 # dropping ENCRYPTED — needs no code and verifies less than the block claims.
 jdbc_password = "@encrypt-throwaway"
+# The Scheduler tail (--with-scheduler): the id of a VDP data source of the Scheduler the run's
+# jobs go through, as its login (GET /public/api/dataSources). Creating one needs a password the
+# chain does not have; a fork verifying against its own Scheduler puts its own id here.
+scheduler_data_source_id = "2"
+# The export template writes household_income_by_band, one row per income band of the demo
+# CSV that the fixture reads.
+band_rows = "20"
 # No server_id here on purpose: the http steps and the cleanup below never name a VDP
 # server, so RestTransport puts the profile's marketplace_server_id on every call
 # (transports/api_rest.py). That is the only way a fork verifying against its own
@@ -106,6 +115,8 @@ vql = [
   "DROP USER IF EXISTS {tag_prefix}reader",
 ]
 http = [
+  # The Scheduler tail's project, with its jobs and their reports (--with-scheduler only).
+  { server = "scheduler", method = "delete", path = "/public/api/projects/{project_id}" },
   { method = "delete", path = "/public/api/tags/{tag_id}" },
   { method = "delete", path = "/public/api/category-management/categories/{category_id}" },
   # The external element's two server-level objects, in creation order reversed: the tool
@@ -547,6 +558,131 @@ database = "{database}"
 # leaves on a dropped table. Every household has an income band, so the per-band counts add
 # up to the households of the base view, which is not cached.
 check = "SELECT b.n FROM (SELECT SUM(household_count) AS n FROM household_income_by_band) b, (SELECT COUNT(*) AS m FROM bv_household_demographics) s WHERE b.n = s.m AND b.n > 0"
+
+# --- Scheduler tail: http channel, gated behind --with-scheduler -----------------------
+#
+# Between the load above and the clear below, while iv_household_income has a full cache: the
+# cache job of skills/scheduler reloads it twice, and the second run must leave exactly one
+# copy — the claim of its "ALL_ROWS" line (the default, NONE, appends). The project is the
+# run's own, named with the verify_ prefix and deleted in [cleanup] http, which takes its jobs
+# and their reports with it. The jobs reach Virtual DataPort through an existing VDP data
+# source of the Scheduler, named in [values] scheduler_data_source_id: creating one needs a
+# password, which the skill leaves to the human. The export step leaves one file on the
+# Scheduler host, verify_household_income_by_band.csv in its default export folder; every run
+# overwrites it, and no API call removes it.
+
+[[step]]
+id = "scheduler-project"
+kind = "template"
+channel = "http"
+scheduler = true
+address = "skills/scheduler/SKILL.md#The project"
+# 0 is the lookup by name, which answers 404 for a project that does not exist yet — the
+# point of the lookup, and a failed call to this step model. Only the create runs.
+calls = [1]
+substitute = { sales_analytics = "{tag_prefix}jobs" }
+capture = { project_id = "id" }
+
+[[step]]
+id = "scheduler-cache-job"
+kind = "template"
+channel = "http"
+scheduler = true
+address = "skills/scheduler/SKILL.md#Refresh the cache of a view on a schedule[1]"
+substitute = { "<project_id>" = "{project_id}", "<job_id>" = "{job_id}" }
+files = { "scheduler/sales_analytics/iv_household_income_cache.json" = { address = "skills/scheduler/SKILL.md#Refresh the cache of a view on a schedule[0]", substitute = { sales_analytics = "{database}", "\"dataSourceID\": 2" = "\"dataSourceID\": {scheduler_data_source_id}" } } }
+# the create call answers the new id; the read-back after it is what is judged
+capture = { job_id = "id" }
+capture_from = 0
+expect_body = { disabled = "True", "extractionSection.loadprocesses.0.cacheInvalidationMode" = "ALL_ROWS", "extractionSection.loadprocesses.0.cacheAtomicOperation" = "True", "extractionSection.loadprocesses.0.loadProcessName" = "iv_household_income", "triggerSection.triggers.0.cronExpression" = "0 30 1 * * ?" }
+
+[[step]]
+id = "scheduler-disable-enable"
+kind = "template"
+channel = "http"
+scheduler = true
+address = "skills/scheduler/SKILL.md#Stop, enable, disable"
+substitute = { "<project_id>" = "{project_id}", "<job_id>" = "{job_id}" }
+# The template creates the job disabled; this is the enable that follows the yes —
+# NOT_RUNNING, not DISABLED, and on its schedule.
+expect_body = { state = "NOT_RUNNING" }
+
+[[step]]
+id = "scheduler-cache-run"
+kind = "template"
+channel = "http"
+scheduler = true
+address = "skills/scheduler/SKILL.md#Run it now, and wait for the report"
+substitute = { "<project_id>" = "{project_id}", "<job_id>" = "{job_id}" }
+# The report exists only once the run has ended: wait for the first one.
+poll = { field = "total", until = "1", seconds = 180, every = 3 }
+expect_body = { "list.0.result" = "COMPLETE" }
+
+[[step]]
+id = "scheduler-cache-run-again"
+kind = "template"
+channel = "http"
+scheduler = true
+address = "skills/scheduler/SKILL.md#Run it now, and wait for the report"
+substitute = { "<project_id>" = "{project_id}", "<job_id>" = "{job_id}" }
+poll = { field = "total", until = "2", seconds = 180, every = 3 }
+expect_body = { "list.0.result" = "COMPLETE" }
+database = "{database}"
+# Two loads, one copy: every household is in the cache once (every household has a band, so
+# the joined view has as many rows as the base view, which is not cached).
+check = "SELECT a.n FROM (SELECT COUNT(*) AS n FROM iv_household_income) a, (SELECT COUNT(*) AS m FROM bv_household_demographics) b WHERE a.n = b.m AND a.n > 0"
+
+[[step]]
+id = "scheduler-change"
+kind = "template"
+channel = "http"
+scheduler = true
+address = "skills/scheduler/SKILL.md#Change a job"
+substitute = { "<project_id>" = "{project_id}", "<job_id>" = "{job_id}" }
+# The job's file with "id" added and "disabled": false, as the skill says after the yes; the
+# schedule survives the PUT and the job stays enabled.
+files = { "scheduler/sales_analytics/iv_household_income_cache.json" = { address = "skills/scheduler/SKILL.md#Refresh the cache of a view on a schedule[0]", substitute = { sales_analytics = "{database}", "\"dataSourceID\": 2" = "\"dataSourceID\": {scheduler_data_source_id}", "\"type\": \"VDPCache\",\n  \"name\"" = "\"type\": \"VDPCache\",\n  \"id\": {job_id},\n  \"name\"", "\"disabled\": true" = "\"disabled\": false" } } }
+expect_body = { id = "{job_id}", disabled = "False", "triggerSection.triggers.0.cronExpression" = "0 30 1 * * ?", "extractionSection.loadprocesses.0.cacheInvalidationMode" = "ALL_ROWS" }
+
+[[step]]
+id = "scheduler-export-job"
+kind = "template"
+channel = "http"
+scheduler = true
+address = "skills/scheduler/SKILL.md#Export a view to a CSV file on a schedule[1]"
+substitute = { "<project_id>" = "{project_id}", "<job_id>" = "{export_job_id}" }
+files = { "scheduler/sales_analytics/household_income_by_band_csv.json" = { address = "skills/scheduler/SKILL.md#Export a view to a CSV file on a schedule[0]", substitute = { sales_analytics = "{database}", "\"dataSourceID\": 2" = "\"dataSourceID\": {scheduler_data_source_id}", "\"fileName\": \"household_income_by_band.csv\"" = "\"fileName\": \"{tag_prefix}household_income_by_band.csv\"" } } }
+capture = { export_job_id = "id" }
+capture_from = 0
+expect_body = { "exportationSection.exporters.0.includeHeader" = "True", "exportationSection.exporters.0.overwriteFile" = "True", "exportationSection.exporters.0.createNewFile" = "False", "exportationSection.exporters.0.fileName" = "{tag_prefix}household_income_by_band.csv" }
+
+[[step]]
+id = "scheduler-export-enable"
+kind = "template"
+channel = "http"
+scheduler = true
+address = "skills/scheduler/SKILL.md#Stop, enable, disable"
+substitute = { "<project_id>" = "{project_id}", "<job_id>" = "{export_job_id}" }
+expect_body = { state = "NOT_RUNNING" }
+
+[[step]]
+id = "scheduler-export-run"
+kind = "template"
+channel = "http"
+scheduler = true
+address = "skills/scheduler/SKILL.md#Run it now, and wait for the report"
+substitute = { "<project_id>" = "{project_id}", "<job_id>" = "{export_job_id}" }
+poll = { field = "total", until = "1", seconds = 180, every = 3 }
+expect_body = { "list.0.result" = "COMPLETE", "list.0.exportedDocs.CSVExporter0" = "{band_rows}" }
+
+[[step]]
+id = "scheduler-reports"
+kind = "template"
+channel = "http"
+scheduler = true
+address = "skills/scheduler/SKILL.md#What ran, and what failed"
+substitute = { "<project_id>" = "{project_id}", "<job_id>" = "{job_id}" }
+expect_body = { total = "2" }
 
 [[step]]
 id = "cache-off"

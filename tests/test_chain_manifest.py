@@ -47,7 +47,9 @@ class ChainManifestMatchesSkillsTest(unittest.TestCase):
         available = dict(self.chain.values)
         per_step: dict[str, dict[str, str]] = {}
         for step in self.chain.steps:
-            per_step[step.id] = dict(available)
+            # A step may name what it captures itself: the read-back after a create names the
+            # id the create answered (verify._run_step leaves it a placeholder until then).
+            per_step[step.id] = {**available, **{name: "0" for name in step.capture}}
             for name in step.capture:
                 # "0", not a descriptive placeholder: a captured value is a marketplace id,
                 # and the rendered body has to stay a parseable api call — a body reading
@@ -140,6 +142,37 @@ class ChainManifestMatchesSkillsTest(unittest.TestCase):
                         0 <= index < len(calls),
                         f"step {step.id!r}: calls names index {index}, but the block at "
                         f"{step.address!r} has {len(calls)} api call(s)")
+
+    def test_every_file_an_http_step_sends_resolves_to_a_json_block(self):
+        """``files`` maps a ``--json-file`` path to a block of a skill (T36). A renamed heading
+        or a substitution that no longer matches must fail here, and so must a call that reads
+        a file no entry maps — before a run creates a Scheduler job with half a body."""
+        import json
+        checked = 0
+        for step in [s for s in self.chain.steps if s.channel == "http"]:
+            body = render(load_block(REPO, step.address).body, step.substitute, self.visible[step.id])
+            for call in parse_api_calls(body):
+                if not call.get("json_file"):
+                    continue
+                with self.subTest(step=step.id, file=call["json_file"]):
+                    self.assertIn(call["json_file"], step.files,
+                                  f"step {step.id!r} sends {call['json_file']!r}, which its files do not map")
+                    spec = step.files[call["json_file"]]
+                    text = render(load_block(REPO, spec["address"]).body, spec["substitute"],
+                                  self.visible[step.id])
+                    json.loads(text)
+                    checked += 1
+        self.assertTrue(checked, "no http step sends a file — the Scheduler tail is gone?")
+
+    def test_no_scheduler_call_names_the_scheduler_server(self):
+        """``uri`` comes from the profile (``scheduler_uri``), like ``serverId`` for the
+        marketplace: a literal one in a template would point every fork at this server."""
+        for step in [s for s in self.chain.steps if s.scheduler]:
+            body = render(load_block(REPO, step.address).body, step.substitute, self.visible[step.id])
+            for call in parse_api_calls(body):
+                with self.subTest(step=step.id, path=call["path"]):
+                    self.assertEqual(call["server"], "scheduler")
+                    self.assertNotIn("uri", call["params"])
 
     def test_no_step_and_no_cleanup_entry_names_the_server_itself(self):
         """``serverId`` comes from the profile, never from the manifest or the templates.

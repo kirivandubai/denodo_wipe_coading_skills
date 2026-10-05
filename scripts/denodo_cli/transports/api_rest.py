@@ -1,10 +1,14 @@
-"""REST transport for Data Marketplace — standard library only.
+"""REST transport for Data Marketplace and the Scheduler — standard library only.
 
 Decisions from spike T11 (section 2): HTTP Basic with the VDP account on every request
 and no cookie jar (the server opens a session per call; that is the price of stateless
 mode); ``serverId`` from the profile is added only when set and not already given;
 HTTP errors are not raised — the status is returned separately from the body, because
 ``409`` and ``403`` often arrive with an empty body.
+
+The Scheduler (T36) is the same kind of API on another web application: HTTP Basic with the
+same account, and every call names the Scheduler server in the ``uri`` query parameter, which
+the transport adds from the profile unless the call gives its own.
 """
 
 from __future__ import annotations
@@ -27,14 +31,26 @@ DEFAULT_TIMEOUT = 300  # element-management/all/synchronize can be slow on a big
 MultipartParts = dict[str, tuple[str | None, bytes, str]]
 
 
+SERVERS = ("marketplace", "scheduler")
+
+
 class RestTransport:
-    def __init__(self, profile: Profile) -> None:
-        if not profile.marketplace_url:
-            raise ValueError(
-                f"profile {profile.name!r} has no marketplace_url; add it to the profile to use the REST API"
-            )
-        self.base_url = profile.marketplace_url.rstrip("/")
-        self.server_id = profile.marketplace_server_id
+    def __init__(self, profile: Profile, server: str = "marketplace") -> None:
+        if server not in SERVERS:
+            raise ValueError(f"unknown server {server!r}; known: {', '.join(SERVERS)}")
+        # query parameter the server needs on every call → its value from the profile
+        self.defaults: dict[str, Any] = {}
+        if server == "scheduler":
+            self.base_url = profile.scheduler_admin_url().rstrip("/")
+            self.defaults["uri"] = profile.scheduler_server_uri()
+        else:
+            if not profile.marketplace_url:
+                raise ValueError(
+                    f"profile {profile.name!r} has no marketplace_url; add it to the profile to use the REST API"
+                )
+            self.base_url = profile.marketplace_url.rstrip("/")
+            if profile.marketplace_server_id is not None:
+                self.defaults["serverId"] = profile.marketplace_server_id
         token = base64.b64encode(f"{profile.user}:{profile.password}".encode()).decode()
         self._auth_header = "Basic " + token
 
@@ -49,8 +65,8 @@ class RestTransport:
         timeout: float = DEFAULT_TIMEOUT,
     ) -> HttpResult:
         query = dict(params or {})
-        if self.server_id is not None and "serverId" not in query:
-            query["serverId"] = self.server_id
+        for key, value in self.defaults.items():
+            query.setdefault(key, value)
         url = self.base_url + "/" + path.lstrip("/")
         if query:
             url += "?" + urllib.parse.urlencode(query, doseq=True)
