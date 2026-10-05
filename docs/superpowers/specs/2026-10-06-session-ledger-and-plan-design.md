@@ -1,10 +1,9 @@
 # A ledger of the session's own objects, and `vql plan` (T39)
 
-**Status:** design for T39 in [TASKS.md](../../TASKS.md), written at the start of the task.
-The architecture document is the [design spec](2026-09-04-denodo-skills-design.md); this file
-settles what T39 leaves to the task (how a session is identified, where the ledger lives, what
-the plan decides and what it cannot) and is folded into the design spec (sections 6.3 and 7.4)
-when the task closes.
+**Status:** implemented in T39 ([TASKS.md](../../TASKS.md)); the decisions are folded into the
+[design spec](2026-09-04-denodo-skills-design.md), sections 6.3 and 7.4. This file keeps the
+detail: how a session is identified, where the ledger lives, how the table maps onto statements,
+and what the plan cannot see.
 
 ## Why
 
@@ -97,7 +96,7 @@ Per statement:
 
 | Field | Meaning |
 |---|---|
-| `action` | `read`, `session`, `create`, `replace`, `alter`, `rename`, `drop`, `insert`, `update`, `delete`, `refresh`, `call`, `setting`, `other` |
+| `action` | `read`, `session`, `create`, `replace`, `alter`, `rename`, `drop`, `insert`, `update`, `delete`, `refresh`, `call`, `cache` (a `SELECT` whose `CONTEXT` loads or invalidates a cache), `setting`, `other` |
 | `object` | `{type, database, name}` the statement creates, changes or targets; `null` for a read |
 | `exists` | on the server at that point of the input; `null` when the tool cannot tell |
 | `own` | created by this session (the ledger, identity checked) or by an earlier statement of the input |
