@@ -458,11 +458,14 @@ class ClassifySchedulerTest(unittest.TestCase):
                                        vdp_job("CALL CLEAN_CACHE_DATABASE('db', 'v')")), "procedure")
         self.assertIsNone(self.classify("POST", "/public/api/projects/3/jobs", vdp_job("SELECT * FROM v")))
 
-    def test_a_vdp_job_exporting_into_a_database_writes(self):
-        self.assertEqual(self.classify("POST", "/public/api/projects/3/jobs",
-                                       vdp_job("SELECT * FROM v", exporters=("CSV", "JDBC"))), "write")
-        self.assertIsNone(self.classify("POST", "/public/api/projects/3/jobs",
-                                        vdp_job("SELECT * FROM v", exporters=("CSV",))))
+    def test_a_vdp_job_with_an_exporter_writes(self):
+        # every exporter writes outside Denodo — a table, an index, or a file on the Scheduler
+        # host that it may overwrite or delete (an empty run with allowEmptyFile false)
+        for exporters in (("CSV",), ("Excel",), ("JDBC",), ("CSV", "JDBC"), ("Scheduler-Index",)):
+            with self.subTest(exporters):
+                self.assertEqual(self.classify("POST", "/public/api/projects/3/jobs",
+                                               vdp_job("SELECT * FROM v", exporters=exporters)), "write")
+        self.assertIsNone(self.classify("POST", "/public/api/projects/3/jobs", vdp_job("SELECT * FROM v")))
 
     def test_a_draft_never_runs(self):
         self.assertIsNone(self.classify("POST", "/public/api/projects/3/draftJobs", vdp_job("REFRESH rt")))

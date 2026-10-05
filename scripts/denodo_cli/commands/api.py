@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import mimetypes
+import urllib.parse
 from pathlib import Path
 from typing import Any, Callable
 
@@ -33,6 +34,15 @@ def api_call(
     destructive = classify_http(method, path, json_body, server=server)
     base = {"server": server, "method": method, "path": path, "destructive": destructive}
 
+    if _climbs_out(path):
+        # The account goes with every call; a path that climbs out of the server's base URL
+        # would hand it to another web application of the same container (T36 baselines tried
+        # `../webadmin/...` to reach the Scheduler through the marketplace).
+        return envelope(False, profile, "api", **base, error={
+            "kind": "usage",
+            "message": f"the path {path!r} contains a '..' segment; nothing was sent. The Scheduler is "
+                       "`api --server scheduler`, the Data Marketplace the default server"}), EXIT_USAGE
+
     if destructive and profile.production and not allow_destructive:
         error = {
             "kind": "refused",
@@ -57,6 +67,11 @@ def api_call(
     doc = envelope(result.ok, profile, "api", **base, status=result.status, body=result.body,
                    elapsed_ms=result.elapsed_ms)
     return doc, EXIT_OK if result.ok else EXIT_EXECUTION
+
+
+def _climbs_out(path: str) -> bool:
+    route = urllib.parse.unquote(urllib.parse.urlsplit(path).path)
+    return ".." in route.split("/")
 
 
 def parse_params(specs: list[str]) -> dict[str, str]:

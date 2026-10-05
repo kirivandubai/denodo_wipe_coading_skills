@@ -29,8 +29,9 @@ by words in the body: the Data Marketplace has ``POST`` endpoints that overwrite
 (spike T11, section 6). The Scheduler (T36) has its own rules: every ``PUT`` replaces a
 definition or a setting that exists, a status change starts, stops, enables or disables a job,
 and a new job is classified by what it will run on every trigger with nobody watching — a cache
-job loads view caches, a VDP job runs its VQL (classified as VQL) and writes what its database
-exporters write. That is the one place a body is read: the VQL is the operation.
+job loads view caches, a VDP job runs its VQL (classified as VQL) and writes what its
+exporters write — a table, an index or a file. That is the one place a body is read: the VQL is
+the operation.
 """
 
 from __future__ import annotations
@@ -177,8 +178,6 @@ _SCHEDULER_SECURITY = re.compile(
     r"^/public/api/(?:roles(?:/.*)?|changePassword|tool-configuration/(?:change|reset)-password)$")
 _SCHEDULER_SETTINGS = re.compile(
     r"^/public/api/(?:configuration|tool-configuration)(?:/.*)?$|^/public/api/(?:drivers|plugins)$")
-# exporters that write into another system's tables or indexes
-_WRITING_EXPORTERS = frozenset({"JDBC", "ELASTICSEARCH"})
 
 
 def _classify_scheduler(method: str, route: str, body) -> str | None:
@@ -212,8 +211,9 @@ def _classify_scheduler_job(body) -> str | None:
     query_kind = classify_vql(str(extraction.get("parameterizedQuery") or ""))
     if query_kind:
         return query_kind
-    exporters = (body.get("exportationSection") or {}).get("exporters") or []
-    if any(str((e or {}).get("type") or "").upper() in _WRITING_EXPORTERS for e in exporters):
+    # Every exporter writes outside Denodo: a table, an index, or a file on the Scheduler host that
+    # each run overwrites — and that an empty run with allowEmptyFile false deletes (T36).
+    if (body.get("exportationSection") or {}).get("exporters"):
         return "write"
     return None
 
@@ -222,7 +222,7 @@ def classify_http(method: str, path: str, body=None, server: str = "marketplace"
     """For the Data Marketplace: ``"delete"`` for any DELETE, ``"replace"`` for set-replacing
     POSTs. For the Scheduler: ``"delete"``, ``"alter"`` for a PUT that replaces a job, a project
     or a data source, ``"job"`` for starting, stopping, enabling or disabling jobs, the kind of
-    what a new job will run (``"cache"``, ``"table"``, ``"write"`` or a VQL kind), ``"setting"``,
+    what a new job will run (``"cache"``, ``"table"``, a VQL kind, or ``"write"`` for any exporter), ``"setting"``,
     ``"security"`` and ``"replace"`` for server configuration, roles and a metadata import.
     Else ``None``."""
     method = method.upper()

@@ -1064,11 +1064,14 @@ def _run_http(profile: Profile, step: Step, *, body: str, values: dict[str, str]
     last_body: object = None
 
     def send(call: dict) -> tuple[dict, int]:
-        doc, code = api_call(profile, call["method"], render(call["path"], {}, values),
+        # Rendered again here: a value captured by an earlier call of this step (a job's id)
+        # only exists now.
+        path = render(call["path"], {}, values)
+        doc, code = api_call(profile, call["method"], path,
                              transport_factory=rest_factory, json_body=call["json"], params=call["params"],
                              multipart=call["multipart"], allow_destructive=allow_destructive,
                              server=call.get("server", "marketplace"))
-        executed.append({"method": call["method"], "path": call["path"],
+        executed.append({"method": call["method"], "path": path,
                          "status": doc.get("status"), "ok": bool(doc.get("ok"))})
         return doc, code
 

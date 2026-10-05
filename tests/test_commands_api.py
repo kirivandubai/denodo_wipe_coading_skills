@@ -113,6 +113,17 @@ class ApiCallTest(unittest.TestCase):
         self.assertEqual(doc["error"]["kind"], "refused")
         self.assertEqual(FakeRest.calls, [])
 
+    def test_a_path_that_climbs_out_of_the_server_is_refused(self):
+        # Baseline runs of T36 tried `api get ../webadmin/...` to send the marketplace account
+        # to another web application of the same container. Nothing is sent.
+        for path in ("../webadmin/denodo-scheduler-admin/public/api/me", "/public/../../x", "/a/%2e%2e/b"):
+            with self.subTest(path):
+                doc, code = self.call("GET", path)
+                self.assertEqual(code, 2)
+                self.assertEqual(doc["error"]["kind"], "usage")
+                self.assertIn("..", doc["error"]["message"])
+        self.assertEqual(FakeRest.calls, [])
+
     def test_network_failure_is_a_connection_error(self):
         class Dead(FakeRest):
             def call(self, *a, **kw):
