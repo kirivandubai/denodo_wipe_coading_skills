@@ -53,6 +53,8 @@ class _Walk:
         self.ctx = ctx
         self.state: dict[tuple, tuple[bool, bool]] = {}   # key -> (exists, own), set by the input
         self.new: dict[tuple, ObjectRef] = {}               # created by an earlier statement of the input
+        self.renamed: dict[tuple, ObjectRef] = {}           # old key -> the object under its new name
+        self.dropped: set[tuple] = set()                    # dropped by an earlier statement of the input
 
     def exists(self, ref: ObjectRef) -> bool | None:
         if ref.key() in self.state:
@@ -91,9 +93,12 @@ class _Walk:
             return None
         out = []
         for db, name in rows:
-            if (db.lower(), name.lower()) == (ref.database.lower(), ref.name.lower()):
-                continue
-            out.append({"database": db, "name": name, "own": self.own(ObjectRef("view", db, name))})
+            reader = ObjectRef("view", db, name)
+            if reader.key() == ref.key() or reader.key() in self.dropped:
+                continue                                  # itself, or gone before this statement runs
+            while reader.key() in self.renamed:           # the server still lists the old name
+                reader = self.renamed[reader.key()]
+            out.append({"database": reader.database, "name": reader.name, "own": self.own(reader)})
         return out
 
     def create(self, ref: ObjectRef) -> None:
@@ -103,12 +108,15 @@ class _Walk:
     def drop(self, ref: ObjectRef) -> None:
         self.state[ref.key()] = (False, False)
         self.new.pop(ref.key(), None)
+        self.dropped.add(ref.key())
 
     def rename(self, ref: ObjectRef, new_name: str) -> None:
         own, kind = self.own(ref), self.kind(ref)
         renamed = ObjectRef(ref.type, ref.database, new_name, kind)
-        self.drop(ref)
+        self.state[ref.key()] = (False, False)
+        self.new.pop(ref.key(), None)
         self.state[renamed.key()] = (True, own)
+        self.renamed[ref.key()] = renamed
         if own:
             self.new[renamed.key()] = renamed
 

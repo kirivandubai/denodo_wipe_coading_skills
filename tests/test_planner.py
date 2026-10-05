@@ -139,6 +139,18 @@ class PlannerTest(unittest.TestCase):
         entries = self.plan("ALTER VIEW mine RENAME mine2", "ALTER VIEW mine2 CACHE FULL")
         self.assertEqual([e["needs_yes"] for e in entries], [False, False])
 
+    def test_a_reader_renamed_or_dropped_earlier_in_the_input(self):
+        self.ledger.record_created(SERVER, ObjectRef("view", "sales", "my_report"), internal_id="_r1", source=None,
+                                   statement="", now=NOW)
+        existing = {**self.existing, ("view", "sales", "my_report"): ("_r1", "derived"),
+                    ("view", "sales", "their_report"): ("_x1", "derived")}
+        used = {**self.used_by, ("sales", "mine"): [("sales", "my_report"), ("sales", "their_report")]}
+        catalog = FakeCatalog(existing, used)
+        renamed = self.plan("ALTER VIEW my_report RENAME my_report2", "DROP VIEW their_report",
+                            "ALTER VIEW mine CACHE FULL", catalog=catalog)
+        self.assertFalse(renamed[2]["needs_yes"], renamed[2]["why"])
+        self.assertEqual(renamed[2]["dependents"], [{"database": "sales", "name": "my_report2", "own": True}])
+
     def test_identity_decides_not_the_name(self):
         catalog = FakeCatalog({**self.existing, ("view", "sales", "mine"): ("_other", "derived")})
         entry = self.one("ALTER VIEW mine CACHE FULL", catalog=catalog)
