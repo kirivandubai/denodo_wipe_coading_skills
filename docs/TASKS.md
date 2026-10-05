@@ -68,18 +68,8 @@ property groups, sync pitfalls) is still to come, as a `marketplace` extension.*
 the reasoning is in the review document's last section. No new object skill: the review found
 the bottlenecks in trust on another server, in rules kept as prose, and in bulk work.
 
-- **T38. CI on every pull request, with a lint of the skills.** `next`, after T37 (the lint must
-  be green on the fixed tree). A GitHub Actions workflow running the unit tests and `claude
-  plugin validate .` (if it runs without credentials; otherwise a schema check of the two
-  manifests). The lint is a stdlib unit test in `tests/`, so it runs locally the same way, and it
-  fails on what the review found by hand: Cyrillic in anything a plugin user sees; the
-  installation names of the review's section E (the test server's tags, Oracle service and
-  schema, demo databases, run prefixes `green<n>_`, `zq`, `verify_` outside the chain); a
-  description over 1024 characters; a fenced template without a mark nearby, or a mark not in
-  the canonical form (grammar and diagram blocks on an explicit allowlist); a `references/`
-  link or a `/denodo:<name>` that does not resolve; "outside v1". `SKILL.md` files over 500
-  lines are listed with their current length, so they can only shrink. `CONTRIBUTING.md` gets
-  the description budget of about 900 characters, to leave room for the next trigger.
+*T38 is done — under «Сделано» below.*
+
 - **T39. A ledger of the session's own objects, and `vql plan`.** `next`. Most contradictions
   in section C of the review — and the `synchronize` decision of 2026-10-05 — turn on "created
   in this session", which every skill re-derives in prose. `scripts/denodo` records what the
@@ -449,6 +439,48 @@ the bottlenecks in trust on another server, in rules kept as prose, and in bulk 
 ---
 
 ## Сделано
+
+- **T38. CI on every pull request, with a lint of the skills.** `.github/workflows/ci.yml`
+  runs, on every pull request and on `main`, the unit tests on Python 3.11 and 3.14 and
+  `claude plugin validate .` with a pinned Claude Code (2.1.289). `validate` needs no login —
+  checked with an empty home and no environment — and exits `1` on a broken manifest or skill
+  frontmatter; it does not check a description's length, so the lint does.
+
+  **The lint** is `tests/skills_lint.py`, run by `tests/test_skills_lint.py` (stdlib, part of
+  the unit tests; `python3 -m tests.skills_lint [root]` prints every finding of any tree).
+  Seven checks: Cyrillic in the skills, README, CONTRIBUTING, manifests, CLI and eval cases;
+  names of the test server (its marketplace and VDP tags, Oracle service and schemas, demo and
+  source databases, hosts, shifted ports, the `lab` profile), run prefixes `green<n>_` and
+  `zq`, `verify_<name>` and task ids outside the CLI's comments; "v1" in prose; the
+  frontmatter name, the 1024 limit and a 900 budget; `SKILL.md` over 500 lines; a fenced block
+  in `skills/` without a mark inside it or in the paragraph right above or below, and any mark
+  or `(live…)` label not in the two canonical forms; `references/` files (in the skill, or in
+  the skill named before them in the paragraph), `/denodo:<name>`, the eval graders' skill
+  names and relative links. Three explicit lists hold the exceptions, each entry visible in a
+  diff: `OVER_BUDGET` (empty), `LONG_SKILLS` (`views` 722, `datasources` 697, `marketplace`
+  562 — they may shrink, never grow, and a shrink must lower the number) and `UNMARKED_BLOCKS`
+  (41 blocks: grammar, the shape of a message to the human, lists, a folder layout, commands
+  the human types; an entry that matches no unmarked block is reported).
+
+  **Checked against the review.** Run over `0083642` (before T37) the lint finds what the
+  review found by hand: `XEPDB1` and `RETAIL` (also in the eval prompt), `green1_`,
+  `pii_data`, `business_views`, `ZQ_X`, every "outside v1", `views` 1144 and `materialize`
+  1106 over the limit, the four off-format marks, and the four fenced blocks of section F. It
+  does not find what is generic by its words — the tags `Sensitive`, `customers`,
+  `sensitive` — nor the runnable statements written inline in prose, which were most of
+  section F; both are said in CONTRIBUTING.
+
+  **The tree, made to pass.** Five marks in prose take the canonical form (the dates from the
+  commits that wrote them; `errors.md`'s silent-failure table defers to the file's own
+  statement instead of a dateless mark). The descriptions of `dml` 1001 → 894, `metrics` 1014
+  → 887, `views` 923 → 887 and `cache` 917 → 871 — the syntax in parentheses out first, every
+  phrase an eval case uses kept; eval `--runs 1`: 64 of 64 ($14.36). CONTRIBUTING gets the
+  900 budget, what the lint finds and what CI runs, and the four skills its tree lacked;
+  README and `CLAUDE.md` point to it.
+
+  **Left open:** moving reference material out of the three long `SKILL.md` files; a lint of
+  inline statements; making the CI check required on `main` (a repository setting, the
+  owner's).
 
 - **T37. Fix what the review of all skills found.** Sections A–G of
   [2026-10-05-skills-review.md](superpowers/specs/2026-10-05-skills-review.md), in its order, and
