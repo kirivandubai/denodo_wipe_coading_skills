@@ -1,0 +1,48 @@
+# Every pull request, and main after a merge: the unit tests — the lint of the skills among
+# them (tests/skills_lint.py) — and the manifests as Claude Code reads them. Nothing here
+# needs a Denodo server or a credential; the checks against a live server stay local
+# (CONTRIBUTING.md, "Checks").
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    name: Unit tests and the skills lint (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The oldest Python the CLI supports (tomllib) and the newest.
+        python: ["3.11", "3.14"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Unit tests
+        run: PYTHONPATH=scripts python -m unittest discover -s tests -t .
+
+  plugin:
+    name: Plugin and marketplace manifests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      # Pinned, so a pull request fails for its own change; bump it deliberately.
+      - name: Install Claude Code
+        run: npm install --global @anthropic-ai/claude-code@2.1.289
+      - name: claude plugin validate
+        run: claude plugin validate .
