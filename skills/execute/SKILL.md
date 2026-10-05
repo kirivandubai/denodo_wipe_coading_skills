@@ -1,6 +1,6 @@
 ---
 name: execute
-description: Use when VQL or a Data Marketplace REST call has to run against a live Denodo 9.5 server — applying a .vql file, running DESC or a test SELECT, calling the marketplace API, checking a connection — or when `scripts/denodo` returned JSON with `ok:false` that needs interpreting. Not for writing VQL — that is /denodo:vql and the domain skills.
+description: Use when VQL or a Data Marketplace or Scheduler REST call has to run against a live Denodo 9.5 server — applying a .vql file, running DESC or a test SELECT, calling the marketplace or Scheduler API, checking a connection — or when `scripts/denodo` returned JSON with `ok:false` that needs interpreting. Not for writing VQL — that is /denodo:vql and the domain skills.
 allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/scripts/denodo *)
 ---
 
@@ -32,11 +32,12 @@ tool reads host, user and password from `~/.denodo/profiles.toml` itself.
 | … with a body | `api post --env dev /public/api/tags --json '{"name":"pii","description":"…","descriptionType":"TEXT"}'` |
 | … with the body in a file | `api put --env dev /public/api/views --json-file body.json` — for HTML, quotes, or a body you want to keep |
 | … query params / multipart | `--param k=v` (repeatable), `--part field=@file` / `field=json:{…}` |
+| Scheduler call | `api --server scheduler get --env dev /public/api/projects` — the same command against the Scheduler administration tool: the profile's account, and its Scheduler server as the `uri` parameter, are added. The profile may name both (`scheduler_url`, `scheduler_uri`); by default the web container of `marketplace_url` (or `http://<host>:9090`) and `//<host>:8000`. A path with a `..` segment is refused on either server. What to call is `/denodo:scheduler` |
 | Encrypt a source password | `secret encrypt --env dev` — the password is typed into a hidden prompt (in a terminal) or piped in on stdin, never passed as an argument; the answer carries `encrypted` and nothing else. See **A password for a data source** below |
 | Run `.denodotest` tests | `testing run --env dev --database sales_analytics --tool <Testing Tool dir> --java-home <Java 17+> <tests folder>` — starts the Denodo Testing Tool with its configuration from the profile in a temporary file, answers with `exit_code`, `summary` and each test; `ok` only when the tool exited `0` and every test passed. `testing config` writes the same configuration to a lasting 0600 file beside the profiles file for a human who runs the tool themselves (never inside a git work tree, never printed). Both refuse a production profile without `--allow-destructive`. The JDBC port is the profile's `jdbc_port` (9999 by default). Writing the tests is `/denodo:testing` |
 | Which profiles exist | `env list` (never shows passwords) |
-| Is the server reachable, and who am I on it | `env check --env dev` (VDP, and the marketplace if configured); `vdp.admin` — the profile's user is an administrator, so security policies do not apply to its own queries; `vdp.impersonation` — it may run a query as another user (`/denodo:security`) |
-| Verify the skills' own templates | `verify --env dev` runs the chain in `verification/chain.toml` and removes everything it made: its own test database, and the server-level `verify_` tags, user, role and global security policy beside it — its security checks read as that user by impersonation, so they need `vdp.impersonation: true`; `--with-marketplace` adds the REST tail, which also writes to the shared marketplace catalog and takes those entries back out during cleanup; `--with-ai` adds the steps that call the server's LLM and embedding model — about 40 paid requests, and they fail on a server without them; `--with-writes` adds the steps that create a table in the source database the manifest names (`[values]`, the server's cache data source by default) and insert, update and delete its rows through a view — the table is dropped in cleanup; `--testing-tool <dir>` adds the `.denodotest` templates of `/denodo:testing`, run by the Denodo Testing Tool installed in `<dir>` (Java on `PATH` or in `JAVA_HOME`); `--keep` leaves it all for inspection, `--update-marks` rewrites the `verified:` lines that passed, `--allow-destructive` is required on a production profile — without it the whole run is refused before it creates anything |
+| Is the server reachable, and who am I on it | `env check --env dev` (VDP, the marketplace if configured, and the Scheduler where the profile names a web container — `scheduler.server_version`, `mode`, `roles`; a missing Scheduler does not fail the check); `vdp.admin` — the profile's user is an administrator, so security policies do not apply to its own queries; `vdp.impersonation` — it may run a query as another user (`/denodo:security`) |
+| Verify the skills' own templates | `verify --env dev` runs the chain in `verification/chain.toml` and removes everything it made: its own test database, and the server-level `verify_` tags, user, role and global security policy beside it — its security checks read as that user by impersonation, so they need `vdp.impersonation: true`; `--with-marketplace` adds the REST tail, which also writes to the shared marketplace catalog and takes those entries back out during cleanup; `--with-ai` adds the steps that call the server's LLM and embedding model — about 40 paid requests, and they fail on a server without them; `--with-writes` adds the steps that create a table in the source database the manifest names (`[values]`, the server's cache data source by default) and insert, update and delete its rows through a view — the table is dropped in cleanup; `--with-scheduler` adds the Scheduler tail — a `verify_` project with a cache job and a CSV export job, run and then deleted with the project; the export leaves its file in the Scheduler's default export folder; `--testing-tool <dir>` adds the `.denodotest` templates of `/denodo:testing`, run by the Denodo Testing Tool installed in `<dir>` (Java on `PATH` or in `JAVA_HOME`); `--keep` leaves it all for inspection, `--update-marks` rewrites the `verified:` lines that passed, `--allow-destructive` is required on a production profile — without it the whole run is refused before it creates anything |
 
 Prefix every command with `${CLAUDE_PLUGIN_ROOT}/scripts/denodo`. Keep results
 readable: `--max-rows N` (default 100) caps every result set; `row_count` is the
@@ -74,7 +75,7 @@ one in one session. On the first failure execution **stops**: statements before
 The server message you match against the error reference is
 `statements[failed_at].error.message`.
 
-**`api`** returns `status` separately from `body`; `body` is often `null` (`200`,
+**`api`** returns `server` (`marketplace` or `scheduler`) and `status` separately from `body`; `body` is often `null` (`200`,
 `403`, `404`, `409` all come with an empty body). `ok` is true only for 2xx. Some
 marketplace calls report failure inside a `200`: `POST /tags/{id}/views` answers
 with the list of ids it could *not* assign — success is an empty list.
@@ -170,9 +171,14 @@ the marketplace `POST`s that replace a whole set or delete what is missing from 
 — `tags/vdp/synchronize`,
 `element-management/{all,DATABASES,VIEWS,WEBSERVICES,EXTERNAL_ELEMENTS}/synchronize`, the
 `external-tool-servers/synchronize` family, `views/{id}/tags`,
-`category-management/views/{id}/categories` and `property-management/views/{id}/groups`.
-Every result carries a `destructive` field: the
-kind (`drop`, `alter`, `delete`, `write`, `setting`, `procedure`, `cache`, `security`, `table`, `replace`) when it is one of
+`category-management/views/{id}/categories` and `property-management/views/{id}/groups`; on the
+Scheduler (`--server scheduler`), every `DELETE` and report deletion, every `PUT` of a job, a
+project or a data source (`alter` — it replaces the whole object), a job's `status` change —
+start, stop, enable, disable (`job`) — the creation of a job by what it will run (a cache job
+`cache`, a VDP job the kind of its VQL statement, or `write` for any exporter — a table, an
+index or a file), and configuration, roles, passwords and a metadata import (`setting`, `security`,
+`replace`). Every result carries a `destructive` field: the
+kind (`drop`, `alter`, `delete`, `write`, `setting`, `procedure`, `cache`, `security`, `table`, `replace`, `job`) when it is one of
 these, and `null` — not `false` — when it is not. Session settings come back `null` and pass on
 any profile: `SET QUERYTIMEOUT TO …` (property name unquoted) and `ALTER SESSION SET
 'querytimeout' = …` last until the connection closes; a quoted property after a bare `SET` is
@@ -230,6 +236,6 @@ rows — the SELECT is what catches it.
 
 Writing the VQL or choosing where an object lives: `/denodo:vql` (conventions,
 safety, idempotency) and the domain skills `/denodo:catalog`, `/denodo:datasources`,
-`/denodo:views`, `/denodo:marketplace`, `/denodo:procedures`, `/denodo:cache`, `/denodo:semantics`, `/denodo:metrics`, `/denodo:security`, `/denodo:ai`, `/denodo:dml`, `/denodo:materialize`, `/denodo:testing`. Trigger phrase confusion: VDP tags
+`/denodo:views`, `/denodo:marketplace`, `/denodo:procedures`, `/denodo:cache`, `/denodo:semantics`, `/denodo:metrics`, `/denodo:security`, `/denodo:ai`, `/denodo:dml`, `/denodo:materialize`, `/denodo:testing`, `/denodo:scheduler`. Trigger phrase confusion: VDP tags
 (`CREATE TAG`, VQL) and marketplace tags (`POST /public/api/tags`, REST) are
 different objects on different servers; the tool does not translate between them.

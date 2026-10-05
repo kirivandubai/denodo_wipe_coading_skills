@@ -1,6 +1,6 @@
 ---
 name: vql
-description: Use when doing anything with Denodo — creating or changing a database, folder, tag, data source, wrapper, base view, derived view, interface view, metric view, association, or a Data Marketplace object; writing or fixing VQL; deciding where an object lives and what to name it; "build a mart", "connect a source", "vibe-code on Denodo". Start here when the request is ambiguous: this skill holds the working loop, the naming conventions, the safety rule and the map of the other Denodo skills.
+description: Use when doing anything with Denodo — creating or changing a database, folder, tag, data source, wrapper, base view, derived view, interface view, metric view, association, a Data Marketplace object or a Scheduler job; writing or fixing VQL; deciding where an object lives and what to name it; "build a mart", "connect a source", "vibe-code on Denodo". Start here when the request is ambiguous: this skill holds the working loop, the naming conventions, the safety rule and the map of the other Denodo skills.
 ---
 
 # Working with Denodo
@@ -128,6 +128,7 @@ it just means the verification is yours to do, with `DESC` and a `SELECT`.
 | — | who may read what: a role, a user or a global security policy, created or changed, a grant of a role or a privilege to a person, or a tag that a policy names put on or taken off a column — unless every object it touches was created by you in this session. A `CREATE` counts: a new policy restricts people who exist, and `CREATE OR REPLACE` of an existing role adds to it (`/denodo:security`) |
 | `…_AI` calls on `Dual()` — to see that the server answers, or to try an expression on up to three texts — and a search whose text is embedded once | an AI function — `CLASSIFY_AI`, `SENTIMENT_AI` and the rest, or an embedding computed per row — evaluated on the rows of a view, a cache load of a view with such a column included: every row is a paid request to an outside provider, and its text goes with it. The human agrees to the number of requests, or names a ceiling (`/denodo:ai`) |
 | — | a predefined procedure that changes state, however it is spelled: `SELECT * FROM DROP_REMOTE_TABLE(…)`, `CALL CLEAN_CACHE_DATABASE(…)`, `GENERATE_STATS(…)` — `CREATE_REMOTE_TABLE` of a new table, above, is the exception — the list is in `/denodo:procedures` |
+| a Scheduler job created disabled — it runs nothing — and one whose runs touch only what you created in this session; every Scheduler `GET` (`/denodo:scheduler`) | enabling, starting or changing a Scheduler job whose runs reload a cache, refresh a table or write a file that existed before this session — the job is that statement, every time it fires — and anything on a job that existed before this session (`/denodo:scheduler`) |
 | `GET` calls to the marketplace | every destructive marketplace call (below) |
 | — | **any change at all on a profile with `production: true`, `CREATE` included** |
 
@@ -230,6 +231,7 @@ different figures depending on what Denodo pushes down to the source.
 | The result of a query stored as a table — a remote table other tools read and its `REFRESH`, a frozen snapshot, a summary the optimizer answers aggregates from, a data movement for a slow federated join, a materialized table | `/denodo:materialize` |
 | What people and AI consumers read about existing views — descriptions, primary keys, associations, the tag the MCP Server shows views by; "why does the agent not see this view" | `/denodo:semantics` |
 | Regression tests a CI runs — `.denodotest` files for the Denodo Testing Tool beside the `.vql`, the tool's configuration from a profile, a red suite after a change | `/denodo:testing` |
+| Work on a schedule — a nightly cache refresh, a `REFRESH` or a CSV export at a set time, running, pausing or reading a Denodo Scheduler job (REST) | `/denodo:scheduler` |
 | Running anything against a live server, reading its errors | `/denodo:execute` |
 
 There is no skill for the `SELECT` itself — an ad-hoc question, a report, the body of a

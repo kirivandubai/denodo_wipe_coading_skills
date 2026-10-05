@@ -33,8 +33,10 @@ Rules of the load itself:
 - `'cache_invalidate'` without `'cache_preload'` changes nothing on a full cache. *live*
 - Over a view whose cache is off, it answers `ok` and loads nothing: switching the cache on
   afterwards gives 0 rows. A refresh job left running after `CACHE OFF` fails silently. *live*
-- A Scheduler cache job builds this query from its options; its *Invalidate* option defaults
-  to *Matching rows* for a new job (documentation) — set *All rows*.
+- A Scheduler cache job builds this query from its options; its *Invalidate* option
+  (`cacheInvalidationMode`) defaults to `NONE` for a new job — in the API and in the 9.5.1
+  administration tool, against the documentation's *Matching rows* — so every run appends. Set
+  `ALL_ROWS` (`/denodo:scheduler`). *live*
 
 ## `ALTER VIEW … CACHE` (`ALTER TABLE … CACHE` for a base view)
 
@@ -125,6 +127,6 @@ the database; `GET_CACHE_TABLE` needs the Metadata privilege on the view (docume
 | Time to live (`TIMETOLIVEINCACHE`) | Design Studio; a full cache is invalidated by loads, not by time |
 | Incremental loads (`'@LAST_REFRESH_DATE'`, `'matching_pk'`, `CACHE FULL INCREMENTAL`) | Design Studio |
 | Cache indexes (`DECLARE CACHE INDEX`), custom table name, table templates, schema evolution (`ONSCHEMACHANGE`), batch size | Design Studio |
-| Refresh on a schedule | Scheduler (Simple or DAG Cache Management job); the load statement is the job's query |
+| Refresh on a schedule | a Scheduler cache job, `/denodo:scheduler`; its load query is this statement. DAG Cache Management jobs: the Scheduler administration tool |
 | Enabling the cache for the server or a database, choosing the cache data source | the administrator, Design Studio |
 | Remote tables, materialized tables, summaries | not a cache — `/denodo:materialize` |

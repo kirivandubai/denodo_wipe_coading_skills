@@ -85,6 +85,7 @@ Virtual DataPort — основной адресат, но не единстве
 /denodo:dml           rows changed through a view: INSERT, UPDATE, DELETE, the generated key back, a view an application writes through, upserts (T33, beyond v1)
 /denodo:materialize   query results stored as tables: remote tables and REFRESH, summaries, data movement, materialized tables (T34, beyond v1)
 /denodo:testing       regression tests: .denodotest files run by the Denodo Testing Tool, its configuration written from a profile (T35, beyond v1)
+/denodo:scheduler     work on a schedule: Denodo Scheduler cache jobs and VDP jobs (one statement, a CSV export), run, enable, disable, reports — REST (T36, beyond v1)
 ```
 
 The dialect has no skill of its own (section 9): it is a table in the body of `/denodo:vql`
@@ -163,9 +164,12 @@ denodo_skills/                        репозиторий = плагин = м
 │   ├── materialize/
 │   │   ├── SKILL.md
 │   │   └── references/               remote-tables (procedure, command, types, REFRESH, materialized and temporary tables), summaries (grammar, rewrite measured, staleness, data movement)
-│   └── testing/
+│   ├── testing/
+│   │   ├── SKILL.md
+│   │   └── references/format.md      the .denodotest format as the Testing Tool runs it: parsing, comparison rules measured, SETUP/TEARDOWN, exit codes, the configuration
+│   └── scheduler/
 │       ├── SKILL.md
-│       └── references/format.md      the .denodotest format as the Testing Tool runs it: parsing, comparison rules measured, SETUP/TEARDOWN, exit codes, the configuration
+│       └── references/rest-api.md    the Scheduler calls, every field of a cache job, a VDP job and the CSV exporter with its default, reports, triggers
 ├── scripts/
 │   ├── denodo                        launcher (только stdlib)
 │   └── denodo_cli/                   реализация
@@ -323,6 +327,23 @@ new table: on a production profile every change waits for the yes.
 EXTERNAL_ELEMENTS}/synchronize`, а пути `views/{id}/categories` в API вовсе нет — «сет»-вызов
 для категорий живёт под `category-management/`.
 
+**The Scheduler's HTTP rule (T36).** On the Scheduler (`api --server scheduler`) every `PUT`
+replaces the whole object it names — a job, a project, a data source — and is `alter`; a
+job's `status` change (start, stop, enable, disable) is `job`; every `DELETE` and report
+deletion is `delete`; configuration, roles, passwords and a metadata import are `setting`,
+`security` and `replace`. A new job is classified by what it will run on every trigger with
+nobody watching — a cache job `cache`, a VDP job the kind of its VQL statement (`REFRESH` →
+`table`, `DROP` → `drop`), any exporter `write` (a table, an index, or a file each run
+overwrites) — the one place the
+classifier reads a body, because there the body is the operation. The rule the skill teaches:
+**a job is its statement, run every time it fires.** Creating a job disabled changes nothing
+and is the agent's — it is how the server shows the job before anyone agrees to it; enabling it
+needs whatever running its statement now would need (a reload of a cache somebody reads, a
+`REFRESH` of an older table, a write over a file not created in the session), and so does a
+start; anything on a job that existed before the session is the human's. A job whose runs
+touch only what the agent created in the session is the agent's, enabled and run. The marker
+on a production profile is the same as everywhere: every change waits.
+
 **Для VQL правило дополняется именем вызываемой процедуры.** Предопределённые процедуры,
 меняющие состояние, вызываются как чтение — `SELECT … FROM DROP_REMOTE_TABLE(…)`,
 `CALL CLEAN_CACHE_DATABASE(…)` — и по первому ключевому слову не ловятся. Инструмент
@@ -409,7 +430,7 @@ denodo_cli/
   transports/
     vql_psycopg2.py     denodo+psycopg2, порт 9996        (по умолчанию)
     vql_flightsql.py    denodo+flightsql, порт 9994       (VDP 9.1+)
-    api_rest.py         REST: Data Marketplace, каталог   (то, чего нет в VQL)
+    api_rest.py         REST: Data Marketplace, the Scheduler (T36)   (то, чего нет в VQL)
 ```
 
 Единый контракт `execute(vql) -> rows | error`. Новый транспорт — это один файл и строка
@@ -421,6 +442,7 @@ denodo_cli/
 scripts/denodo vql run   --env dev model/sales/views.vql     файл, '-' (stdin) или -e "VQL"
 scripts/denodo vql desc  --env dev bv_orders [--vql] [--type "datasource df"]
 scripts/denodo api get   --env dev /public/api/tags/count   [--param k=v] [--json …] [--part …]
+scripts/denodo api --server scheduler get --env dev /public/api/projects   the Scheduler's REST API (T36)
 scripts/denodo env list | check --env dev | init            профили; init — интерактивно
 scripts/denodo secret encrypt --env dev       пароль источника со stdin → шифр (T15)
 scripts/denodo testing run --env dev --database sales_analytics --tool <dir> tests/   the Denodo Testing Tool on a folder of tests (T35)
@@ -437,9 +459,9 @@ scripts/denodo verify    --env dev            прогон шаблонов, с�
   ничего после неё, без отката, — так что клиентское разбиение ничего не меняет в
   семантике, но даёт точную диагностику. `CONNECT DATABASE` в файле работает, потому что
   сессия одна на весь прогон.
-- **Разрушительные операции помечаются в ответе** (`destructive: drop|alter|delete|write|setting|procedure|cache|security`
+- **Разрушительные операции помечаются в ответе** (`destructive: drop|alter|delete|write|setting|procedure|cache|security|table|job`
   для VQL — по ключевому слову и по имени вызванной процедуры, and by `CONTEXT` for a cache write (T27), and by the security statement (T31); `delete|replace` для HTTP —
-  по методу и пути, раздел 6.3) и на профиле с
+  по методу и пути, раздел 6.3; on the Scheduler also `alter`, `job` and the kind of a new job's statement, T36) и на профиле с
   `production = true` отклоняются до исполнения без флага `--allow-destructive`. Само
   подтверждение человеком остаётся правилом ядра: флаг лишь не даёт выполнить такое молча.
 - **Коды выхода:** `0` — успех, `1` — сервер отказал, `2` — ошибка вызова, конфигурации или
@@ -462,6 +484,19 @@ scripts/denodo verify    --env dev            прогон шаблонов, с�
   provider, or another refusal). This replaces the second, non-administrator profile the
   roadmap asked for (decision 9.3): impersonation checks a policy as each user or role
   without a password, where a second profile needs one per user and checks only that one.
+- **The Scheduler is the second REST server (T36).** `api --server scheduler` sends the call to
+  the Scheduler administration tool with the profile's account (HTTP Basic) and adds the `uri`
+  query parameter naming the Scheduler server unless the call gives one, as the marketplace
+  transport adds `serverId`. The profile may name both (`scheduler_url`, `scheduler_uri`);
+  without them the address is the origin of `marketplace_url` (or `http://<host>:9090`) plus
+  `/webadmin/denodo-scheduler-admin` and the server `//<host>:8000` — the administration tool is
+  a web application of the same web container, so an existing profile needs no edit, and older
+  copies of the tool, which reject an unknown field, keep working. `env check` reports
+  `scheduler` (version, mode, the user's Scheduler roles) where the profile names a web
+  container; an installation without a Scheduler does not fail the check. The baseline runs of
+  T36 had no channel: one loaded the profile's password through the plugin's own loader into a
+  helper, four tried `api get ../webadmin/…` to carry the marketplace's account to the
+  Scheduler. `api` now refuses a path with a `..` segment on either server.
 
 ### 7.4 Правила
 
@@ -487,6 +522,8 @@ scripts/denodo verify    --env dev            прогон шаблонов, с�
   production = false
   transport = "vql_psycopg2"  # по умолчанию; vql_flightsql заложен, но не в v1
   marketplace_url = "http://localhost:9090/denodo-data-catalog"   # без него `api` недоступна
+  # scheduler_url = "http://localhost:9090/webadmin/denodo-scheduler-admin"   # T36; default: the web container of marketplace_url
+  # scheduler_uri = "//localhost:8000"                                         # T36; the Scheduler server as the admin tool reaches it
   # marketplace_server_id = 1                                      # обязателен при нескольких VDP
   # jdbc_port = 9999                                               # only for `testing config` (T35)
   ```
@@ -541,7 +578,7 @@ scripts/denodo verify    --env dev            прогон шаблонов, с�
 ```
 
 **Шаблон не обязан быть VQL.** Часть платформы живёт вне Virtual DataPort: Data
-Marketplace управляется REST-вызовами, и тем же способом добавятся Scheduler и Solution
+Marketplace управляется REST-вызовами, и тем же способом добавлен Scheduler (T36) и добавится Solution
 Manager. Поэтому «минимальный шаблон» — это минимальный рабочий вызов в том канале,
 которому принадлежит объект: строка VQL либо запрос через `scripts/denodo api`. Остальные
 четыре блока и статус верификации от канала не зависят. Формат описан через каналы, а не
@@ -796,6 +833,22 @@ step passes on exit code 0 **and** a summary of one test run and one OK: the lau
 after printing its usage, and a file it does not recognise is skipped. The plan template runs
 over the remote table of the write steps, so it also needs `--with-writes`.
 
+**The Scheduler tail — behind `--with-scheduler` (T36).** Its objects are server-wide like the
+marketplace's, so a default run never touches them. The steps create a `verify_` project, a
+cache job over `iv_household_income` while its full cache is on — created disabled, read back,
+enabled, run twice, and the cache then holds every household once, which is the claim of its
+`ALL_ROWS` line — a `PUT` of the job's file with its id that keeps the schedule, and a CSV
+export job created, enabled and run. `[cleanup] http` deletes the project, its jobs and their
+reports. Three mechanics came with it: an `api` line may name its server (`--server`) and read
+its body from a file (`--json-file`), which the step maps to a json block of the same skill
+(`files`), so the run sends the text the skill shows; a capture may read an earlier call of the
+step (`capture_from`) and a value a step captures may be named by its own later calls; `poll`
+repeats the step's last call until a field has a value — a started job runs on its own, and its
+report exists only when the run ends — and `capture` and `expect_body` take nested fields
+(`a.b.0.c`). The VDP data source the jobs run through is `[values] scheduler_data_source_id`:
+creating one needs a password. The export leaves one file in the Scheduler's default export
+folder, overwritten by every run; no API call removes it.
+
 **Маркетплейс — по флагу `--with-marketplace`, по умолчанию выключенному.** Его объекты
 серверные, а не пообъектные по базам, и цепочке предшествует синхронизация общего
 каталога — единственная операция набора, меняющая состояние за пределами своей базы.
@@ -885,7 +938,7 @@ elements Data Marketplace), `query` в объёме минимальной де�
 - производительность и кэш — summary views, materialized tables, remote tables, MPP;
 - безопасность и публикация — пользователи, роли, привилегии, row/column restrictions,
   REST/SOAP/GraphQL/OData сервисы;
-- Scheduler, Solution Manager, деплой между средами;
+- Solution Manager, деплой между средами (Scheduler — beyond v1 since T36, below);
 - flightsql-транспорт (заложен структурно, но не реализуется);
 - собственный MCP-сервер;
 - версии Denodo кроме 9.5.
@@ -1019,6 +1072,30 @@ after printing its usage. It cost the execution layer `testing run`, `testing co
 profile's `jdbc_port` (section 7.4), and the verification chain the `denodotest` channel behind
 `--testing-tool` (section 11.1), which runs its six templates through the code of `testing
 run`.
+
+**Also beyond v1, `/denodo:scheduler`** (T36, the roadmap's "later" item 4.12, taken as the
+next task once every wave was closed): work on a schedule through the REST API of the Denodo
+Scheduler administration tool — a cache job that reloads the full cache of views, a VDP job
+that runs one statement (`REFRESH`, a `CALL`) or exports a `SELECT` to a CSV file on the
+Scheduler host; running, stopping, enabling and disabling a job; its status and reports.
+Data sources (they hold a password), the other job types, other exporters, handlers, retries,
+trigger conditions, dependencies and the server's configuration stay in the administration
+tool. Its rule: a job is its statement, run every time it fires — created disabled by the
+agent, enabled on the yes its statement needs. Measured on 9.5.1: a new cache job's
+invalidation mode is `NONE` in the API and in the 9.5.1 administration tool, against the
+documentation's *Matching rows* — every run appends and reports `COMPLETE`; a load process
+without `loadProcessName` or `parameterizedQuery` is accepted and fails every run; a trigger has
+no time zone, the cron fires on the server's clock and `nextExecution` is UTC; a five-field cron
+and a `start` of a disabled job answer only `500 Internal error`; a `PUT` replaces the whole job
+— without `triggerSection` the job loses its schedule, without `handlerSection` the call fails;
+an unescaped `@` fails every run, not the creation; the CSV exporter by default writes no header
+and a new timestamped file per run, and with `allowEmptyFile: false` an empty run deletes the
+previous file; a job may use a VDP data source of another project, and runs as its login in the
+database of its URI; a run's report exists only when it ends. It cost the execution layer the
+Scheduler transport, the profile's `scheduler_url` and `scheduler_uri`, the classifier's
+Scheduler rules with the `job` kind, the `scheduler` section of `env check` and the refusal of
+`..` in a path (section 7.3), and the verification chain the Scheduler tail behind
+`--with-scheduler` (section 11.1).
 
 ## 13. Риски и открытые вопросы
 

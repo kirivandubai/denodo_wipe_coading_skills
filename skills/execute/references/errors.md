@@ -136,6 +136,15 @@ Repeated `DELETE` is not idempotent across object types: `500` for tags, `200` f
 categories, `404` for element types and servers. Look up by name before deleting
 instead of relying on the status.
 
+## 2a. Scheduler HTTP (`api --server scheduler`)
+
+The Scheduler answers in the shape `{"status": "<code> <REASON>", "timestamp": …, "message": …}`,
+with `subErrors` for a validation failure. Its `500 Internal error. If the error persists,
+contact your administrator.` is the answer to several different mistakes — a five-field cron,
+`start` on a disabled job, a `PUT` without a section — and a job accepted on creation can
+still fail every run. The table of what each answer means is in `/denodo:scheduler`, "Common
+errors"; a run's own errors are in its report, not in the call's answer.
+
 ## 3. Client-side (`error.kind`)
 
 | `kind` | Exit | Message | Action |
@@ -150,6 +159,8 @@ instead of relying on the status.
 | `config` | 2 | profile has no `marketplace_url` (from `api`) | the human adds `marketplace_url` to the profile |
 | `connection` | 1 | `connection to server at "host", port N failed: Connection refused` | VDP not running or wrong host/port; `env check` |
 | `connection` | 1 | `<urlopen error [Errno 61] Connection refused>` (from `api`) | marketplace not running or wrong `marketplace_url` |
+| `connection` | 1 | `<urlopen error …>` (from `api --server scheduler`) | the web container is down, or `scheduler_url` is wrong; `env check` shows the address it used |
+| `usage` | 2 | `the path '…' contains a '..' segment; nothing was sent` | a path under the server's own base URL; the Scheduler is `--server scheduler` |
 | `connection` | 1 | `authentication error: The username or password is incorrect` | wrong password in the profile |
 | `refused` | 2 | `profile 'x' is marked production and … destructive …; nothing was executed` | show `error.destructive` to the human; flag only after their yes |
 | `environment` | 3 | `the Denodo driver stack is not importable` + `hint` | show the hint verbatim; the launcher normally handles this |

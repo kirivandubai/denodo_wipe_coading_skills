@@ -48,7 +48,8 @@ Naming follows Denodo's own *VDP Naming Conventions* out of the box (`ds_`, `bv_
   here is tested against 8.x or earlier 9.x releases.
 - Network access to Virtual DataPort (port `9996` by default; the profile sets it) with an
   account allowed to create objects. Data Marketplace (`9090` by default) only if you use
-  `/denodo:marketplace`.
+  `/denodo:marketplace`; the Scheduler administration tool, on the same web container, only if
+  you use `/denodo:scheduler`.
 - **Python 3.11 or newer** on `PATH`. Nothing else: the plugin's own launcher builds its
   environment on first run — with `uv` if you have it, otherwise a venv under
   `~/.claude/plugins/data/denodo/`. Do not install database drivers by hand.
@@ -96,10 +97,12 @@ transport = "vql_psycopg2"
 marketplace_url = "http://localhost:9090/denodo-data-catalog"  # only for /denodo:marketplace
 # marketplace_server_id = 1    # required when the marketplace has several VDP servers registered
 # jdbc_port = 9999             # only for /denodo:testing: the JDBC port the Testing Tool connects to
+# scheduler_url = "http://localhost:9090/webadmin/denodo-scheduler-admin"  # /denodo:scheduler; default: marketplace_url's web container
+# scheduler_uri = "//localhost:8000"                                       # the Scheduler server, as the admin tool reaches it
 ```
 
 Then ask Claude to check the connection — `env check` reaches VDP and, if configured, the
-marketplace. `env list` shows the profiles on the machine and never prints passwords.
+marketplace and the Scheduler. `env list` shows the profiles on the machine and never prints passwords.
 `env check` also reports whether the profile's user is an administrator (`vdp.admin`) and
 whether it may run a query as another user (`vdp.impersonation`, the `impersonator` role):
 security policies do not apply to administrators, so `/denodo:security` checks a policy by
@@ -142,6 +145,7 @@ phrasing; `/denodo:vql` is the entry point when the request is ambiguous.
 | `/denodo:dml` | rows changed in the database behind a view: update, insert (with the generated key back) and delete by key, a view an application writes through, rows copied from another view or a file, upserts — each previewed, with an undo file, applied only after your yes | VQL |
 | `/denodo:materialize` | query results stored as tables: a remote table other tools read and its refresh, a frozen snapshot, a summary the optimizer answers aggregate queries from, a data movement for a slow federated join, a materialized table — a new table where you said is created by the agent, anything that replaces, empties or drops an older one waits for your yes | VQL |
 | `/denodo:testing` | regression tests for your data products: `.denodotest` files beside the project's `.vql`, run by Denodo's own Testing Tool — a mart's totals against its input, a unique key, nothing invalid, the contract's columns, the rows a consumer reads, a mart that runs in its database; the tool's configuration written from the profile, outside the repository | Testing Tool |
+| `/denodo:scheduler` | work on a schedule in Denodo Scheduler: a cache job that reloads the full cache of views, a job that runs one statement (`REFRESH`, a procedure) or exports a view to a CSV file; running, stopping, enabling and disabling jobs, reading their reports — a new job is created disabled and enabled after your yes when it touches what others read; data sources and every other job type stay in the administration tool | REST |
 
 **A "tag" alone does not say which server you mean.** Virtual DataPort tags
 (`CREATE TAG`, VQL) and Data Marketplace tags (REST) are different objects on different
@@ -157,8 +161,9 @@ useful on its own. So are `/denodo:cache`, for the full cache of a view only,
 `/denodo:semantics`, for the Virtual DataPort half of view metadata, `/denodo:metrics`,
 for metric views, `/denodo:security`, for roles and global security policies,
 `/denodo:ai`, for the LLM functions and semantic search, `/denodo:dml`, for writes through
-views, `/denodo:materialize`, for query results stored as tables, and `/denodo:testing`, for
-regression tests run by the Denodo Testing Tool.
+views, `/denodo:materialize`, for query results stored as tables, `/denodo:testing`, for
+regression tests run by the Denodo Testing Tool, and `/denodo:scheduler`, for cache refreshes,
+statements and CSV exports on a schedule.
 
 Created in Design Studio, not by the agent: every data source beyond a delimited or JSON file
 on the server and a JDBC table with a password — REST APIs, Excel, XML, Salesforce, SAP, cloud
@@ -171,8 +176,9 @@ tables, MPP); security beyond roles and global security policies (user accounts 
 passwords, LDAP, per-role row and column restrictions, custom policies); configuring the
 LLM, the embedding model or the vector database, and generating embeddings for a table;
 publication
-(REST/SOAP/GraphQL/OData services); Scheduler,
-Solution Manager and cross-environment deployment; Denodo versions other than 9.5.
+(REST/SOAP/GraphQL/OData services); Scheduler data sources and job types beyond a cache job and
+a one-statement job; Solution Manager and cross-environment deployment; Denodo versions other
+than 9.5.
 
 Every template carries its verification status in a comment on the line above it —
 `verified: 9.5.1 (live, <date>)` when it has been run against a live 9.5.1 server, or
@@ -197,7 +203,9 @@ default:
 - The same applies over REST, stated by method and path rather than by verb: several
   marketplace `POST` calls are destructive — synchronisation endpoints remove entries that
   vanished from the snapshot, and the tag- and category-assignment calls *replace* a
-  view's assignments instead of adding to them.
+  view's assignments instead of adding to them. On the Scheduler every `PUT` replaces a
+  whole job, a status change starts, stops, enables or disables one, and a new job is judged by
+  the statement it will run every night.
 - **Passwords never appear in a command.** Server credentials come from the profile. A
   *data source* password — the one that has to end up in `USERPASSWORD … ENCRYPTED` — is
   turned into its cipher by `secret encrypt`, which reads it from a hidden prompt or

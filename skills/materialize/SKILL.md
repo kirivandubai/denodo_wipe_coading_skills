@@ -24,8 +24,9 @@ is replaced in a system other people and programs use. That is what the rule bel
 This skill covers creating, loading, refreshing and dropping them, and choosing between them.
 The full cache of a view is `/denodo:cache`; inserting, updating or deleting rows of a table
 that exists is `/denodo:dml`; the views they are built from are `/denodo:views`; a JDBC data
-source is `/denodo:datasources`. **Nothing here schedules anything**: a nightly refresh is a
-job in Denodo Scheduler or the team's own scheduler that runs a file from this skill — say so.
+source is `/denodo:datasources`. **Nothing here schedules anything**: a nightly `REFRESH` is a
+Denodo Scheduler job (`/denodo:scheduler`) or the team's own scheduler running a file from this
+skill.
 
 ## What a stored result does
 
@@ -241,8 +242,10 @@ FROM bv_dwh_household_income;
   it; the next `REFRESH` loads by the new query. `ALTER TABLE … DATA_LOAD_QUERY` is a syntax
   error. The new query must return the table's columns; on a table older than this session both
   steps wait for the yes.
-- **Who runs it:** the human's scheduler, after the sources are loaded, with an alert on failure
-  — the file and the time go into the message. Nothing in this plugin runs it at night.
+- **Who runs it:** a Denodo Scheduler job (`/denodo:scheduler`) or the human's own scheduler,
+  after the sources are loaded, with an alert on failure — the file and the time go into the
+  message. A job that refreshes a table older than this session is that `REFRESH`, every night:
+  the same yes.
 
 ### A summary — created unloaded, proved by the plan, then loaded
 
@@ -427,7 +430,7 @@ WHERE base_view_database_name = 'sales_analytics' AND base_view_name = 'bv_dwh_h
 | The target data source and schema | **the human** — a data source in the project or the team's shared one; never a default you found |
 | The table name | the human, or the warehouse's conventions; the summary's `s_` prefix (`/denodo:vql`) |
 | The query | the view the readers need, every column named |
-| How often it is refreshed, and by what | the human's scheduler; the file is yours |
+| How often it is refreshed, and by what | the human; a Scheduler job is `/denodo:scheduler`; the file is yours |
 | The yes | the human, for everything in the right-hand column of the rule |
 
 ## Verify
