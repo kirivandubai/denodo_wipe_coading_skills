@@ -16,6 +16,7 @@ from .commands import EXIT_ENVIRONMENT, EXIT_USAGE
 from .commands.api import api_call, parse_multipart_specs, parse_params
 from .commands.env import check_environment, init_environment, list_environments
 from .commands.secret import encrypt_password
+from .commands.testing import DEFAULT_DB_ADAPTER, run_testing_tool, write_testing_config
 from .commands.vql import describe, run_statements
 from .commands.verify import ChainError, load_chain, run_chain
 from .output import envelope, to_json
@@ -89,6 +90,38 @@ def build_parser() -> argparse.ArgumentParser:
                       help="encrypt a password for USERPASSWORD … ENCRYPTED; the password is typed into a "
                            "hidden prompt or piped in on stdin, never passed as an argument")
 
+    testing = top.add_parser("testing", help="the Denodo Testing Tool").add_subparsers(dest="action",
+                                                                                     required=True)
+    testing_config = testing.add_parser(
+        "config", parents=[env_opt],
+        help="write the Testing Tool's configuration.properties from a profile, beside the profiles file "
+             "and never into a git work tree; the password goes into the file, not into the output")
+    testing_config.add_argument("--database", help="database the tests connect to (default: the profile's)")
+    testing_config.add_argument("--output", metavar="PATH",
+                                help="where to write it instead of <profiles dir>/testing/<env>/<database>.properties; "
+                                     "refused inside a git work tree unless the repository ignores the path")
+    testing_config.add_argument("--db-adapter", default=DEFAULT_DB_ADAPTER,
+                                help="folder of the VDP JDBC driver under the tool's drivers/ "
+                                     f"(default: {DEFAULT_DB_ADAPTER})")
+    testing_config.add_argument("--allow-destructive", action="store_true",
+                                help="required on a production profile: the tool runs a suite's SETUP and "
+                                     "TEARDOWN statements unchecked")
+    testing_run = testing.add_parser(
+        "run", parents=[env_opt],
+        help="run a folder (or file) of .denodotest tests with the Denodo Testing Tool, its configuration in a "
+             "temporary file for this run only; answers with the exit code, the summary and each test")
+    testing_run.add_argument("tests", help="a .denodotest file or a folder of them")
+    testing_run.add_argument("--database", help="database the tests connect to (default: the profile's)")
+    testing_run.add_argument("--tool", metavar="DIR",
+                             help="directory the Testing Tool was unzipped into (default: $DENODO_TESTING_TOOL_HOME)")
+    testing_run.add_argument("--java-home", metavar="DIR",
+                             help="Java 17+ for the tool (default: JAVA_HOME of the environment, else java on PATH)")
+    testing_run.add_argument("--db-adapter", default=DEFAULT_DB_ADAPTER,
+                             help=f"folder of the VDP JDBC driver under the tool's drivers/ (default: {DEFAULT_DB_ADAPTER})")
+    testing_run.add_argument("--allow-destructive", action="store_true",
+                             help="required on a production profile: the tool runs a suite's SETUP and "
+                                  "TEARDOWN statements unchecked")
+
     env = top.add_parser("env", help="environment profiles").add_subparsers(dest="action", required=True)
     env.add_parser("list", help="profiles known on this machine (never shows passwords)")
     env.add_parser("check", parents=[env_opt], help="connect to VDP (and Data Marketplace if configured); report whether the user is an administrator and may impersonate")
@@ -106,6 +139,9 @@ def build_parser() -> argparse.ArgumentParser:
     verify.add_argument("--with-writes", action="store_true",
                         help="also run the steps that create a table in the source database named in the "
                              "manifest and insert, update and delete its rows")
+    verify.add_argument("--testing-tool", metavar="DIR",
+                        help="also run the .denodotest templates with the Denodo Testing Tool installed in DIR "
+                             "(its bin/denodo-test.sh needs Java on PATH or in JAVA_HOME)")
     verify.add_argument("--keep", action="store_true", help="leave the created objects on the server")
     verify.add_argument("--update-marks", action="store_true",
                         help="rewrite the verified: mark of every template step that passed")
@@ -201,6 +237,19 @@ def _dispatch(args) -> tuple[dict, int]:
                                    continue_on_error=args.continue_on_error)
         doc["source"] = source
         return doc, code
+    if args.group == "testing" and args.action == "run":
+        tool = args.tool or os.environ.get("DENODO_TESTING_TOOL_HOME")
+        if not tool:
+            raise UsageError("no Testing Tool: pass --tool <the directory it was unzipped into> or set "
+                             "DENODO_TESTING_TOOL_HOME; the tool is a download from the Denodo support site")
+        return run_testing_tool(profile, tests=Path(args.tests), tool=Path(tool), database=args.database,
+                                java_home=Path(args.java_home) if args.java_home else None,
+                                db_adapter=args.db_adapter, allow_destructive=args.allow_destructive)
+    if args.group == "testing":  # config
+        return write_testing_config(profile, config_dir=profiles_path().parent / "testing",
+                                    database=args.database,
+                                    output=Path(args.output) if args.output else None,
+                                    db_adapter=args.db_adapter, allow_destructive=args.allow_destructive)
     if args.group == "secret":  # encrypt
         return encrypt_password(profile, _read_password(), transport_factory=resolve_vql_factory(profile))
     if args.group == "vql" and args.action == "desc":
@@ -228,6 +277,7 @@ def _dispatch(args) -> tuple[dict, int]:
                              rest_factory=resolve_rest_factory(), database=args.database,
                              with_marketplace=args.with_marketplace, with_ai=args.with_ai,
                              with_writes=args.with_writes,
+                             testing_tool=Path(args.testing_tool).expanduser().absolute() if args.testing_tool else None,
                              keep=args.keep,
                              update_marks=args.update_marks, allow_destructive=args.allow_destructive)
         except ChainError as exc:

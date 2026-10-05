@@ -140,6 +140,12 @@ may be a night old (`routing-materialize-summary`), and a `REFRESH` refused on a
 command made (`routing-materialize-symptom`) — the second names no statement, only the
 situation a summary is for.
 
+Three guard `/denodo:testing` (T35): tests for a mart that CI runs with the Denodo Testing Tool
+(`routing-testing`), something in the repository that tells a team, before a rewrite and on
+every CI run after it, whether a dashboard would see a difference (`routing-testing-safety-net`)
+— it names neither the tool nor a test — and a Testing Tool header mismatch after a view gained a
+column (`routing-testing-symptom`).
+
 **`discrimination`** — фразы на границах, где описания конкурируют. Каждый такой кейс несёт
 и положительный, и отрицательный грейдер, потому что проверяется именно выбор между двумя:
 
@@ -166,6 +172,7 @@ situation a summary is for.
 | `discrimination-dml-not-cache` | `dml` | `cache` |
 | `discrimination-cache-not-materialize` | `cache` | `materialize` |
 | `discrimination-materialize-not-dml` | `materialize` | `dml` |
+| `discrimination-views-not-testing` | `views` | `testing` |
 
 Первые две строки — тот самый риск, ради которого сьют и заводился: «тег» в VDP и «тег» в
 маркетплейсе — **разные объекты на разных серверах**, и перепутанный навык уйдёт корректным

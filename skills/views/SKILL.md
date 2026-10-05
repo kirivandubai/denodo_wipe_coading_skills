@@ -41,7 +41,7 @@ silently — keep them in the file (`/denodo:semantics`).
 ### Derived view
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-02)
+-- verified: 9.5.1 (live, 2026-10-05)
 CONNECT DATABASE sales_analytics;
 
 CREATE OR REPLACE VIEW iv_household_income
@@ -146,7 +146,7 @@ Clause order: `FOLDER` → `DESCRIPTION` → `PRIMARY KEY` → `TAGS` → `( fie
 ### Union — one entity from several views
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-02)
+-- verified: 9.5.1 (live, 2026-10-05)
 CONNECT DATABASE sales_analytics;
 
 CREATE OR REPLACE VIEW returns
@@ -211,7 +211,7 @@ One branch per source, and a constant column that says which source a row came f
 ### Arrays — `FLATTEN` to rows, `NEST` back
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-02)
+-- verified: 9.5.1 (live, 2026-10-05)
 CONNECT DATABASE sales_analytics;
 
 CREATE OR REPLACE VIEW iv_oms_order_lines
@@ -284,7 +284,7 @@ elements, a re-nested array), arrays inside registers, two arrays at once, and `
 ### Interface view — a contract you can re-implement
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-02)
+-- verified: 9.5.1 (live, 2026-10-05)
 CREATE OR REPLACE INTERFACE VIEW household_income (
         household_sk:int,
         income_band_sk:int,
@@ -352,7 +352,7 @@ not.
 ### Association — the relationship, recorded
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-02)
+-- verified: 9.5.1 (live, 2026-10-05)
 CREATE OR REPLACE ASSOCIATION a_income_band_household REFERENTIAL CONSTRAINT
     FOLDER = '/06 - associations'
     ENDPOINT income_band bv_household_demographics (0,*)
@@ -482,7 +482,7 @@ return *lines*. Publish both counts under names that say which is which
 a view that already has dependants, before anything is changed. Everything here only reads.
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-02)
+-- verified: 9.5.1 (live, 2026-10-05)
 -- Can ib_income_band_sk go from bv_income_band?
 -- 1. The views that name bv_income_band in their own definition. Only these can use its columns.
 SELECT used_by_database_name, used_by_name
@@ -677,6 +677,10 @@ So the read-back after any change to something that already existed is: `USED_BY
 before, `GET_VIEWS(… invalid only)` and `GET_ASSOCIATIONS().valid` after, then a `SELECT`
 through each dependant that matters — including the ones above an `INVALID` view, which
 still say `OK`.
+
+These read-backs, kept in files the team's CI runs on every change — the counts that add up,
+the unique key, nothing `INVALID`, the contract, the plan — are `/denodo:testing`, with the
+Denodo Testing Tool. A mart that will be rewritten later gets them before the rewrite.
 
 ## Common mistakes
 

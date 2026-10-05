@@ -323,5 +323,62 @@ class SecretCommandTest(CliHarness, unittest.TestCase):
         self.assertEqual(FakeVql.executed, [])
 
 
+class TestingCommandTest(CliHarness, unittest.TestCase):
+    """`testing config` writes the Testing Tool's file next to the profiles, never into the output."""
+
+    def test_the_file_is_written_beside_the_profiles_file(self):
+        doc, code = self.run_cli("testing", "config", "--env", "dev", "--database", "sales")
+        self.assertEqual(code, 0)
+        self.assertEqual(doc["command"], "testing config")
+        self.assertEqual(Path(doc["path"]), self.path.parent / "testing" / "dev" / "sales.properties")
+        self.assertIn("vdp.password=p", Path(doc["path"]).read_text(encoding="iso-8859-1"))
+        self.assertNotIn("password", json.dumps(doc))
+        self.assertEqual(FakeVql.executed, [])
+
+    def test_production_is_refused_until_the_flag(self):
+        doc, code = self.run_cli("testing", "config", "--env", "prod")
+        self.assertEqual(code, 2)
+        self.assertEqual(doc["error"]["kind"], "refused")
+        doc, code = self.run_cli("testing", "config", "--env", "prod", "--allow-destructive")
+        self.assertEqual(code, 0)
+
+    def test_run_without_a_tool_is_a_usage_error_naming_where_to_get_it(self):
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("DENODO_TESTING_TOOL_HOME", None)
+            doc, code = self.run_cli("testing", "run", "--env", "dev", str(self.tmp.name))
+        self.assertEqual(code, 2)
+        self.assertEqual(doc["error"]["kind"], "usage")
+        self.assertIn("DENODO_TESTING_TOOL_HOME", doc["error"]["message"])
+
+    def test_run_launches_the_tool_named_by_the_environment(self):
+        tool = Path(self.tmp.name) / "tool"
+        (tool / "bin").mkdir(parents=True)
+        (tool / "bin" / "denodo-test.sh").write_text("#!/bin/bash\n")
+        tests = Path(self.tmp.name) / "tests"
+        tests.mkdir()
+        (tests / "a.denodotest").write_text("%NAME a\n")
+        seen = []
+
+        def launcher(command, cwd, env):
+            seen.append((command, env.get("JAVA_HOME")))
+            return 0, "Tests run: 1, OK: 1\nTotal tuples: 1, Zero-tuple tests: 0\n"
+
+        with mock.patch.dict(os.environ, {"DENODO_TESTING_TOOL_HOME": str(tool)}), \
+                mock.patch("denodo_cli.commands.testing.launch_process", launcher):
+            doc, code = self.run_cli("testing", "run", "--env", "dev", "--java-home", "/opt/j17", str(tests))
+        self.assertEqual(code, 0, doc)
+        self.assertEqual(doc["command"], "testing run")
+        self.assertEqual(seen[0][1], "/opt/j17")
+        self.assertEqual(doc["summary"]["run"], 1)
+
+    def test_an_output_inside_a_repository_is_a_usage_error(self):
+        repo = Path(self.tmp.name) / "repo"
+        (repo / ".git").mkdir(parents=True)
+        doc, code = self.run_cli("testing", "config", "--env", "dev", "--output",
+                                 str(repo / "configuration.properties"))
+        self.assertEqual(code, 2)
+        self.assertEqual(doc["error"]["kind"], "usage")
+
+
 if __name__ == "__main__":
     unittest.main()

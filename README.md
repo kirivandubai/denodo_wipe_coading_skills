@@ -52,6 +52,9 @@ Naming follows Denodo's own *VDP Naming Conventions* out of the box (`ds_`, `bv_
 - **Python 3.11 or newer** on `PATH`. Nothing else: the plugin's own launcher builds its
   environment on first run — with `uv` if you have it, otherwise a venv under
   `~/.claude/plugins/data/denodo/`. Do not install database drivers by hand.
+- For `/denodo:testing` only: the **Denodo Testing Tool**, downloaded from the Denodo support
+  site (Denodo Connects) and unzipped anywhere, with **Java 17** or newer, and the Virtual
+  DataPort JDBC port (`9999` by default) reachable. The plugin does not ship the tool.
 
 ## Install
 
@@ -92,6 +95,7 @@ production = false             # see Safety below — this flag is not decorativ
 transport = "vql_psycopg2"
 marketplace_url = "http://localhost:9090/denodo-data-catalog"  # only for /denodo:marketplace
 # marketplace_server_id = 1    # required when the marketplace has several VDP servers registered
+# jdbc_port = 9999             # only for /denodo:testing: the JDBC port the Testing Tool connects to
 ```
 
 Then ask Claude to check the connection — `env check` reaches VDP and, if configured, the
@@ -137,6 +141,7 @@ phrasing; `/denodo:vql` is the entry point when the request is ambiguous.
 | `/denodo:security` | who may read what: a role with read access and giving it to a user, a global security policy that masks columns, filters rows or denies a view over tagged columns, and checking it as each person by impersonation | VQL |
 | `/denodo:dml` | rows changed in the database behind a view: update, insert (with the generated key back) and delete by key, a view an application writes through, rows copied from another view or a file, upserts — each previewed, with an undo file, applied only after your yes | VQL |
 | `/denodo:materialize` | query results stored as tables: a remote table other tools read and its refresh, a frozen snapshot, a summary the optimizer answers aggregate queries from, a data movement for a slow federated join, a materialized table — a new table where you said is created by the agent, anything that replaces, empties or drops an older one waits for your yes | VQL |
+| `/denodo:testing` | regression tests for your data products: `.denodotest` files beside the project's `.vql`, run by Denodo's own Testing Tool — a mart's totals against its input, a unique key, nothing invalid, the contract's columns, the rows a consumer reads, a mart that runs in its database; the tool's configuration written from the profile, outside the repository | Testing Tool |
 
 **A "tag" alone does not say which server you mean.** Virtual DataPort tags
 (`CREATE TAG`, VQL) and Data Marketplace tags (REST) are different objects on different
@@ -152,7 +157,8 @@ useful on its own. So are `/denodo:cache`, for the full cache of a view only,
 `/denodo:semantics`, for the Virtual DataPort half of view metadata, `/denodo:metrics`,
 for metric views, `/denodo:security`, for roles and global security policies,
 `/denodo:ai`, for the LLM functions and semantic search, `/denodo:dml`, for writes through
-views, and `/denodo:materialize`, for query results stored as tables.
+views, `/denodo:materialize`, for query results stored as tables, and `/denodo:testing`, for
+regression tests run by the Denodo Testing Tool.
 
 Created in Design Studio, not by the agent: every data source beyond a delimited or JSON file
 on the server and a JDBC table with a password — REST APIs, Excel, XML, Salesforce, SAP, cloud
@@ -195,7 +201,13 @@ default:
 - **Passwords never appear in a command.** Server credentials come from the profile. A
   *data source* password — the one that has to end up in `USERPASSWORD … ENCRYPTED` — is
   turned into its cipher by `secret encrypt`, which reads it from a hidden prompt or
-  stdin and returns only the encrypted form.
+  stdin and returns only the encrypted form. The Testing Tool reads its password from a
+  `configuration.properties`: `testing run` gives it one from the profile in a temporary file
+  for the run only, and `testing config` writes one beside the profiles file, readable by you
+  only, for your own runs — never inside a git repository, never printed.
+- **The Testing Tool runs whatever a test holds**, past the guard above. `/denodo:testing`
+  writes suites that only read; on a `production = true` profile `testing run` and
+  `testing config` refuse without `--allow-destructive`, which comes after your yes.
 
 ## Contributing
 

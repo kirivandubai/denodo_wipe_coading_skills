@@ -53,10 +53,7 @@ property groups, sync pitfalls) is still to come, as a `marketplace` extension.*
 
 *T34 is done — under «Сделано» below.*
 
-- **T35. Навык `testing`: формат `.denodotest`, исполняет Testing Tool.** `дальше`. Тесты
-  рядом с `.vql` проекта, первые — проверки, которые `views` уже делает при создании.
-  Своего раннера нет. Решить в задаче: как получить `configuration.properties` вне
-  репозитория так, чтобы пароль не попал ни в git, ни в командную строку. Р. 4.9.
+*T35 is done — under «Сделано» below. Wave 4 is closed.*
 
 **Позже:** `scheduler` — отдельным навыком (р. 4.12). Снятое на ревью перечислено в разделе
 10 роадмапа.
@@ -93,6 +90,33 @@ property groups, sync pitfalls) is still to come, as a `marketplace` extension.*
 - **`PUT /public/api/views/fields/logical-name` answers `200` and stores nothing** (T30, one
   try): `logicalName` stayed `null`. Probably the marketplace personalisation has logical names
   off; it belongs to the marketplace half of `semantics`, still to come.
+
+- **A view that existed before the session, re-declared with a different definition, is not in
+  `vql`'s confirmation column** (T35, for the owner). The table there asks for a yes only when
+  `CREATE OR REPLACE` drops or renames a column, for metric views, caches and metadata; a changed
+  join or expression that changes the rows is "`CREATE OR REPLACE` of an object — you do it
+  yourself". A Sonnet baseline of T35, asked to make CI green, re-applied the human's view on the
+  server to restore a lost label; a GREEN Opus said it would have done the same without the
+  `testing` table. `testing` now forbids it on its own ground — the request was about tests —
+  and spec 6.3 calls an `ALTER` of an existing object the human's; whether `vql` should say that
+  any re-declaration of a pre-session view that changes its rows waits for the yes (and what that
+  does to "add a column to my mart") is the owner's call.
+- **`%TRACE` fails every test on 9.5.1** (T35, measured): `NoSuchElementException` with the 9.0.0
+  driver the tool ships and with the server's own driver. Worth reporting to Denodo; `testing`
+  checks plans with `GET_QUERY_EXECUTION_PLAN()` instead.
+- **The Testing Tool sorts text that looks like a number as a number on the expected side** (T35,
+  measured): under `ordered:false`, `'10'` and `'9'` in a text column fail against equal expected
+  data. A defect of the tool (`DataComparator` normalises expected text to numbers, obtained
+  `String` values stay text); `testing` compares such columns ordered.
+- **`testing config` on a production profile** reuses `--allow-destructive` for "the human said
+  yes to running this suite there" (T35). The flag means "the human confirmed after the refusal"
+  everywhere else, so the meaning carries; a separate flag would be clearer if the owner prefers.
+- **`env init` does not ask for `jdbc_port`** (T35): a profile that runs the Testing Tool against
+  a server whose JDBC port is not 9999 needs the line added by hand.
+- **What `testing` leaves untried** (T35): `[ws]` executions and results, `[script]` executions,
+  `EXTENDS` chains, multi-valued and parallel `CONTEXT` variables, the CSV, HTML and email
+  reporters, Jasypt `ENC()` values, `--failed-resumable`, complex (array and register) values, a
+  test as a restricted user by impersonation, and any data source other than Virtual DataPort.
 
 - **What `materialize` leaves untried** (T34): every target but SQL Server (no PostgreSQL schema
   this time), bulk loads (the data source has none configured — inserts in batches), Hive,
@@ -324,6 +348,68 @@ property groups, sync pitfalls) is still to come, as a `marketplace` extension.*
 ---
 
 ## Сделано
+
+- **T35. The `testing` skill: regression tests run by the Denodo Testing Tool.** A new skill,
+  `skills/testing/`: `.denodotest` files beside the project's `.vql`, run by Denodo's own Testing
+  Tool — the plugin has no runner of its own. Its first tests are the checks `views` makes when
+  it creates a view, kept: the mart counts every input row once (`[query]` against `[query]`,
+  per group when the key comes from the input), keys unique — on the views the mart joins to as
+  well — nothing `INVALID`, the contract's columns, the rows a consumer reads (pinned only after
+  the count test passes), a plan that stays in its database. Its body: the three ways a test is
+  worthless without a sign, the layout, six templates, expected values from the server and how
+  to write them, proving each test can fail on a copy, running it, what each failure message
+  means and which side is right, a rationalization table from the baseline, safety and red
+  flags. `references/format.md` has the format as the tool runs it — parsing traps, the
+  comparison rules case by case, `SETUP`/`TEARDOWN`, the launcher's exit codes and log, the
+  configuration file.
+
+  **Decided in the task: the configuration.** The tool reads its JDBC password from a
+  `configuration.properties` only — plain or Jasypt, no environment substitution (read in its
+  sources, shipped with the download). `testing run --env <p> --database <db> --tool <dir>
+  --java-home <java> <tests>` writes it from the profile into a temporary 0600 file for one run,
+  starts the tool's launcher from its `bin/` and answers with the exit code, the summary and each
+  test; `testing config` writes the same file beside the profiles file (0600 in a 0700
+  directory, never inside a git work tree unless ignored, never printed) for a human who runs the
+  tool by hand. Both refuse a production profile without `--allow-destructive`. The profile gains
+  `jdbc_port` (9999 by default). `testing run` launches the tool and parses no test, so it is not
+  the runner the roadmap review declined; it exists because a GREEN run's launcher command, which
+  named the file under `~/.denodo/`, was refused by the session's permission layer as credential
+  exploration, and three runs lost the tool's exit code in a pipe. `verify` gains the `denodotest`
+  channel behind `--testing-tool <dir>`, which runs the six templates through the same code.
+
+  **Measured** against the tool (release 20260428, its 9.0.0 driver and the server's own) and
+  9.5.1: inline data compares in order unless told otherwise, `[query]` does not, columns match
+  by name; `type:subset` over unsorted results fails and with no expected rows passes against
+  anything; a line starting with `#` is a comment inside data too; a `${` without a variable
+  fails the test; `NULL` equals `''`; a `double` compares by its exact value; a `timestamp`
+  matches only as `yyyy-MM-dd HH:mm:ss.SSS`, a `timestamptz` as ISO with its offset; text that
+  looks like a number fails under `ordered:false`; `%TRACE` fails every test it is in; a failed
+  `SETUP` or `%RESULTS[query]` skips the `TEARDOWN`, a failed comparison or `%EXECUTION` does not;
+  the launcher ships without its execute bit, logs to `../log` of its working directory, and
+  exits 0 after printing its usage; a misnamed test file is skipped without a word.
+
+  **Checked with subagents, baseline first.** Fixtures: three marts over the demo CSV exports —
+  one to protect before a rewrite, one whose `INNER JOIN` silently dropped 3.5 % of the lines
+  its description promised, and a project whose CI went red after a commit that added a column
+  and also turned a label into `NULL`. Three baseline runs on Opus (49, 49, 31 calls) wrote good
+  tests and kept discipline, but every one learned the format from the tool's sources, and none
+  had a sanctioned way to the password: two loaded it through the plugin's own profile loader
+  into a wrapper script of their own, the third ran with the one committed to the repository.
+  On Sonnet (15, 13): one could not run its tests at all and pinned the defective figures in a
+  snapshot "that passes today", the other re-applied the human's view on the server to make CI
+  green. With the skill, on new fixtures (a mart before its dimension source changes; a KPI mart
+  joined to a store directory with history, which multiplies two stores' lines, plus dropped
+  lines; a "folder layout only" commit that turned a `LEFT JOIN` into an `INNER JOIN`; a control
+  that builds its own mart and its tests): Opus 24, 31, 21 and 38 calls, Sonnet 14, 15, 12 and 19
+  — every defect found and reported, no view re-applied, no snapshot of a wrong mart, every test
+  seen failing once, no password in a project or a command. Their reviews gave the per-group and
+  label tests, the two-test split for undocumented drops, the subquery proof of a fix that is not
+  applied, the `NULL` ordering, the copy for breaking tests, and three corrections of my text.
+  One Sonnet run was refused the launcher command by the permission layer — that is what
+  `testing run` answers: the same scenario rerun on Sonnet with it ran ten tests in 26 calls,
+  each seen failing once. Eval: four cases (`routing-testing`, `routing-testing-safety-net`,
+  `routing-testing-symptom`, `discrimination-views-not-testing`); 60 of 60 pass. Unit tests
+  green; `verify --env lab --with-writes --testing-tool …` green with six new steps (55 verified).
 
 - **T34. The `materialize` skill: query results stored as tables.** A new skill,
   `skills/materialize/`: a remote table other tools read, created by `CREATE_REMOTE_TABLE` and

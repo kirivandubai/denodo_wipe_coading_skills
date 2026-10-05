@@ -141,7 +141,7 @@ after a fix is safe — with one exception, the JDBC password, called out below.
 ### Delimited file (CSV) — DF
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-02)
+-- verified: 9.5.1 (live, 2026-10-05)
 CONNECT DATABASE sales_analytics;
 
 CREATE OR REPLACE DATASOURCE DF ds_crm
@@ -231,7 +231,7 @@ CREATE OR REPLACE TABLE bv_crm_customers I18N us_pst (
 ### JSON file
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-02)
+-- verified: 9.5.1 (live, 2026-10-05)
 CONNECT DATABASE sales_analytics;
 
 CREATE OR REPLACE DATASOURCE JSON ds_oms
@@ -354,7 +354,7 @@ self-signed certificate needs `;trustServerCertificate=true` appended, and that 
 question for the human, not a default you add silently.
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-02) — created against an unreachable host, ciphertext included
+-- verified: 9.5.1 (live, 2026-10-05) — created against an unreachable host, ciphertext included
 CONNECT DATABASE sales_analytics;
 
 CREATE OR REPLACE DATASOURCE JDBC ds_orders_db
@@ -419,7 +419,7 @@ schema the human gives you — the DDL still parses and the objects still get cr
 columns** and works fine — that is the opposite of DF, where a subset returns zero rows:
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-02) — created against an unreachable host
+-- verified: 9.5.1 (live, 2026-10-05) — created against an unreachable host
 CREATE OR REPLACE WRAPPER JDBC wr_orders_db_orders
     FOLDER = '/01 - connectivity'
     DATASOURCENAME = ds_orders_db
