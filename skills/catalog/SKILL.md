@@ -22,7 +22,7 @@ attached to views that must already exist.
 ### Database
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-05)
+-- verified: 9.5.1 (live, 2026-10-06)
 CREATE OR REPLACE DATABASE sales_analytics 'Sales data products' CHARSET DEFAULT;
 ```
 
@@ -36,7 +36,7 @@ LDAP. `CREATE OR REPLACE DATABASE` keeps the objects inside.
 ### Folders
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-05)
+-- verified: 9.5.1 (live, 2026-10-06)
 CONNECT DATABASE sales_analytics;
 
 CREATE OR REPLACE FOLDER '/01 - connectivity' DESCRIPTION 'data sources, wrappers, base views';
@@ -61,10 +61,13 @@ listed — ask the human about it — because a misspelled or missing target is 
 silently (see Verify). Check the tag too: `vql desc --env dev <tag> --type tag` fails
 with `Error loading tag` when it does not exist yet. If it does exist, `CREATE OR REPLACE`
 rewrites its description for every database that uses it — that is a change to an
-existing object, show it and get a yes first.
+existing object, show it and get a yes first. The targets get the same check, whatever the tag:
+putting a tag — a new one included — on a view or column you did not create in this session
+changes that view's metadata, and is a yes too (`/denodo:vql`); a tag that a security policy
+names changes who reads what (`/denodo:security`).
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-05)
+-- verified: 9.5.1 (live, 2026-10-06)
 CREATE OR REPLACE TAG pii
     DESCRIPTION = 'Personal data, GDPR scope'
     ADD_TO      ( VIEWS () COLUMNS ( sales_analytics.customer.email, sales_analytics.customer.phone ) )
@@ -136,7 +139,7 @@ Success of the statement is not success of the object. After applying, read back
 | Object | Read-back |
 |---|---|
 | Database | `vql desc --env dev <db> --type database` → `name, description`; settings: `SELECT db_name, description, charset, authentication FROM GET_DATABASES() WHERE db_name = '<db>'` |
-| Folder tree | `SELECT name, type, subtype, folder, description FROM GET_ELEMENTS() WHERE input_database_name = '<db>' AND type <> 'type'` — `folder` is the parent path (`/` for top level), the full path is `folder + '/' + name`. Types: `folder`, `datasource`, `wrapper`, `view` (subtype `base`, `derived`, `interface`), `association`, `storedProcedure`; rows with type `type` are server-internal registers, not your objects |
+| Folder tree | `SELECT name, type, subtype, folder, description FROM GET_ELEMENTS() WHERE input_database_name = '<db>' AND type <> 'type'` — `folder` is the parent path (`/` for top level), the full path is `folder + '/' + name`. Types: `folder`, `datasource`, `wrapper`, `view` (subtype `base`, `derived`, `interface`, `metric`), `association`, `storedProcedure`; rows with type `type` are registers and arrays — your own `CREATE TYPE`s, and the `_register_…` and `_array_register_…` types a view with `NEST` or `REGISTER` leaves behind (`/denodo:views`) |
 | What is inside a folder before a drop | the same query **without a type filter**, `WHERE folder LIKE '/<path>%'` — a type filter hides exactly the object you did not think of |
 | One folder | `vql desc --env dev --database <db> "'/03 - business entities'" --type folder` → `name, path, description` |
 | Tag | `vql desc --env dev <tag> --type tag` → `name='pii' description=…` (description only) |

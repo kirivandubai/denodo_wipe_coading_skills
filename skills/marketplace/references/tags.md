@@ -28,7 +28,7 @@ Everything here is REST against `marketplace_url`, and every call takes `serverI
 `descriptionType` is `TEXT` or `RICH_TEXT`; `RICH_TEXT` renders HTML in the marketplace UI.
 All of the above is
 *verified: 9.5.1 (live, 2026-09-10)* except `delete-multiple`, the webservice endpoints and
-`available-tags`, which are *unverified: OpenAPI of the 9.5.1 server*.
+`available-tags`, which are *unverified: 9.5 documentation only* (the server's OpenAPI).
 
 ## Importing VDP tags — the most destructive call in this skill
 
@@ -52,16 +52,15 @@ deliberately not re-proven on every run, because it costs existing tags.* The sa
 ```bash
 # verified: 9.5.1 (live, 2026-09-10) — reading the list; the POST is the human's call
 api get --env dev /public/api/tags/vdp/local
-# → ["business_views","customers", …]     ← send these back plus the new one
+# → ["finance","hr_restricted", …]     ← send these back plus the new one
 ```
 
 Two traps around it, both *verified: 9.5.1 (live, 2026-09-10)*:
 
 - **`inLocal` in `/changes` does not mean "imported".** It means a marketplace tag of that
-  name exists — including an unrelated local one. On the server used for verification,
-  `sensitive` reported `inLocal: true, nameConflict: true` while `/tags/vdp/local` did not
-  list it, because a separate marketplace tag `Sensitive` existed. Names collide
-  case-insensitively. **What the import then does with the local namesake — refuse it,
+  name exists — including an unrelated local one: a VDP tag `finance` reports `inLocal: true,
+  nameConflict: true`, while `/tags/vdp/local` does not list it, when a separate marketplace
+  tag `Finance` exists. Names collide case-insensitively. **What the import then does with the local namesake — refuse it,
   replace it, merge into it — is *unverified*:** finding out costs someone else's tag, so
   ask the human whether to rename one of the two first.
 - **An imported tag brings its VDP assignments, and no more.** A VDP tag assigned to nothing

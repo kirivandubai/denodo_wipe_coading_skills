@@ -45,7 +45,7 @@ after it. With `CHARSET` before the description the parser stops at the quote.
 | Clause | Meaning | Default |
 |---|---|---|
 | `'<description>'` | free text, shown by `DESC DATABASE` and `GET_DATABASES()` | none |
-| `CHARSET` | which characters Design Studio lets users put in identifiers. `UNICODE` any; `RESTRICTED` a limited set; `DEFAULT` the server setting. Does not change the server's behaviour | `DEFAULT` (the server used for verification reported `restricted`) |
+| `CHARSET` | which characters Design Studio lets users put in identifiers. `UNICODE` any; `RESTRICTED` a limited set; `DEFAULT` the server setting. Does not change the server's behaviour | `DEFAULT` — what that means is the server's setting; a database shows its own in `DESC VQL DATABASE` |
 | `AUTHENTICATION LOCAL` | users are VDP users. This is "Global authentication settings" in Design Studio | this, when the clause is absent |
 | `AUTHENTICATION LDAP …` | authentication and roles delegated to an LDAP server through an LDAP data source that already exists in `<db>`. Needs the six DN/pattern values — get them from the human or the Administration Guide setup, never guess | — |
 | `VCS` | per-database version-control integration | server setting |
@@ -53,7 +53,7 @@ after it. With `CHARSET` before the description the parser stops at the quote.
 | `DATA_MOVEMENT ALLOWED_TARGETS DATABASES` | where the optimizer may move this database's data | `DEFAULT` (anywhere that allows it) |
 | `ODBC AUTHENTICATION KERBEROS` | Kerberos for ODBC / ADO.NET clients | `NORMAL` |
 | `CHECK_VIEW_RESTRICTIONS` | see the Upgrade Guide before changing | `DEFAULT` |
-| `<grant>` | privileges — out of scope for v1 | — |
+| `<grant>` | privileges — `/denodo:security`; the tool flags a `CREATE DATABASE` that carries one `security` | — |
 
 `CREATE OR REPLACE DATABASE` on an existing database updates the description and settings
 and **keeps every object inside** — *verified: 9.5.1 (live, 2026-09-09)*. `CREATE

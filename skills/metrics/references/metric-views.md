@@ -113,7 +113,7 @@ have no facts, every variant built and queried separately — *verified: 9.5.1 (
 | `<expr over dims> AS a … GROUP BY <dims>` | grouped by the raw dimensions, `a` repeated |
 | `ORDER BY <alias>`, `ORDER BY evaluate_metric(m)`, `LIMIT` | work |
 | `ORDER BY <field not selected>` | `Field not found '<f>' in view with schema: …` |
-| `<mv> JOIN <view> ON …` with `GROUP BY` | runs until the query timeout: `Error: Time out processing data` (900 s by default; `CONTEXT ('queryTimeout' = '<ms>')` shortens it). `CREATE VIEW` over it is accepted |
+| `<mv> JOIN <view> ON …` with `GROUP BY` | runs until the query timeout: `Error: Time out processing data` (the server's or the client's query timeout; `CONTEXT ('queryTimeout' = '<ms>')` shortens it). `CREATE VIEW` over it is accepted |
 | a subquery or view of the shape in the first row, joined to anything | works |
 
 ## Over a metric view: selection views

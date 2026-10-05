@@ -32,7 +32,7 @@ profile adds is ignored.
 | Browse one | `GET /public/api/browse/categories/{id}` | | the category itself, **without** its elements — those come from `…/browse/categories/{id}/elements/type/{elementType}` |
 
 Creation, the child, duplicate `409`, assignment, cascade and repeated delete are
-*verified: 9.5.1 (live, 2026-09-10)*; the rest is *unverified: OpenAPI of the 9.5.1 server*.
+*verified: 9.5.1 (live, 2026-09-10)*; the rest is *unverified: 9.5 documentation only* (the server's OpenAPI).
 
 ## What differs from tags
 

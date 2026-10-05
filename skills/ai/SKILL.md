@@ -24,13 +24,13 @@ Descriptions drafted by the Denodo Assistant are `/denodo:semantics`; the full c
 
 ## How many requests a query makes
 
-*verified: 9.5.1 (live, 2026-10-02)* — by timing, one request is 0.7–2 s and they run one
-after another:
+*verified: 9.5.1 (live, 2026-10-02)* — by timing: the requests run one after another, and one
+took 0.7–2 s on the server it was measured on:
 
 | The AI function is | Requests |
 |---|---|
 | only in the `SELECT` list, the query has `LIMIT n` | `n` — the only form a `LIMIT` bounds |
-| in the `WHERE`, or a condition on an AI column of a view or subquery | one per row read, until `n` rows match — up to every row; and again for each row kept and projected. Over a file source the condition is evaluated **before** your other filters, on every row of the file: 4 rows wanted, 39 requests over a 35-row file. Over JDBC the other filters went to the database first, and the 4 rows cost 8 |
+| in the `WHERE`, or a condition on an AI column of a view or subquery | one per row read, until `n` rows match — up to every row; and again for each row kept and projected. Over a file source the condition is evaluated **before** your other filters, on every row of the file — measured once, 4 rows wanted cost 39 requests over a 35-row file. Over JDBC the other filters went to the database first, and the same 4 rows cost 8 |
 | under `ORDER BY`, `GROUP BY`, `DISTINCT`, an aggregate, a join condition | every row, whatever the `LIMIT` |
 | a column of a view the query does not read (`COUNT(*)`, other columns, a filter on another column) | none |
 | a column of a view with a loaded full cache | none |
@@ -44,7 +44,8 @@ after another:
   every row the query returns. Only a `LIMIT` in the query bounds the work.
 - A filter on source columns runs first — delegated to the database when the source can —
   so only the rows that pass it are sent.
-- 1,000 rows are 15–30 minutes. A file source gives `''`, not `NULL`, for an empty field.
+- At one to two seconds a request, 1,000 rows are 15–30 minutes. A file source may give `''`,
+  not `NULL`, for an empty field — count both.
 
 ## The rule: the human's number
 
@@ -104,12 +105,12 @@ check the view" on a view whose AI columns are not cached; `env.production` is `
 ## Templates
 
 The example database is the one of `/denodo:views`, `sales_analytics`, with a view of product
-reviews. The blocks run in this order in the verification chain.
+reviews. The blocks build on each other, in this order.
 
 ### Does the server answer
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-02)
+-- verified: 9.5.1 (live, 2026-10-06)
 SELECT SENTIMENT_AI('The parcel was late, but support refunded me the same day.') AS want_mixed
 FROM Dual();
 ```
@@ -126,7 +127,7 @@ FROM Dual();
 ### Count before you run
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-02)
+-- verified: 9.5.1 (live, 2026-10-06)
 CONNECT DATABASE sales_analytics;
 
 SELECT COUNT(*) AS reviews,
@@ -139,7 +140,7 @@ FROM product_review;
 ### Classify, score, extract — over rows
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-02)
+-- verified: 9.5.1 (live, 2026-10-06)
 CONNECT DATABASE sales_analytics;
 
 SELECT review_id,
@@ -181,7 +182,7 @@ cache: readers — a dashboard refreshing every hour, a `GROUP BY` for a report 
 stored rows and send nothing. Two files.
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-02)
+-- verified: 9.5.1 (live, 2026-10-06)
 CONNECT DATABASE sales_analytics;
 
 CREATE OR REPLACE VIEW product_review_ai
@@ -203,7 +204,7 @@ ALTER VIEW product_review_ai CACHE FULL WITH_STATUS;
 ```
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-02)
+-- verified: 9.5.1 (live, 2026-10-06)
 CONNECT DATABASE sales_analytics;
 
 SELECT * FROM product_review_ai
@@ -236,7 +237,7 @@ CONTEXT ('cache_preload' = 'true',
 - **A sample before the full load**, without touching the cache: `SELECT * FROM
   product_review_ai WHERE TRIM(review_text) <> '' LIMIT 20 CONTEXT ('cache' = 'off')` reads
   the source and computes the 20 rows — 20 × the AI columns — and stores nothing; the loaded
-  rows and their date stayed as they were.
+  rows and their date stayed as they were — *verified: 9.5.1 (live, 2026-10-06)*.
 - **The view holds only what the load stored**: a row added to the source afterwards is not
   in the view at all until the next load. And a load is never incremental here — it re-sends
   every row with text, old ones included, so over a source refreshed nightly each refresh is
@@ -254,7 +255,7 @@ CONTEXT ('cache_preload' = 'true',
 ### Semantic search over a stored vector column
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-02)
+-- verified: 9.5.1 (live, 2026-10-06)
 CONNECT DATABASE sales_analytics;
 
 SELECT review_id, review_text,
@@ -268,10 +269,10 @@ LIMIT 5;
 - **One request, however many rows**: the text is embedded once, the distances are arithmetic.
 - `VECTOR_DISTANCE` embeds the text with the model named by the column's `embeddingmodel`
   property, and uses the cosine distance (0 = the same meaning). The property is on the base
-  view's field (`review_vector:vector<float,3072> (embeddingmodel = '…')`) and derived views
-  keep it — read it before searching: `SELECT view_name, column_name, column_extra_properties
-  FROM GET_VIEW_COLUMNS() WHERE input_database_name = 'sales_analytics' AND column_vdp_type
-  LIKE 'vector%'` → `[embeddingmodel text-embedding-3-large ]`. A column without it is
+  view's field (`review_vector:vector<float,<dimension>> (embeddingmodel = '<model>')`) and
+  derived views keep it — read it before searching: `SELECT view_name, column_name,
+  column_extra_properties FROM GET_VIEW_COLUMNS() WHERE input_database_name = 'sales_analytics'
+  AND column_vdp_type LIKE 'vector%'` → `[embeddingmodel <model> ]` — *verified: 9.5.1 (live, 2026-10-05)*. A column without it is
   compared with the server's default model, and vectors made by another model of the same
   size give distances that look real and mean nothing (documentation).
 - **`WHERE review_vector IS NOT NULL`** — a row with a `NULL` vector fails the whole query as
@@ -286,7 +287,7 @@ LIMIT 5;
 ### A search view the application sends a sentence to
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-02)
+-- verified: 9.5.1 (live, 2026-10-06)
 CONNECT DATABASE sales_analytics;
 
 CREATE OR REPLACE VIEW product_review_search
@@ -295,7 +296,7 @@ CREATE OR REPLACE VIEW product_review_search
     AS SELECT r.review_id, r.review_text,
               VECTOR_COSINE_DISTANCE(r.review_vector, q.search_vector) AS distance
        FROM product_review_vector r
-            CROSS JOIN ( SELECT EMBED_AI(search_text, 'text-embedding-3-large') AS search_vector
+            CROSS JOIN ( SELECT EMBED_AI(search_text, '<embeddingmodel of review_vector>') AS search_vector
                          FROM Dual() ) q
        WHERE r.review_vector IS NOT NULL
        USING PARAMETERS ( search_text : text )
@@ -306,17 +307,18 @@ CREATE OR REPLACE VIEW product_review_search
 
 - **Not `VECTOR_DISTANCE(review_vector, search_text)`**, the documentation's own example: with
   a parameter instead of a literal, the plan keeps `embed_ai(search_text, …)` in the per-row
-  projection, and every search sends **one embedding request per row of the table** — 4 rows
-  took 2 s, 32 rows 13 s; this form, 0.9 s. *verified: 9.5.1 (live, 2026-10-02)*
-- **The model is written out** — the one the column's `embeddingmodel` names. Over `Dual()`
-  there is no column to read it from; without it the server's default is used silently, and
-  with it a server configured with another model refuses: `Cannot execute embed_ai() function:
+  projection, and every search sends **one embedding request per row of the table** — measured
+  once, 4 rows took 2 s and 32 rows 13 s, against 0.9 s for this form. *verified: 9.5.1 (live,
+  2026-10-02)*
+- **The model is written out** — the one the column's `embeddingmodel` names (the read above).
+  Over `Dual()` there is no column to read it from; without it the server's default is used
+  silently, and a model other than the server's configured one is refused: `Cannot execute embed_ai() function:
   the model '…' specified in the query does not match the configured`.
 - The reader passes the sentence as an equality: `SELECT * FROM product_review_search WHERE
   search_text = '…'`. Without it: `View without search methods: The following obligatory
   fields cannot be removed: search_text`.
 - **What it costs at scale:** the cross join with `Dual()` runs in Denodo, so every query
-  reads every vector from the source (about 12 KB a row at 3,072 floats) and no vector index
+  reads every vector from the source (4 bytes a dimension: 12 KB a row at 3,072) and no vector index
   or approximate search can serve it — right for thousands of rows; for millions, say so and
   leave the design to the human. A user who only queries it needs no LLM role.
 - A `WHERE` on another column is applied **before** the five are chosen: `WHERE review_id =
@@ -337,7 +339,8 @@ CREATE OR REPLACE VIEW product_review_search
 
 ## Verify
 
-Reads that send nothing — run them after the load, on the cached view:
+Run these after the load, on the cached view. All but the last send nothing; the last plans
+a search, and planning embeds its sentence — one request:
 
 | Check | Query | Expect |
 |---|---|---|

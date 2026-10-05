@@ -68,7 +68,7 @@ What the 9.5.1 parser actually accepts, against the grammar above:
 | Form | Result |
 |---|---|
 | `cust_id = 'cust_id'` | works — the normal case |
-| `email = 'email' NULLVALUE ''` | works; empty strings in that column become `NULL`. Needed **only for text columns**: without it an empty field stays `''`, while an empty numeric or date field is already `NULL` (51 empty descriptions stayed `''`, 45 empty prices came back `NULL`). *verified: 9.5.1 (live, 2026-09-09)* |
+| `email = 'email' NULLVALUE ''` | works; empty strings in that column become `NULL`. Needed **only for text columns**: without it an empty field stays `''`, while an empty numeric or date field is already `NULL`. *verified: 9.5.1 (live, 2026-09-09)* |
 | `cust_id = 'cust_id' (OPT)` | works |
 | `created_dt = 'created_dt' : 'java.util.Date'` | `Syntax error … near '''` — and so does every other spelling of a type (`: java.util.Date`, `: 'date'`, `:date`). **DF wrappers carry no types.** *verified: 9.5.1 (live, 2026-09-09)* |
 | `OUTPUTSCHEMA` omitted | wrapper is created with an empty schema, a base view over it is created too, and `SELECT` fails with `[NO_CREATED_ACCESS] Unable to create xml raw access`. *verified: 9.5.1 (live, 2026-09-09)* |
@@ -120,5 +120,5 @@ stays a faithful mirror of the file.
 ## Optimizing
 
 The Administration Guide's *Optimizing DF Data Sources* covers parallel processing of
-large files and `TRANSFER_RATE_FACTOR`. Out of scope for v1: performance work starts after
-the source reads correctly.
+large files and `TRANSFER_RATE_FACTOR` — Design Studio's, not these skills': performance work
+starts after the source reads correctly.

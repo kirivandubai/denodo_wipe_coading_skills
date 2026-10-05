@@ -1,5 +1,5 @@
 # verification/chain.toml
-# Verifies 72 of the templates end to end: catalog database, folders, the DF (CSV), JSON
+# Verifies the SKILL.md templates end to end (the run reports how many): catalog database, folders, the DF (CSV), JSON
 # and JDBC data sources, a hand-written JDBC wrapper and base view, derived views, the union
 # and the array views, the interface view, the association, the column-impact queries, the
 # full cache switched on, loaded and cleared, tags, the metadata audit, profile and
@@ -590,7 +590,7 @@ channel = "http"
 scheduler = true
 address = "skills/scheduler/SKILL.md#Refresh the cache of a view on a schedule[1]"
 substitute = { "<project_id>" = "{project_id}", "<job_id>" = "{job_id}" }
-files = { "scheduler/sales_analytics/iv_household_income_cache.json" = { address = "skills/scheduler/SKILL.md#Refresh the cache of a view on a schedule[0]", substitute = { sales_analytics = "{database}", "\"dataSourceID\": 2" = "\"dataSourceID\": {scheduler_data_source_id}" } } }
+files = { "scheduler/sales_analytics/iv_household_income_cache.json" = { address = "skills/scheduler/SKILL.md#Refresh the cache of a view on a schedule[0]", substitute = { sales_analytics = "{database}", "<data_source_id>" = "{scheduler_data_source_id}" } } }
 # the create call answers the new id; the read-back after it is what is judged
 capture = { job_id = "id" }
 capture_from = 0
@@ -641,7 +641,7 @@ address = "skills/scheduler/SKILL.md#Change a job"
 substitute = { "<project_id>" = "{project_id}", "<job_id>" = "{job_id}" }
 # The job's file with "id" added and "disabled": false, as the skill says after the yes; the
 # schedule survives the PUT and the job stays enabled.
-files = { "scheduler/sales_analytics/iv_household_income_cache.json" = { address = "skills/scheduler/SKILL.md#Refresh the cache of a view on a schedule[0]", substitute = { sales_analytics = "{database}", "\"dataSourceID\": 2" = "\"dataSourceID\": {scheduler_data_source_id}", "\"type\": \"VDPCache\",\n  \"name\"" = "\"type\": \"VDPCache\",\n  \"id\": {job_id},\n  \"name\"", "\"disabled\": true" = "\"disabled\": false" } } }
+files = { "scheduler/sales_analytics/iv_household_income_cache.json" = { address = "skills/scheduler/SKILL.md#Refresh the cache of a view on a schedule[0]", substitute = { sales_analytics = "{database}", "<data_source_id>" = "{scheduler_data_source_id}", "\"type\": \"VDPCache\",\n  \"name\"" = "\"type\": \"VDPCache\",\n  \"id\": {job_id},\n  \"name\"", "\"disabled\": true" = "\"disabled\": false" } } }
 expect_body = { id = "{job_id}", disabled = "False", "triggerSection.triggers.0.cronExpression" = "0 30 1 * * ?", "extractionSection.loadprocesses.0.cacheInvalidationMode" = "ALL_ROWS" }
 
 [[step]]
@@ -651,7 +651,7 @@ channel = "http"
 scheduler = true
 address = "skills/scheduler/SKILL.md#Export a view to a CSV file on a schedule[1]"
 substitute = { "<project_id>" = "{project_id}", "<job_id>" = "{export_job_id}" }
-files = { "scheduler/sales_analytics/household_income_by_band_csv.json" = { address = "skills/scheduler/SKILL.md#Export a view to a CSV file on a schedule[0]", substitute = { sales_analytics = "{database}", "\"dataSourceID\": 2" = "\"dataSourceID\": {scheduler_data_source_id}", "\"fileName\": \"household_income_by_band.csv\"" = "\"fileName\": \"{tag_prefix}household_income_by_band.csv\"" } } }
+files = { "scheduler/sales_analytics/household_income_by_band_csv.json" = { address = "skills/scheduler/SKILL.md#Export a view to a CSV file on a schedule[0]", substitute = { sales_analytics = "{database}", "<data_source_id>" = "{scheduler_data_source_id}", "\"fileName\": \"household_income_by_band.csv\"" = "\"fileName\": \"{tag_prefix}household_income_by_band.csv\"" } } }
 capture = { export_job_id = "id" }
 capture_from = 0
 expect_body = { "exportationSection.exporters.0.includeHeader" = "True", "exportationSection.exporters.0.overwriteFile" = "True", "exportationSection.exporters.0.createNewFile" = "False", "exportationSection.exporters.0.fileName" = "{tag_prefix}household_income_by_band.csv" }
@@ -1046,7 +1046,7 @@ kind = "template"
 channel = "vql"
 ai = true
 address = "skills/ai/SKILL.md#A search view the application sends a sentence to"
-substitute = { sales_analytics = "{database}", text-embedding-3-large = "{embedding_model}" }
+substitute = { sales_analytics = "{database}", "<embeddingmodel of review_vector>" = "{embedding_model}" }
 database = "{database}"
 # The reader's query: the sentence as an equality, five rows back, closest first.
 check = "SELECT COUNT(*) FROM product_review_search WHERE search_text = 'it stopped working after a week' HAVING COUNT(*) = 5"
@@ -1417,7 +1417,9 @@ marketplace = true
 # assign to — assigning is the skill's concern, not this template's verification.
 calls = [0, 1]
 capture = { tag_id = "id" }
-substitute = { "nameFilter=pii" = "nameFilter={tag_prefix}pii", "\"name\":\"pii\"" = "\"name\":\"{tag_prefix}pii\"" }
+# The ids of the two calls left out are placeholders in the block; 0 only keeps their JSON
+# parseable — those calls are never sent.
+substitute = { "nameFilter=pii" = "nameFilter={tag_prefix}pii", "\"name\":\"pii\"" = "\"name\":\"{tag_prefix}pii\"", "<tag_id>" = "0", "<view_id>" = "0" }
 
 [[step]]
 id = "marketplace-category"
@@ -1429,7 +1431,8 @@ marketplace = true
 # views) are left out for the same reason as the tag step above.
 calls = [0]
 capture = { category_id = "id" }
-substitute = { "\"name\":\"Consumer marts\"" = "\"name\":\"{tag_prefix}Consumer marts\"" }
+# As in the tag step: 0 only keeps the JSON of the calls left out parseable.
+substitute = { "\"name\":\"Consumer marts\"" = "\"name\":\"{tag_prefix}Consumer marts\"", "<category_id>" = "0", "<view_id>" = "0" }
 
 # --- External element: the http half of the chain above ------------------------------
 #
@@ -1461,7 +1464,8 @@ marketplace = true
 # call the executor used to drop the body of.
 calls = [0]
 capture = { provider_type_id = "externalProviderTypeId" }
-substitute = { "\"ACME_BI\"" = "\"{tag_prefix}ACME_BI\"" }
+# The ids the later calls need do not exist yet; 0 only keeps their JSON parseable.
+substitute = { "\"ACME_BI\"" = "\"{tag_prefix}ACME_BI\"", "<provider_type_id>" = "0", "<tool_server_id>" = "0" }
 
 [[step]]
 id = "external-tool-server"
@@ -1469,11 +1473,11 @@ kind = "template"
 channel = "http"
 address = "skills/marketplace/SKILL.md#External element — a dashboard, job or contract from another tool[0]"
 marketplace = true
-# 1 = create the server that reads the contract. The template's literal 30 is the id the
-# previous step just captured; its database is this run's test database.
+# 1 = create the server that reads the contract. The template's <provider_type_id> is the id
+# the previous step just captured; its database is this run's test database.
 calls = [1]
 capture = { tool_server_id = "id" }
-substitute = { "\"acme_bi_server\"" = "\"{tag_prefix}acme_bi_server\"", "\"externalProviderTypeId\":30" = "\"externalProviderTypeId\":{provider_type_id}", sales_analytics = "{database}" }
+substitute = { "\"acme_bi_server\"" = "\"{tag_prefix}acme_bi_server\"", "<provider_type_id>" = "{provider_type_id}", "<tool_server_id>" = "0", sales_analytics = "{database}" }
 
 [[step]]
 id = "external-element-import"
@@ -1482,10 +1486,10 @@ channel = "http"
 address = "skills/marketplace/SKILL.md#External element — a dashboard, job or contract from another tool[0]"
 marketplace = true
 # 2 = ask the marketplace for the contract it expects (read-only; the block's own comment
-# says the answer is the VQL the step above already ran), 3 = import. The template's literal
-# 217 is the server id captured above, and it occurs in both the path of 2 and the body of 3.
+# says the answer is the VQL the step above already ran), 3 = import. The template's
+# <tool_server_id> is the server id captured above, in both the path of 2 and the body of 3.
 calls = [2, 3]
-substitute = { "217" = "{tool_server_id}" }
+substitute = { "<tool_server_id>" = "{tool_server_id}", "<provider_type_id>" = "{provider_type_id}" }
 
 # --- Renamed view keeps its marketplace element ----------------------------------------
 #

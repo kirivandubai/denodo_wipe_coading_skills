@@ -123,6 +123,6 @@ It takes JDBC base views only — a derived view or a file source is an error; f
   element once per path it is reached by; `SELECT DISTINCT dependency_name, dependency_type`
   is the list.
 - `GET_PUBLIC_VIEW_DEPENDENCIES()` gives only the nearest public views and data sources a
-  view is built on, skipping the server's private join steps (documentation 9.5). The cache
-  and web service dependency procedures belong to the skills that create those objects;
-  none of them does in the plugin yet.
+  view is built on, skipping the server's private join steps —
+  *unverified: 9.5 documentation only*. The dependencies of a view's cache are
+  `/denodo:cache`'s; web services are not covered by these skills.

@@ -1,6 +1,6 @@
 ---
 name: procedures
-description: Use when a Denodo 9.5 stored procedure is in play — calling one the server already ships (SELECT … FROM GET_VIEWS() / USED_BY() / GENERATE_STATS() … WHERE input_… = …, the CALL statement, finding which of the 128 predefined procedures answers a question and what parameters it takes), writing your own procedural logic in VQL (CREATE OR REPLACE VQL PROCEDURE … BEGIN … END, local variables, IF/LOOP/CASE, cursors, exceptions, EXECUTE of DDL), or importing a Java one from a JAR (CREATE PROCEDURE … CLASSNAME … JARS). Also for "run the stats procedure", "loop over rows and create views", "call that procedure from a view". Not for introspecting a JDBC source into base views — that is /denodo:datasources.
+description: Use when a Denodo 9.5 stored procedure is in play — calling one the server already ships (SELECT … FROM GET_VIEWS() / USED_BY() … WHERE input_… = …, the CALL statement, finding which predefined procedure answers a question and what parameters it takes), writing your own procedural logic in VQL (CREATE OR REPLACE VQL PROCEDURE … BEGIN … END, local variables, IF/LOOP/CASE, cursors, exceptions, EXECUTE of DDL), or importing a Java one from a JAR (CREATE PROCEDURE … CLASSNAME … JARS). Also for "run the stats procedure", "loop over rows and create views", "call that procedure from a view". Not for introspecting a JDBC source into base views — that is /denodo:datasources.
 ---
 
 # Stored procedures
@@ -10,7 +10,7 @@ which one the request is about:
 
 | Kind | Statement | When |
 |---|---|---|
-| **Predefined** | none — you only call it | the server ships 128 of them (9.5.1); metadata, dependencies, statistics, cache, OAuth |
+| **Predefined** | none — you only call it | the server ships them — `LIST PROCEDURES` shows which yours has; metadata, dependencies, statistics, cache, OAuth |
 | **VQL procedure** | `CREATE OR REPLACE VQL PROCEDURE` | procedural logic — variables, branches, loops, cursors — without Java |
 | **Java procedure** | `CREATE OR REPLACE PROCEDURE … CLASSNAME` | a compiled class from a JAR already imported into the server |
 
@@ -30,7 +30,7 @@ naming and the safety rule are `/denodo:vql`; apply the file with `/denodo:execu
 ### Call a predefined procedure
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-05)
+-- verified: 9.5.1 (live, 2026-10-06)
 SELECT view_name, depth FROM USED_BY()
  WHERE input_view_database_name = 'sales_analytics'
    AND input_view_name = 'customer';
@@ -51,10 +51,20 @@ form — it names its parameters, it lets you join the result with a view, and s
 procedures accept no positional arguments at all (`PING_DATA_SOURCE(…)` answers a bare
 `Error executing query`, with nothing about what went wrong).
 
+**Some predefined procedures change state, and they are called exactly like a read.**
+`GENERATE_STATS` overwrites a view's statistics, `CLEAN_CACHE_DATABASE` deletes cached rows,
+`DROP_REMOTE_TABLE` drops a table in the source, `LOGCONTROLLER` changes logging for the whole
+server — the full list, with what each one changes, is `references/predefined.md`, "A call that
+looks like a read and is not". Show the human the call and wait for the yes, as for a `DROP`
+(`/denodo:vql`); "run the stats procedure" is the task, not that yes. The tool flags each one
+`destructive: "procedure"`. Two exceptions belong to other skills, each on objects you created in
+this session: a new remote table (`/denodo:materialize`) and clearing the cache of your own view
+(`/denodo:cache`).
+
 ### VQL procedure
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-05)
+-- verified: 9.5.1 (live, 2026-10-06)
 CONNECT DATABASE sales_analytics;
 
 CREATE OR REPLACE VQL PROCEDURE order_size_band
@@ -117,7 +127,7 @@ the procedure to a path on one machine. Here `FOLDER =` sits with the other clau
 | Slot | Where it comes from |
 |---|---|
 | Which kind of procedure | the request: calling something → predefined; "loop / branch / for each" → VQL; "we have a JAR" → Java |
-| Which predefined procedure | the server, not memory: `LIST PROCEDURES` (128 on 9.5.1) and `references/predefined.md` for the families |
+| Which predefined procedure | the server, not memory: `LIST PROCEDURES` and `references/predefined.md` for the families |
 | Its parameters and their direction | `DESC PROCEDURE <name>` → `name, type, direction`; or `SELECT … FROM GET_PROCEDURE_COLUMNS() WHERE input_procedure_name = '<NAME>'`, which adds `column_is_nullable` |
 | Parameters and types of your own procedure | the human — what goes in, what comes back; types are the VQL types (`references/vql-procedures.md`) |
 | Folder | the layer the procedure serves, `/02 - integration` for logic over integrated views; project conventions win (`.denodo/conventions.md`) |
@@ -128,8 +138,8 @@ Do not ask for a folder tree, cache or statistics settings — a procedure has n
 
 ## Reference
 
-- `references/predefined.md` — what the 128 procedures cover, family by family, and the
-  rules that apply to calling any of them.
+- `references/predefined.md` — what the predefined procedures cover, family by family, the
+  ones that change state, and the rules that apply to calling any of them.
 - `references/vql-procedures.md` — the full procedural language: types, `IN/OUT/IN OUT`,
   `NULLABLE`, `IF`/`CASE`/`LOOP`/`WHILE`/`FOR`, cursors, exceptions, `EXECUTE` of DDL,
   transactions, comments, debug logging.
@@ -141,8 +151,8 @@ Do not ask for a folder tree, cache or statistics settings — a procedure has n
 | Question | Read-back |
 |---|---|
 | Does the procedure exist, and where | `SELECT name, subtype, folder FROM GET_ELEMENTS() WHERE input_database_name = '<db>' AND type = 'storedProcedure'` — `subtype` is `user defined - vql` for the VQL form |
-| What does it take and return | `vql desc --env dev <name> --type procedure` → `name, type, direction` |
-| What is its definition | `vql desc --env dev <name> --type procedure --vql` → the `CREATE VQL PROCEDURE` the server itself would write |
+| What does it take and return | `vql desc --env dev --database <db> <name> --type procedure` → `name, type, direction` — *verified: 9.5.1 (live, 2026-10-05)* |
+| What is its definition | `vql desc --env dev --database <db> <name> --type procedure --vql` → the `CREATE VQL PROCEDURE` the server itself would write |
 | Does it work | call it: `SELECT <out column> FROM <name>() WHERE <input> = <value>` — the only check that proves the body, not the parse |
 | Which predefined procedure is available here | `LIST PROCEDURES` |
 | Which views stand on this procedure | `SELECT dependency_name, dependency_type, depth FROM VIEW_DEPENDENCIES() WHERE input_view_database_name = '<db>' AND input_view_name = '<view>'` — asked per view; a procedure shows up as `dependency_type = 'Storedprocedure Vql'` |

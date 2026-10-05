@@ -84,8 +84,8 @@ would be the alternative.
 | `ORDER BY … LIMIT n` | freezes an ordering and a row cap into the view | *verified: 9.5.1 (live, 2026-09-10)*. A consumer's own `ORDER BY` overrides the ordering but not the cap; a "top 100" view surprises whoever filters it |
 | `OFFSET` / `FETCH FIRST … ROWS ONLY` | the SQL-standard spelling of the same thing | same caveat |
 | `WITH CHECK OPTION` | rejects `INSERT`/`UPDATE` through the view that would not satisfy its own `WHERE` | *verified: 9.5.1 (live, 2026-10-02)*. Only meaningful for a view an application writes through. It evaluates the filter on the values a statement writes; a column left out counts as `NULL`, and a filter that is unknown for `NULL` lets the row through — `/denodo:dml` |
-| `CONTEXT ( … )` | pins execution options into the view definition | *verified: 9.5.1 (live, 2026-09-10)*. Design Studio emits `CONTEXT ('i18n' = 'es_euro')` on views it generates; do not copy it into hand-written VQL without a reason. The one every view carries is `CONTEXT ('formatted' = 'yes')`, which keeps the `SELECT` as written — `SKILL.md`, Derived view |
-| `CHECK_INDIRECT_ACCESS ON` | makes the server check the `INDIRECT_ACCESS` privilege for this view | *verified: 9.5.1 (live, 2026-09-10)*. Privileges are outside v1 |
+| `CONTEXT ( … )` | pins execution options into the view definition | *verified: 9.5.1 (live, 2026-09-10)*. Design Studio emits `CONTEXT ('i18n' = '<map>')` on views it generates; do not copy it into hand-written VQL without a reason. The one every view carries is `CONTEXT ('formatted' = 'yes')`, which keeps the `SELECT` as written — `SKILL.md`, Derived view |
+| `CHECK_INDIRECT_ACCESS ON` | makes the server check the `INDIRECT_ACCESS` privilege for this view | *verified: 9.5.1 (live, 2026-09-10)*. Privileges are `/denodo:security` |
 
 ## `ALTER VIEW`: what it cannot do
 

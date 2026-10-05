@@ -2002,14 +2002,26 @@ class ExternalElementBlockTest(unittest.TestCase):
                "contract from another tool[0]")
 
     def test_the_skill_block_parses_into_four_calls(self):
+        # the block names its ids as placeholders, as every template must (rule 1 of the
+        # skill); the chain substitutes captured ids, and so does this test
         from denodo_cli.templates import load_block
         repo = Path(__file__).resolve().parents[1]
-        calls = parse_api_calls(load_block(repo, self.ADDRESS).body)
+        body = render(load_block(repo, self.ADDRESS).body,
+                      {"<provider_type_id>": "30", "<tool_server_id>": "217"}, {})
+        calls = parse_api_calls(body)
         self.assertEqual([c["method"] for c in calls], ["POST", "POST", "GET", "POST"])
         self.assertIsNotNone(calls[0]["multipart"])
         self.assertEqual(calls[1]["json"]["type"], "CUSTOM")
+        self.assertEqual(calls[1]["json"]["externalProviderTypeId"], 30)
         self.assertIn("vql-metadata", calls[2]["path"])
         self.assertEqual(calls[3]["json"], {"externalToolServerIds": [217]})
+
+    def test_no_literal_id_is_left_in_the_skill_block(self):
+        from denodo_cli.templates import load_block
+        repo = Path(__file__).resolve().parents[1]
+        body = load_block(repo, self.ADDRESS).body
+        self.assertIn("<provider_type_id>", body)
+        self.assertIn("<tool_server_id>", body)
 
 
 SCHEDULER_SKILL = """### Refresh a cache

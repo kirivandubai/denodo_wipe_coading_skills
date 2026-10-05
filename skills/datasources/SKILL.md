@@ -85,7 +85,7 @@ exist yet (`/denodo:catalog`), and check that the names you are about to propose
 
 - Find what was created: `SELECT name, subtype, folder FROM GET_ELEMENTS() WHERE
   input_database_name = '<db>' AND type = 'view'`, and read each base view with
-  `vql desc --env <env> "<db>.<bv>" --vql`. Read it; never apply it (`/denodo:execute`).
+  `vql desc --env dev "<db>.<bv>" --vql`. Read it; never apply it (`/denodo:execute`).
 - Run the **Verify** table below on it. A wizard-made base view fails silently in the same
   ways yours does — a wrong row count, a column of `NULL`s, padded text. For an API, the
   count to expect is the total the API itself reports.
@@ -141,7 +141,7 @@ after a fix is safe — with one exception, the JDBC password, called out below.
 ### Delimited file (CSV) — DF
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-05)
+-- verified: 9.5.1 (live, 2026-10-06)
 CONNECT DATABASE sales_analytics;
 
 CREATE OR REPLACE DATASOURCE DF ds_crm
@@ -220,7 +220,9 @@ CREATE OR REPLACE TABLE bv_crm_customers I18N us_pst (
 - The `CONSTRAINTS ( … )` block that the server prints in `DESC VQL` is optional for a
   delimited file whose base view mirrors the wrapper — the DF wrapper does filter what the
   server hands it — and so is `I18N` inside `ADD SEARCHMETHOD`. For a JSON file it is not optional (**JSON file** below). `I18N <map>` after the view name is not
-  (`LIST MAPS I18N` shows the 76 available; `us_pst` is the usual default).
+  — it is the zone and the language dates and timestamps are read in. Take the one the
+  database's other base views declare (`DESC VQL VIEW`), or the human's; the templates'
+  `us_pst` (US Pacific time) only when there is nothing to follow. `LIST MAPS I18N` lists them.
 - The path is **on the Denodo server**, not on your machine. If it points to a directory,
   every file in it is read as one table — add `FILENAMEPATTERN = '.*\.csv'` and keep the
   files' schema identical.
@@ -231,7 +233,7 @@ CREATE OR REPLACE TABLE bv_crm_customers I18N us_pst (
 ### JSON file
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-05)
+-- verified: 9.5.1 (live, 2026-10-06)
 CONNECT DATABASE sales_analytics;
 
 CREATE OR REPLACE DATASOURCE JSON ds_oms
@@ -354,13 +356,13 @@ self-signed certificate needs `;trustServerCertificate=true` appended, and that 
 question for the human, not a default you add silently.
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-05) — created against an unreachable host, ciphertext included
+-- verified: 9.5.1 (live, 2026-10-06) — created against an unreachable host, ciphertext included
 CONNECT DATABASE sales_analytics;
 
 CREATE OR REPLACE DATASOURCE JDBC ds_orders_db
     FOLDER = '/01 - connectivity'
     DRIVERCLASSNAME = 'oracle.jdbc.OracleDriver'
-    DATABASEURI = 'jdbc:oracle:thin:@oracle-edw.internal:1521/XEPDB1'
+    DATABASEURI = 'jdbc:oracle:thin:@oracle-edw.internal:1521/ORDERSPDB'
     USERNAME = 'appuser'
     USERPASSWORD = '<ciphertext — see Passwords below; fill it in before applying>' ENCRYPTED
     CLASSPATH = 'oracle-21c'
@@ -381,11 +383,11 @@ SELECT status, down_cause FROM PING_DATA_SOURCE()
 -- Oracle: no catalog. On SQL Server add AND input_catalog_name = '<database>'
 SELECT catalog_name, schema_name, table_name, type FROM GET_JDBC_DATASOURCE_TABLES()
  WHERE input_datasource_name = 'ds_orders_db'
-   AND input_schema_name = 'RETAIL';
+   AND input_schema_name = 'OMS';
 
 SELECT creation_vql FROM GENERATE_VQL_TO_CREATE_JDBC_BASE_VIEW()
  WHERE data_source_name = 'ds_orders_db'
-   AND schema_name = 'RETAIL' AND table_name = 'CUSTOMER'
+   AND schema_name = 'OMS' AND table_name = 'CUSTOMER'
    AND base_view_name = 'bv_orders_db_customer'
    AND folder = '/01 - connectivity';
 ```
@@ -419,7 +421,7 @@ schema the human gives you — the DDL still parses and the objects still get cr
 columns** and works fine — that is the opposite of DF, where a subset returns zero rows:
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-05) — created against an unreachable host
+-- verified: 9.5.1 (live, 2026-10-06) — created against an unreachable host
 CREATE OR REPLACE WRAPPER JDBC wr_orders_db_orders
     FOLDER = '/01 - connectivity'
     DATASOURCENAME = ds_orders_db
@@ -476,6 +478,7 @@ no shell. Three ways to get it, in order of preference:
    cheapest and the most accurate, because what comes back is already working on this
    server. Find the candidates:
    ```sql
+   -- verified: 9.5.1 (live, 2026-10-05)
    SELECT database_name, name FROM GET_ELEMENTS()
     WHERE type = 'view' AND subtype = 'base' AND name LIKE '%<word from the file name>%';
    ```
@@ -483,7 +486,7 @@ no shell. Three ways to get it, in order of preference:
    the name so you do not have to switch databases:
    ```bash
    # verified: 9.5.1 (live, 2026-09-12)
-   ${CLAUDE_PLUGIN_ROOT}/scripts/denodo vql desc --env <env> "<other db>.<base view>" --vql
+   ${CLAUDE_PLUGIN_ROOT}/scripts/denodo vql desc --env dev "<other db>.<base view>" --vql
    ```
    One call returns the whole chain: the `ROUTE` with the server-side path, the parse clauses
    (`COLUMNDELIMITER`, `ENDOFLINEDELIMITER`, `HEADER`, `CHARSET`), the wrapper's complete
@@ -541,7 +544,7 @@ goes into a hidden prompt:
 
 ```bash
 # verified: 9.5.1 (live, 2026-09-12)
-! ${CLAUDE_PLUGIN_ROOT}/scripts/denodo secret encrypt --env <env>
+! ${CLAUDE_PLUGIN_ROOT}/scripts/denodo secret encrypt --env dev
 ```
 
 They can also pipe it from a password manager (`op read op://vault/db/password | …`). Either
@@ -559,7 +562,7 @@ arguments are kept in the session transcript.
 - **The ciphertext is server-specific.** `--env` names the environment the file will be
   applied to; moving a data source to another environment means encrypting again there.
 - **A source to the same database may already exist — then you need no password at all.**
-  `vql desc --env <env> --database <db> <existing_ds> --type "datasource jdbc" --vql`
+  `vql desc --env dev --database <db> <existing_ds> --type "datasource jdbc" --vql`
   prints `USERNAME` and `USERPASSWORD '…' ENCRYPTED`, and both work verbatim in your own
   data source. The donor may live in **any database on that server** — look for it with
   `SELECT database_name, name FROM GET_ELEMENTS() WHERE type = 'datasource' AND subtype = 'jdbc'`
@@ -604,7 +607,7 @@ else yourself. Three or four lines, not an interview:
 | Delimiter, header, charset | the human, or a sample of the file; `,` + `HEADER = TRUE` + `UTF-8` is the common case |
 | **Every column name of a file, in order** | the file header, verbatim and complete — the server does **not** introspect files. Three ways to get it, including one that needs nobody: **When you cannot see the file** above. Never infer it from the columns the human wants |
 | JSON shape | a sample of the document — nesting decides `REGISTER OF` / `ARRAY OF`, and you cannot guess it. Same three ways |
-| Object names | the conventions in `/denodo:vql` — unless the human asked for something specific in this request (a prefix, a naming scheme). An explicit instruction wins over the convention; keep the type marker inside it (`green1_ds_store`, not `green1_store`) |
+| Object names | the conventions in `/denodo:vql` — unless the human asked for something specific in this request (a prefix, a naming scheme). An explicit instruction wins over the convention; keep the type marker inside it (`acme_ds_store`, not `acme_store`) |
 | Column types of a file source | your decision in `CREATE TABLE`: text unless the format is unambiguous; a wrong type costs `NULL`s, not an error |
 | Database, folder | `/denodo:catalog` and the conventions in `/denodo:vql`: `/01 - connectivity`, `ds_<source>`, `wr_<source>_<entity>`, `bv_<source>_<entity>` |
 
@@ -687,5 +690,8 @@ attempt: **When a template does not work straight away**, above.
 | Relative path in `ROUTE LOCAL` | `[DF ROUTE] [PARSE_ERROR] … Error getting input Stream` | absolute path, on the server's filesystem |
 
 Dropping a source takes its wrappers and base views with it (`CASCADE`), and that is the
-human's call — `/denodo:vql`. Replacing a working source with `CREATE OR REPLACE` is
-cheap and safe; the one thing it destroys is the stored password.
+human's call — `/denodo:vql`. Re-applying a source your project's own file declares is the
+normal loop. A source no file of yours declares — made in Design Studio, or another team's — is
+the human's yes before any `CREATE OR REPLACE`: your text replaces its whole configuration, the
+stored password included, and a base view re-declared the same way loses its cache settings
+(`references/base-view.md`, "Cache, swap, MPP").

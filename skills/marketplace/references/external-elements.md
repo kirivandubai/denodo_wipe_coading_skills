@@ -49,7 +49,7 @@ listing embeds those icons as base64 and is ~290 KB on 9.5.1: save it and projec
 **"None fits" is decided by whose logo ends up on the card.** A provider type is what the
 consumer sees as the origin of the asset, so reusing `TABLEAU` for a dashboard that is not
 Tableau's puts another vendor's name and logo on it — a false statement about provenance,
-and cheaper only in calls. A own type without an icon is the better trade; it stands
+and cheaper only in calls. A type of your own without an icon is the better trade; it stands
 logo-less, which is honest. `name` is not validated against a shape: every built-in one is
 `UPPER_SNAKE`, and a lowercase name is accepted just the same — *verified: 9.5.1 (live,
 2026-09-12)*.
@@ -61,6 +61,7 @@ returns `201` with `iconImage: null` without it, though the documentation
 calls it mandatory — *verified: 9.5.1 (live, 2026-09-10)*. Through the tool:
 
 ```bash
+# verified: 9.5.1 (live, 2026-09-10) — the request part; the icon part, 2026-09-12
 --part 'request=json:{"name":"ACME_BI","visualName":"Acme BI"}'  --part 'icon=@./acme.svg'
 ```
 
@@ -119,12 +120,11 @@ Association record: `associated_element_id`, `external_tool_server_name`,
   *verified: 9.5.1 (live, 2026-09-10)*. Two consequences: elements from two different tools
   need two provider types and therefore **two tool servers**, and the server holding the
   target must be imported **first**, or the association has nothing to resolve to.
-- `direction` is `IN` or `OUT` — *documentation 9.5*. It reads from the external element
-  outwards and is not the direction of the data: in the sample content that ships with 9.5.1, a
-  dashboard that *reads* a view carries `OUT` with role `consumes`, and a pipeline that
-  *writes* one carries `OUT` with role `feeds`. Every association there, and every one
-  created while verifying this skill, is `OUT`; no `IN` example was available, so what
-  the marketplace does differently with it is *unverified*. `role` is free text and is the
+- `direction` is `IN` or `OUT` — *unverified: 9.5 documentation only*. It reads from the
+  external element outwards and is not the direction of the data: in the sample content that
+  ships with 9.5.1, a dashboard that *reads* a view carries `OUT` with role `consumes`, and a
+  pipeline that *writes* one carries `OUT` with role `feeds`. Every association there is
+  `OUT`; what the marketplace does differently with `IN` is *unverified*. `role` is free text and is the
   label drawn on the edge.
 
 **The type names are part of the contract.** Renaming
@@ -176,7 +176,7 @@ The response is per server: `externalElementsAdded`, `externalElementsUpdated`,
 ## Reading an element back
 
 All five below are *verified: 9.5.1 (live, 2026-09-10)* except the `PUT` row, which is
-*unverified: OpenAPI of the 9.5.1 server*.
+*unverified: 9.5 documentation only* (the server's OpenAPI).
 
 | Call | Gives |
 |---|---|

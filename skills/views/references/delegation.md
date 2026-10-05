@@ -124,4 +124,5 @@ report:
 - **keep it** — when the volume stays small, or the consumer never reads that column;
 - **two data sources** — nothing inside the view changes it. Moving the data into one place
   is outside this skill: a full cache on both views, which delegates their join to the cache
-  database (documentation), is `/denodo:cache`; a copy in one database is Design Studio.
+  database (documentation), is `/denodo:cache`; a data movement or a copy as a table in one
+  database is `/denodo:materialize`.

@@ -86,16 +86,16 @@ exists only because a constant is an alias):
 -- verified: 9.5.1 (live, 2026-09-30)
     AS SELECT sr_item_sk AS item_sk, sr_returned_date_sk AS returned_date_sk, sr_return_amt AS return_amount
        FROM bv_store_returns_live
-       WHERE sr_returned_date_sk >= 2457754 OR sr_returned_date_sk IS NULL
+       WHERE sr_returned_date_sk >= <first key of the live period> OR sr_returned_date_sk IS NULL
        UNION ALL
        SELECT sr_item_sk AS item_sk, sr_returned_date_sk AS returned_date_sk, sr_return_amt AS return_amount
        FROM bv_store_returns_archive
-       WHERE sr_returned_date_sk < 2457754
+       WHERE sr_returned_date_sk < <first key of the live period>
 ```
 
 `>=`, `>`, `BETWEEN`, `=` and `IS NULL` on the key prune. **Rows whose key is `NULL` satisfy
 neither range and disappear**: two complementary branches over one file returned that file
-minus every row with a `NULL` key (*live, 2026-09-30*), and nothing reported the difference.
+minus every row with a `NULL` key (*verified: 9.5.1 (live, 2026-09-30)*), and nothing reported the difference.
 `OR <key> IS NULL` goes into the branch of the source that owns those rows — the choice is
 about authority, not speed: range queries prune the same whichever branch holds it.
 

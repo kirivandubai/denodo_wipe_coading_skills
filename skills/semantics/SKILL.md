@@ -21,9 +21,11 @@ SDK or Assisted Query is the administrator's. Applying files is `/denodo:execute
 working loop and the safety rule are `/denodo:vql`.
 
 **A view you are building now** (`/denodo:views`) gets the same metadata in its own file:
-profile it (section 2), write the texts (section 3), put them and the MCP tag in its
-`CREATE OR REPLACE VIEW` (section 5), apply and verify — no approval step, it is yours.
-What the data cannot settle stays out of the text and goes to the human as a question.
+profile it (section 2), write the texts (section 3), put them in its `CREATE OR REPLACE VIEW`
+(section 5), apply and verify — no approval step for the texts, the view is yours. The MCP tag
+goes in too only when the human asked for the view to be visible to agents: the tag publishes
+its rows to every agent on the server (MCP visibility, below). What the data cannot settle
+stays out of the text and goes to the human as a question.
 
 ## The rule: from the data, approved before it is written
 
@@ -54,7 +56,7 @@ What the data cannot settle stays out of the text and goes to the human as a que
 ## 1. Audit — read-only
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-05)
+-- verified: 9.5.1 (live, 2026-10-06)
 SELECT e.name, e.subtype, e.folder,
        CASE WHEN e.description IS NULL OR TRIM(e.description) = '' THEN 'none' ELSE 'yes' END AS view_description,
        c.fields, c.undescribed_fields, c.pk_fields,
@@ -120,7 +122,7 @@ will read:
 ## 2. Profile — what the data says
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-05)
+-- verified: 9.5.1 (live, 2026-10-06)
 CONNECT DATABASE sales_analytics;
 
 -- The grain: the key the description will name. Equal counts, no NULL key.
@@ -209,7 +211,7 @@ silently — including the MCP tag, so the view disappears from the agent. An `A
 view that has a file lasts until the file is next applied.
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-05)
+-- verified: 9.5.1 (live, 2026-10-06)
 CONNECT DATABASE sales_analytics;
 
 ALTER VIEW household_income_by_band
@@ -225,6 +227,7 @@ ALTER VIEW household_income_by_band ADD PRIMARY KEY ( 'income_band_sk' );
 ALTER ASSOCIATION a_income_band_household
     DESCRIPTION = 'The income band a household belongs to. Every household has one band; a band has many households.';
 
+-- only for a view the human named to be made visible to agents (MCP visibility, below)
 ALTER TAG mcp
     ADD_TO ( VIEWS ( sales_analytics.household_income_by_band ) COLUMNS () )
     REMOVE_FROM ( VIEWS () COLUMNS () );
@@ -257,13 +260,13 @@ In order:
 
 1. **The tag is on the view, not only on a column**:
    `SELECT view_name, column_name FROM GET_VIEW_TAGS() WHERE input_database_name = '<db>' AND input_view_name = '<view>' AND tag_name = '<tag>'`
-   — a row with an empty `column_name`. A tag on a column leaves the view hidden
+   — a row with an empty `column_name` (*verified: 9.5.1 (live, 2026-10-05)*). A tag on a column leaves the view hidden
    (documentation).
 2. **The agent's user may read it.** The MCP Server runs everything with the Denodo
    credentials its client sends, so the user is the agent's own account (ask the human
    which). `SELECT dbconnect, elementname, elementexecute FROM GET_CATALOG_EFFECTIVE_PERMISSIONS()
    WHERE input_user_name = '<user>' AND input_database_name = '<db>'` — the database row
-   needs `dbconnect = true`, the view's row `elementexecute = true`. A user that exists only
+   needs `dbconnect = true`, the view's row `elementexecute = true` (*verified: 9.5.1 (live, 2026-10-05)*). A user that exists only
    in the identity provider is not returned (documentation). Granting is a change of who
    reads what: `/denodo:security`, after the human's yes.
 3. **The server has picked the change up**: it refreshes its schema while
@@ -286,8 +289,9 @@ the MCP Server create a query tool of its own for the view.
 - **The MCP Server** reads Denodo directly — the next schema refresh.
 - **Assisted Query and the AI SDK** read through the Data Marketplace: nothing changes for
   them until the marketplace is synchronised with Denodo (`/denodo:marketplace`, a
-  server-wide call that needs its own yes — and the way to see whether the database is in
-  the marketplace at all, on every registered server), and the AI SDK until its
+  server-wide call: yours only when its radius holds nothing you did not create in this
+  session, edited descriptions aside, and otherwise its own yes — and the way to see whether
+  the database is in the marketplace at all, on every registered server), and the AI SDK until its
   `getMetadata` runs again for that database or tag — whoever runs the SDK does that.
 - The AI SDK pointed at a **database** reads every view in it, base views included; pointed
   at a **tag**, only the tagged ones. Which it is decides whether base views need describing

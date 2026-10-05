@@ -41,7 +41,9 @@ import and export. Say so and stop.
 All of these are reads:
 
 1. **The Scheduler answers.** `env check --env dev` → `scheduler.ok: true`, and `roles`
-   names a Scheduler role that may create jobs.
+   names a Scheduler role that may create jobs. `scheduler: null` means the profile names
+   neither `scheduler_url` nor `marketplace_url` and the check was not tried:
+   `api --server scheduler get /public/api/me --env dev` asks the default address.
 2. **The VDP data source the job runs through.**
    `api --server scheduler get /public/api/dataSources --env dev` — every data source of every
    project; take those with `"type": "VDP"` and read `id`, `projectName`, `login` and
@@ -105,7 +107,7 @@ Job iv_household_income_cache, project sales_analytics — created disabled, rea
 Each run reloads the full cache of sales_analytics.iv_household_income (ALL_ROWS, one
 transaction); readers: household_income_by_band (USED_BY) and <consumers the human named>.
 Runs as: admin (VDP data source "VDP", //host:9999/admin).
-Fires: 0 30 1 * * ? on a server in UTC → every night 01:30 UTC = 04:30 in UTC+3.
+Fires: 0 30 1 * * ? on a server in UTC → every night 01:30 UTC = <that time in the human's zone, named>.
 File: scheduler/sales_analytics/iv_household_income_cache.json
 Enable it?
 ```
@@ -181,7 +183,7 @@ calls below covers it:
   "disabled": true,
   "extractionSection": {
     "type": "VDPCache",
-    "dataSourceID": 2,
+    "dataSourceID": <data_source_id>,
     "loadprocesses": [
       {
         "viewName": "sales_analytics.iv_household_income",
@@ -199,7 +201,7 @@ calls below covers it:
 ```
 
 ```bash
-# verified: 9.5.1 (live, 2026-10-05)
+# verified: 9.5.1 (live, 2026-10-06)
 api --server scheduler post /public/api/projects/<project_id>/jobs --json-file scheduler/sales_analytics/iv_household_income_cache.json --env dev
 api --server scheduler get /public/api/projects/<project_id>/jobs/<job_id>/status --env dev
 api --server scheduler get /public/api/projects/<project_id>/jobs/<job_id> --env dev
@@ -230,7 +232,8 @@ and loads nothing. The run sends `select * from <view> CONTEXT('cache_preload'='
 
 ### Export a view to a CSV file on a schedule
 
-`scheduler/sales_analytics/household_income_by_band_csv.json`:
+`scheduler/sales_analytics/household_income_by_band_csv.json` — the mark of the calls below
+covers it:
 
 ```json
 {
@@ -240,7 +243,7 @@ and loads nothing. The run sends `select * from <view> CONTEXT('cache_preload'='
   "disabled": true,
   "extractionSection": {
     "type": "VDP",
-    "dataSourceID": 2,
+    "dataSourceID": <data_source_id>,
     "extractionData": {
       "parameterizedQuery": "SELECT income_band_sk, household_count FROM sales_analytics.household_income_by_band ORDER BY income_band_sk"
     }
@@ -269,7 +272,7 @@ and loads nothing. The run sends `select * from <view> CONTEXT('cache_preload'='
 ```
 
 ```bash
-# verified: 9.5.1 (live, 2026-10-05)
+# verified: 9.5.1 (live, 2026-10-06)
 api --server scheduler post /public/api/projects/<project_id>/jobs --json-file scheduler/sales_analytics/household_income_by_band_csv.json --env dev
 api --server scheduler get /public/api/projects/<project_id>/jobs/<job_id>/status --env dev
 api --server scheduler get /public/api/projects/<project_id>/jobs/<job_id> --env dev
@@ -318,7 +321,7 @@ statement as `parameterizedQuery` — `REFRESH sales_analytics.rt_household_inco
 ### Run it now, and wait for the report
 
 ```bash
-# verified: 9.5.1 (live, 2026-10-05)
+# verified: 9.5.1 (live, 2026-10-06)
 api --server scheduler put /public/api/projects/<project_id>/jobs/<job_id>/status --json '{"action": "start"}' --env dev
 api --server scheduler get /public/api/projects/<project_id>/jobs/<job_id>/reports --param start=0 --param count=1 --env dev
 ```
@@ -340,7 +343,7 @@ writing, for a reload without the Scheduler.
 ### Stop, enable, disable
 
 ```bash
-# verified: 9.5.1 (live, 2026-10-05)
+# verified: 9.5.1 (live, 2026-10-06)
 api --server scheduler put /public/api/projects/<project_id>/jobs/<job_id>/status --json '{"action": "disable"}' --env dev
 api --server scheduler put /public/api/projects/<project_id>/jobs/<job_id>/status --json '{"action": "enable"}' --env dev
 api --server scheduler get /public/api/projects/<project_id>/jobs/<job_id>/status --env dev
@@ -355,7 +358,7 @@ re-creation sends, and one that still says `true` switches the job off again wit
 ### Change a job
 
 ```bash
-# verified: 9.5.1 (live, 2026-10-05)
+# verified: 9.5.1 (live, 2026-10-06)
 api --server scheduler get /public/api/projects/<project_id>/jobs/<job_id> --env dev
 api --server scheduler put /public/api/projects/<project_id>/jobs/<job_id> --json-file scheduler/sales_analytics/iv_household_income_cache.json --env dev
 ```
@@ -371,7 +374,7 @@ it.
 ### What ran, and what failed
 
 ```bash
-# verified: 9.5.1 (live, 2026-10-05)
+# verified: 9.5.1 (live, 2026-10-06)
 api --server scheduler get /public/api/jobs/status --env dev
 api --server scheduler get /public/api/projects/<project_id>/jobs/<job_id>/reports/summary --env dev
 api --server scheduler get /public/api/projects/<project_id>/jobs/<job_id>/reports --param start=0 --param count=5 --env dev
@@ -406,17 +409,18 @@ A job that runs and changes nothing: its reports say `WARNING` (the view's cache
 Six fields and an optional seventh: **seconds** minutes hours day-of-month month
 day-of-week [year]. One of day-of-month and day-of-week must be `?`.
 
-| The human says | Cron, on a server in UTC |
+| The human says — the last three for a human in UTC+3, as an example | Cron, on a server in UTC |
 |---|---|
 | every night at 01:30 UTC | `0 30 1 * * ?` |
 | every hour, on the hour | `0 0 * * * ?` |
 | weekdays at 18:00 UTC | `0 0 18 ? * MON-FRI` |
-| at 05:00 in UTC+3 | `0 0 2 * * ?` |
-| Mondays at 01:00 in UTC+3 | `0 0 22 ? * SUN` — the day moves with the hour |
-| the 1st of the month at 01:00 in UTC+3 | `0 0 22 L * ?` — the last day of the previous month |
+| at 05:00 their time | `0 0 2 * * ?` |
+| Mondays at 01:00 their time | `0 0 22 ? * SUN` — the day moves with the hour |
+| the 1st of the month at 01:00 their time | `0 0 22 L * ?` — the last day of the previous month |
 
 `POST /public/api/projects/jobs/validateCronExpressions` with a JSON list of expressions
-answers one string per expression, `""` when it is valid:
+answers one string per expression, `""` when it is valid — every expression in the table above
+and the refusal of `0 0 2 * * *` below, *verified: 9.5.1 (live, 2026-10-05)*:
 `api --server scheduler post /public/api/projects/jobs/validateCronExpressions --json '["0 0 2 * * ?"]' --env dev`.
 Validate before creating: a five-field cron makes the create call fail with nothing but
 `500 Internal error`; `0 0 2 * * *` is invalid too (`Day-of-Month and Day-of-Week can not both
