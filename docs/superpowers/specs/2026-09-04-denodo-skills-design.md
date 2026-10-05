@@ -327,6 +327,21 @@ new table: on a production profile every change waits for the yes.
 EXTERNAL_ELEMENTS}/synchronize`, а пути `views/{id}/categories` в API вовсе нет — «сет»-вызов
 для категорий живёт под `category-management/`.
 
+**When the agent synchronises the marketplace catalog itself (owner's decision, 2026-10-05).**
+`DATABASES/synchronize` and `VIEWS/synchronize` stay destructive in the classifier, but the
+agent runs them without a yes — with `proceedWithConflicts: "SERVER_WITH_LOCAL_CHANGES"`, never
+on a production profile — when both `…/changes`, read right before the call, hold only the
+session's own objects: every `localElements` entry is the element of a view the session created
+(its own renamed view, with the pair matched in the call, included), and every `serverElements`
+entry is a database or view the session created. `modifiedElements` do not change this: that
+mode keeps every description edited in the marketplace. After the call the agent reads
+`removed` and `inserted` against the radius it read and tells the human at once about anything
+else. Any other radius waits for the yes. Renaming a view that existed before the session: one
+yes covers the `ALTER … RENAME` and the `synchronize` with the pair matched, when both are shown
+together. The first import on an external tool server created in the same session stays the
+other exception. The rule is the same as "your own new — yourself" for tables (T34): the call
+changes nothing in the shared catalog that the session did not make.
+
 **The Scheduler's HTTP rule (T36).** On the Scheduler (`api --server scheduler`) every `PUT`
 replaces the whole object it names — a job, a project, a data source — and is `alter`; a
 job's `status` change (start, stop, enable, disable) is `job`; every `DELETE` and report
