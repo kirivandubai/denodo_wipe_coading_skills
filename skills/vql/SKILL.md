@@ -229,6 +229,7 @@ different figures depending on what Denodo pushes down to the source.
 | Changing rows in the database behind a view — `INSERT`, `UPDATE`, `DELETE`, `INSERT … SELECT`, an upsert, the generated key back, a view an application writes through (`WITH CHECK OPTION`) | `/denodo:dml` |
 | The result of a query stored as a table — a remote table other tools read and its `REFRESH`, a frozen snapshot, a summary the optimizer answers aggregates from, a data movement for a slow federated join, a materialized table | `/denodo:materialize` |
 | What people and AI consumers read about existing views — descriptions, primary keys, associations, the tag the MCP Server shows views by; "why does the agent not see this view" | `/denodo:semantics` |
+| Regression tests a CI runs — `.denodotest` files for the Denodo Testing Tool beside the `.vql`, the tool's configuration from a profile, a red suite after a change | `/denodo:testing` |
 | Running anything against a live server, reading its errors | `/denodo:execute` |
 
 There is no skill for the `SELECT` itself — an ad-hoc question, a report, the body of a

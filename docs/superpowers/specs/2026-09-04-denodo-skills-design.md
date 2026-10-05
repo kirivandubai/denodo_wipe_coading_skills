@@ -84,6 +84,7 @@ Virtual DataPort — основной адресат, но не единстве
 /denodo:ai            the server's LLM in a query: text functions over rows, their answers cached, semantic search over stored vectors (T32, beyond v1)
 /denodo:dml           rows changed through a view: INSERT, UPDATE, DELETE, the generated key back, a view an application writes through, upserts (T33, beyond v1)
 /denodo:materialize   query results stored as tables: remote tables and REFRESH, summaries, data movement, materialized tables (T34, beyond v1)
+/denodo:testing       regression tests: .denodotest files run by the Denodo Testing Tool, its configuration written from a profile (T35, beyond v1)
 ```
 
 The dialect has no skill of its own (section 9): it is a table in the body of `/denodo:vql`
@@ -159,9 +160,12 @@ denodo_skills/                        репозиторий = плагин = м
 │   ├── dml/
 │   │   ├── SKILL.md
 │   │   └── references/               statements (grammar, RETURNING, upsert, how values land, transactions), writable-views (per view type, CHECK OPTION, wrapper switches, cache, impersonation)
-│   └── materialize/
+│   ├── materialize/
+│   │   ├── SKILL.md
+│   │   └── references/               remote-tables (procedure, command, types, REFRESH, materialized and temporary tables), summaries (grammar, rewrite measured, staleness, data movement)
+│   └── testing/
 │       ├── SKILL.md
-│       └── references/               remote-tables (procedure, command, types, REFRESH, materialized and temporary tables), summaries (grammar, rewrite measured, staleness, data movement)
+│       └── references/format.md      the .denodotest format as the Testing Tool runs it: parsing, comparison rules measured, SETUP/TEARDOWN, exit codes, the configuration
 ├── scripts/
 │   ├── denodo                        launcher (только stdlib)
 │   └── denodo_cli/                   реализация
@@ -419,6 +423,8 @@ scripts/denodo vql desc  --env dev bv_orders [--vql] [--type "datasource df"]
 scripts/denodo api get   --env dev /public/api/tags/count   [--param k=v] [--json …] [--part …]
 scripts/denodo env list | check --env dev | init            профили; init — интерактивно
 scripts/denodo secret encrypt --env dev       пароль источника со stdin → шифр (T15)
+scripts/denodo testing run --env dev --database sales_analytics --tool <dir> tests/   the Denodo Testing Tool on a folder of tests (T35)
+scripts/denodo testing config --env dev --database sales_analytics   configuration.properties of the Testing Tool from the profile (T35)
 scripts/denodo verify    --env dev            прогон шаблонов, см. раздел 11.1 (появится в T12)
 ```
 
@@ -482,12 +488,34 @@ scripts/denodo verify    --env dev            прогон шаблонов, с�
   transport = "vql_psycopg2"  # по умолчанию; vql_flightsql заложен, но не в v1
   marketplace_url = "http://localhost:9090/denodo-data-catalog"   # без него `api` недоступна
   # marketplace_server_id = 1                                      # обязателен при нескольких VDP
+  # jdbc_port = 9999                                               # only for `testing config` (T35)
   ```
 
   Профиль создаётся командой `scripts/denodo env init` — она интерактивна, пароль
   вводится скрыто, и запускать её должен человек (в Claude Code — `! scripts/denodo env
   init`), а не агент: так пароль не попадает в транскрипт. Имя профиля можно задать
   переменной `DENODO_ENV` вместо `--env`.
+- **The Denodo Testing Tool's configuration is written from the profile, not by hand (T35,
+  the decision the roadmap left to the task).** The tool reads its JDBC credentials from a
+  `configuration.properties` — plain or Jasypt `ENC(…)`, no environment substitution (read in
+  its sources). Every baseline run without a sanctioned way to make that file went around a
+  rule: two loaded the profile's password through the plugin's own loader into a wrapper
+  script, two ran with a password committed to the repository, one could not run its tests at
+  all. `testing config --env <p> --database <db>` writes the file from the profile beside the
+  profiles file (`<dir>/testing/<env>/<db>.properties`, 0600 in a 0700 directory), answers with
+  the path, URL and user and never the password, refuses a path inside a git work tree unless
+  the repository ignores it, refuses a password of the form `ENC(…)` (the tool would try to
+  decrypt it), and on a production profile refuses without `--allow-destructive` — the tool
+  runs a suite's `SETUP`/`TEARDOWN` past the classifier, so the yes has to come before the
+  channel exists. The JDBC port is the profile's `jdbc_port`, 9999 by default; the transports
+  use `port`. **The agent runs the tests with `testing run`**, which writes the same file into
+  a temporary directory for one run, starts the tool's launcher from its `bin/` and answers with
+  the exit code, the summary and each test. It is a launcher, not a runner: the tool parses and
+  compares, as the owner decided. It was added after a GREEN run: the session's permission
+  layer refused a launcher command that named the file under `~/.denodo/` ("Credential
+  Exploration") — any path to a file holding a password is at risk of that — and three runs
+  lost the tool's exit code in a pipe. `testing config` stays for a human who runs the tool by
+  hand. CI writes its own file from its secret store with the same keys.
 - **Профиль среды несёт флаг `production: true`** — иначе правило безопасности из ядра
   не имеет опоры: агент должен знать, куда подключён, до выполнения. Каждый ответ
   `scripts/denodo` повторяет этот флаг в поле `env.production`.
@@ -758,6 +786,16 @@ nothing in the cache database. A check can read the plan text:
 `… FROM GET_QUERY_EXECUTION_PLAN() WHERE input_query = '…' AND execution_plan LIKE '%Summary
 Acceleration%'` answers a row only when the optimizer chose the summary.
 
+**The Testing Tool steps — behind `--testing-tool <dir>` (T35).** A `denodotest`-channel step
+is a `.denodotest` block of `testing`: only the Denodo Testing Tool, a separate download with
+Java, can say whether it passes, so a run without the flag skips these steps with the reason.
+The block becomes the only file of a temporary folder, the tool's configuration is written
+beside it by the code of `testing config` for the test database and removed with the folder,
+and the launcher runs from the tool's `bin/` (it logs to `../log` of its working directory). A
+step passes on exit code 0 **and** a summary of one test run and one OK: the launcher exits 0
+after printing its usage, and a file it does not recognise is skipped. The plan template runs
+over the remote table of the write steps, so it also needs `--with-writes`.
+
 **Маркетплейс — по флагу `--with-marketplace`, по умолчанию выключенному.** Его объекты
 серверные, а не пообъектные по базам, и цепочке предшествует синхронизация общего
 каталога — единственная операция набора, меняющая состояние за пределами своей базы.
@@ -963,6 +1001,24 @@ summary or a remote table follow that database's collation; characters outside t
 land as `?` in a `varchar` column; a data movement into a data source the big side is not in
 moves for nothing; `CREATE OR REPLACE MATERIALIZED TABLE` over rows empties it. It cost the execution layer the `table` kind of the classifier and
 the verification chain eight steps behind `--with-writes`.
+
+**Also beyond v1, `/denodo:testing`** (T35, from the owner's roadmap review): regression tests
+for data products in Denodo's own format, `.denodotest` files beside the project's `.vql`, run
+by the Denodo Testing Tool — no runner of the plugin's own. Its first tests are the checks
+`views` makes at creation time, kept: a mart's totals against its input, a unique key, nothing
+`INVALID`, the contract's columns, the rows a consumer reads, a plan that stays in its database.
+Its rules come from the baseline: a copy of today's rows comes after the totals test passes,
+or it pins the defect it should catch; each new test is seen failing once; a red test is a
+finding about the views or about the test, decided before anything is edited, and fixing a
+view that existed before the session is not fixing the test. Measured against the tool
+(release 20260428) and 9.5.1: inline data is compared in order unless told otherwise, columns
+by name, `NULL` equal to `''`, a `timestamp` only as `yyyy-MM-dd HH:mm:ss.SSS`; a subset of
+nothing passes; a line starting with `#` is a comment inside data too; `%TRACE` fails every
+test it is in; a failed `SETUP` or `RESULTS` query skips the `TEARDOWN`; the launcher exits 0
+after printing its usage. It cost the execution layer `testing run`, `testing config` and the
+profile's `jdbc_port` (section 7.4), and the verification chain the `denodotest` channel behind
+`--testing-tool` (section 11.1), which runs its six templates through the code of `testing
+run`.
 
 ## 13. Риски и открытые вопросы
 

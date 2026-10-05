@@ -1,5 +1,5 @@
 # verification/chain.toml
-# Verifies 59 of the templates end to end: catalog database, folders, the DF (CSV), JSON
+# Verifies 65 of the templates end to end: catalog database, folders, the DF (CSV), JSON
 # and JDBC data sources, a hand-written JDBC wrapper and base view, derived views, the union
 # and the array views, the interface view, the association, the column-impact queries, the
 # full cache switched on, loaded and cleared, tags, the metadata audit, profile and
@@ -10,7 +10,8 @@
 # --with-writes, because they create tables in the server's cache database and write rows
 # into them — updates, inserts, deletes, a view an application writes through and an upsert,
 # and a remote table with its refresh, a summary loaded and used, a data movement, a
-# materialized table and the drop (vql channel), plus the
+# materialized table and the drop (vql channel), and — only with --testing-tool — the
+# .denodotest templates run by the Denodo Testing Tool (denodotest channel), plus the
 # Data Marketplace catalog
 # sync, a tag, a category, an external element and a renamed view that keeps its element
 # (http channel). Bodies of the
@@ -295,6 +296,53 @@ address = "skills/views/SKILL.md#Association — the relationship, recorded"
 # Same reason as interface-view above: this block has no CONNECT DATABASE either.
 database = "{database}"
 check = "SELECT association_name FROM GET_ASSOCIATIONS() WHERE input_database_name = '{database}' AND input_type = 'views' AND valid = true"
+
+# --- testing: .denodotest templates, run by the Denodo Testing Tool ---------------------
+#
+# Only with --testing-tool <its install directory> (T35): the tool is a separate download from
+# the Denodo support site and needs Java, so a default run skips these steps and says why. Each
+# block is written as the only file of a temporary folder, the tool's configuration is written
+# beside it from the run's profile (the code of `testing config`, pointed at the test database)
+# and removed with the folder, and the step passes when the tool reports one test run and one
+# OK. The blocks test the objects of the views templates above, under their own names; only
+# the database name inside GET_VIEWS() and GET_VIEW_COLUMNS() is substituted.
+
+[[step]]
+id = "testing-counts"
+kind = "template"
+channel = "denodotest"
+address = "skills/testing/SKILL.md#The mart counts every input row once"
+database = "{database}"
+
+[[step]]
+id = "testing-key"
+kind = "template"
+channel = "denodotest"
+address = "skills/testing/SKILL.md#The key is unique"
+database = "{database}"
+
+[[step]]
+id = "testing-nothing-invalid"
+kind = "template"
+channel = "denodotest"
+address = "skills/testing/SKILL.md#Nothing in the database is broken"
+substitute = { sales_analytics = "{database}" }
+database = "{database}"
+
+[[step]]
+id = "testing-contract"
+kind = "template"
+channel = "denodotest"
+address = "skills/testing/SKILL.md#The contract the consumer reads"
+substitute = { sales_analytics = "{database}" }
+database = "{database}"
+
+[[step]]
+id = "testing-rows"
+kind = "template"
+channel = "denodotest"
+address = "skills/testing/SKILL.md#The rows the consumer reads"
+database = "{database}"
 
 [[step]]
 id = "column-impact"
@@ -1099,6 +1147,18 @@ address = "skills/materialize/SKILL.md#Refresh it"
 substitute = { sales_analytics = "{database}" }
 database = "{database}"
 check = "SELECT COUNT(*) FROM bv_dwh_household_income HAVING COUNT(*) = 7200"
+
+[[step]]
+id = "testing-runs-in-the-database"
+kind = "template"
+channel = "denodotest"
+writes = true
+address = "skills/testing/SKILL.md#A view over a database runs in the database"
+# The chain's only JDBC view is the remote table above, in the cache database. The block plans
+# the mart; the step plans an aggregate over that table instead, which must run there whole —
+# no cause printed and one JDBC route.
+substitute = { "'SELECT * FROM household_income_by_band'" = "'SELECT income_band_sk, COUNT(*) AS households FROM bv_dwh_household_income GROUP BY income_band_sk'" }
+database = "{database}"
 
 [[step]]
 id = "materialize-summary"

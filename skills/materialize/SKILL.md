@@ -131,7 +131,7 @@ The blocks run in this order in the verification chain.
 ### Before you create: is the name free, and what will land
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-02)
+-- verified: 9.5.1 (live, 2026-10-05)
 CONNECT DATABASE sales_analytics;
 
 SELECT table_name
@@ -167,7 +167,7 @@ FROM iv_household_income;
 ### A remote table
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-02)
+-- verified: 9.5.1 (live, 2026-10-05)
 CONNECT DATABASE sales_analytics;
 
 SELECT phase, status, error, inserted_rows, "stored procedure result"
@@ -213,7 +213,7 @@ WHERE remote_table_name = 'household_income'
 ### Refresh it
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-02)
+-- verified: 9.5.1 (live, 2026-10-05)
 CONNECT DATABASE sales_analytics;
 
 SELECT COUNT(*) AS will_load
@@ -247,7 +247,7 @@ FROM bv_dwh_household_income;
 ### A summary — created unloaded, proved by the plan, then loaded
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-02)
+-- verified: 9.5.1 (live, 2026-10-05)
 CONNECT DATABASE sales_analytics;
 
 CREATE OR REPLACE SUMMARY VIEW s_household_band
@@ -291,7 +291,7 @@ WHERE input_query = 'SELECT income_band_sk, COUNT(*) AS households FROM iv_house
 **Load it — on the human's yes**, and check it against the views themselves:
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-02)
+-- verified: 9.5.1 (live, 2026-10-05)
 CONNECT DATABASE sales_analytics;
 
 REFRESH s_household_band;
@@ -328,7 +328,7 @@ CONTEXT ('summary_rewrite' = 'off');
 ### Data movement for a federated join
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-02)
+-- verified: 9.5.1 (live, 2026-10-05)
 CONNECT DATABASE sales_analytics;
 
 CREATE OR REPLACE VIEW household_band_detail
@@ -362,7 +362,7 @@ WHERE input_query = 'SELECT buy_potential, COUNT(*) AS households FROM household
 ### A materialized table
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-02)
+-- verified: 9.5.1 (live, 2026-10-05)
 CONNECT DATABASE sales_analytics;
 
 CREATE MATERIALIZED TABLE income_band_target (
@@ -395,7 +395,7 @@ FROM income_band_target;
 ### Drop — on the human's yes
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-02)
+-- verified: 9.5.1 (live, 2026-10-05)
 CONNECT DATABASE sales_analytics;
 
 SELECT used_by_name, depth
