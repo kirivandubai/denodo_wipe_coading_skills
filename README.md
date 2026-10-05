@@ -6,10 +6,13 @@ me a mart of returns by store"* — and the agent decides where the objects belo
 the VQL, applies it to a live Virtual DataPort server, and checks that what it made
 actually reads.
 
-Six skills cover sixteen objects: virtual databases, folders and VDP tags; JDBC,
-delimited-file and JSON data sources with their wrappers and base views; derived views,
-interface views and associations; and Data Marketplace tags, categories and external
-elements.
+Sixteen skills: the working loop and the execution layer, and fourteen for what you build —
+virtual databases, folders and VDP tags; JDBC, delimited-file and JSON data sources with their
+wrappers and base views; derived, interface and metric views and associations; Data
+Marketplace tags, categories and external elements; and the work around them — stored
+procedures, the full cache of a view, the metadata AI consumers read, roles and security
+policies, the server's LLM in a query, writes through views, query results stored as tables,
+regression tests and Scheduler jobs.
 
 The skills are general. They were written from the Denodo 9.5 documentation and checked
 against a live 9.5.1 server, and they assume nothing about how that server is deployed —
@@ -152,27 +155,21 @@ phrasing; `/denodo:vql` is the entry point when the request is ambiguous.
 servers; tags imported into the marketplace from VDP are read-only there. `catalog` and
 `marketplace` split along that line, not along the word.
 
-## What v1 covers — and what it does not
+## What the skills cover — and what they do not
 
-In scope: the sixteen objects of the first six skills, everything needed to take a request
-from plain language to a mart a consumer can browse. `/denodo:procedures` sits outside that
-scope — stored procedures are not part of the mart scenario — and is there because it is
-useful on its own. So are `/denodo:cache`, for the full cache of a view only,
-`/denodo:semantics`, for the Virtual DataPort half of view metadata, `/denodo:metrics`,
-for metric views, `/denodo:security`, for roles and global security policies,
-`/denodo:ai`, for the LLM functions and semantic search, `/denodo:dml`, for writes through
-views, `/denodo:materialize`, for query results stored as tables, `/denodo:testing`, for
-regression tests run by the Denodo Testing Tool, and `/denodo:scheduler`, for cache refreshes,
-statements and CSV exports on a schedule.
+In scope: what the table above lists — everything needed to take a request from plain
+language to a mart a consumer can browse, and the work around it. Several skills start
+deliberately narrow: `/denodo:cache` is the full cache of a view only, `/denodo:semantics` the
+Virtual DataPort half of view metadata, `/denodo:security` roles and global security
+policies, `/denodo:scheduler` cache refreshes, single statements and CSV exports.
 
 Created in Design Studio, not by the agent: every data source beyond a delimited or JSON file
 on the server and a JDBC table with a password — REST APIs, Excel, XML, Salesforce, SAP, cloud
 storage, base views over a SQL query or a stored procedure, refreshing a base view whose source
 changed. `/denodo:datasources` tells the human what to create there and builds on the result.
 
-Deliberately out of scope: a full function reference; performance beyond the full cache
-(partial cache, time to live, incremental loads, summary views, materialized tables, remote
-tables, MPP); security beyond roles and global security policies (user accounts and
+Deliberately out of scope: a full function reference; performance beyond the full cache and
+the tables of `/denodo:materialize` (partial cache, time to live, incremental loads, MPP); security beyond roles and global security policies (user accounts and
 passwords, LDAP, per-role row and column restrictions, custom policies); configuring the
 LLM, the embedding model or the vector database, and generating embeddings for a table;
 publication
@@ -203,7 +200,9 @@ default:
 - The same applies over REST, stated by method and path rather than by verb: several
   marketplace `POST` calls are destructive — synchronisation endpoints remove entries that
   vanished from the snapshot, and the tag- and category-assignment calls *replace* a
-  view's assignments instead of adding to them. On the Scheduler every `PUT` replaces a
+  view's assignments instead of adding to them. The agent synchronises the catalog itself
+  only when everything the synchronisation would add or remove was created in the same
+  session; anything else waits for your yes. On the Scheduler every `PUT` replaces a
   whole job, a status change starts, stops, enables or disables one, and a new job is judged by
   the statement it will run every night.
 - **Passwords never appear in a command.** Server credentials come from the profile. A
@@ -227,7 +226,7 @@ the plugin.
 
 One thing to know before you read it: the plugin itself — skills, templates, this README —
 is written in English, while the project's own design documents under `docs/` and
-`CLAUDE.md` are in Russian. You do not need to read them to add a skill; CONTRIBUTING.md
+`CLAUDE.md` are partly in Russian. You do not need to read them to add a skill; CONTRIBUTING.md
 covers what they say about the parts you touch.
 
 ## License

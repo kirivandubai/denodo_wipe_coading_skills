@@ -68,7 +68,7 @@ band, `household_income` is the interface view in front of it. Each block is one
 ### The mart counts every input row once
 
 ```text
-# verified: 9.5.1 (live, 2026-10-05)
+# verified: 9.5.1 (live, 2026-10-06)
 # Every household is counted once, in its band: a join that drops or doubles rows fails here.
 %NAME household_income_by_band_counts_every_household
 %EXECUTION[query] {ds:vdp}
@@ -101,7 +101,7 @@ FROM bv_household_demographics
 ### The key is unique
 
 ```text
-# verified: 9.5.1 (live, 2026-10-05)
+# verified: 9.5.1 (live, 2026-10-06)
 # Denodo does not enforce a primary key: a duplicated household doubles every figure above it.
 %NAME iv_household_income_key_is_unique
 %EXECUTION[query] {ds:vdp}
@@ -124,7 +124,7 @@ fail (**Prove that each test can fail**, below).
 ### Nothing in the database is broken
 
 ```text
-# verified: 9.5.1 (live, 2026-10-05)
+# verified: 9.5.1 (live, 2026-10-06)
 # A view whose column went away underneath turns INVALID with no error anywhere.
 %NAME sales_analytics_has_no_invalid_view
 %EXECUTION[query] {ds:vdp}
@@ -139,12 +139,12 @@ name
 A view built on an `INVALID` one stays `OK` and fails on `SELECT`: this test names the first
 broken view, the other tests of the suite fail on the rest. The same shape checks associations —
 `SELECT association_name FROM GET_ASSOCIATIONS() WHERE input_database_name = 'sales_analytics'
-AND input_type = 'views' AND valid = false`.
+AND input_type = 'views' AND valid = false` — *verified: 9.5.1 (live, 2026-10-05)*.
 
 ### The contract the consumer reads
 
 ```text
-# verified: 9.5.1 (live, 2026-10-05)
+# verified: 9.5.1 (live, 2026-10-06)
 # What a client of household_income sees: the columns, their order and their types.
 %NAME household_income_contract
 %EXECUTION[query] {ds:vdp}
@@ -171,8 +171,11 @@ first — on purpose: the contract changed, and the human says whether it should
 
 ### The rows the consumer reads
 
+The expected rows below are what the TPC-DS sample data gives; a suite of yours carries what
+your server answers ("Expected values", below).
+
 ```text
-# verified: 9.5.1 (live, 2026-10-05)
+# verified: 9.5.1 (live, 2026-10-06)
 # The mart as the dashboards read it, ordered by its key. Taken after the count test passed.
 %NAME household_income_by_band_rows
 %EXECUTION[query] {ds:vdp}
@@ -218,7 +221,7 @@ income_band_sk,income_lower_bound,income_upper_bound,household_count,avg_depende
 ### A view over a database runs in the database
 
 ```text
-# verified: 9.5.1 (live, 2026-10-05)
+# verified: 9.5.1 (live, 2026-10-06)
 # The mart is one SQL statement in the warehouse: no expression left in Denodo, no second source.
 %NAME household_income_by_band_runs_in_the_database
 %EXECUTION[query] {ds:vdp}
@@ -235,7 +238,8 @@ plans_not_delegated
 For a mart whose base views are JDBC (`/denodo:views`, Silent failure 3): a `MEDIAN` or a cast
 the database cannot run, or a second data source, turns the answer to `1` — nothing else
 reports it. The query is planned, not run. Quotes inside `input_query` are doubled. `%TRACE`
-does not replace this test: on 9.5.1 it fails every test it is in (`references/format.md`).
+does not replace this test: against 9.5.1, with the Testing Tool release it was measured with,
+it failed every test it was in (`references/format.md`).
 
 ## Expected values: from the server, after the checks pass
 
@@ -247,7 +251,7 @@ compares them:
 | The value | Write it |
 |---|---|
 | `NULL` | an empty field. The tool cannot tell `NULL` from `''` — select `x IS NULL AS x_is_null` when it matters |
-| text | exactly, case and spaces included; file sources pad text to the column width — `TRIM` in the query rather than quoting padding an editor will strip |
+| text | exactly, case and spaces included; a file source may pad text to the column width — `TRIM` in the query rather than quoting padding an editor will strip |
 | text with a comma or a quote, starting with `#` or a space | quoted: `"a, b"`, `"#1"`; a `"` inside doubled. **An unquoted line starting with `#` is a comment and its row is gone** |
 | `${` | `\${` — in the query too |
 | `decimal`, `int`, `long` | as `vql run` prints them; `12.50` equals `12.5` |

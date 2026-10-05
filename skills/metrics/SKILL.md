@@ -29,7 +29,7 @@ dimension view, another fact, a second metric view, arithmetic over metrics, a t
 done over selection views. Measured on 9.5.1, each without an error message:
 
 - a metric view joined to another view in the same `FROM` runs until the query timeout
-  (`Error: Time out processing data` after 900 s by default) — over a few thousand rows too;
+  (`Error: Time out processing data`) — over a few thousand rows too;
 - `evaluate_metric(a) * 100`, `ROUND(evaluate_metric(a), 2)` return `a` unchanged, and
   `evaluate_metric(a) / evaluate_metric(b)` returns no rows — ad hoc and inside a `CREATE
   VIEW` alike;
@@ -48,6 +48,8 @@ any view.
 | **Dimension views** | one row per key, and that key declared as the view's `PRIMARY KEY` — a duplicated key multiplies every metric under it; an undeclared one empties every `HAVING` grouped by it (Silent failures, 12) | `SELECT COUNT(*), COUNT(DISTINCT <key>) FROM <dimension>` — equal; `column_is_primary_key` in `GET_VIEW_COLUMNS()` |
 | **Associations** | one per dimension, from the fact (or from the dimension a snowflake hangs on), a tree with no second path | `SELECT association_name, mappings, valid FROM GET_ASSOCIATIONS() WHERE input_database_name = '<db>' AND input_type = 'views' AND input_name = '<fact>'` |
 | **Fact rows without a dimension row** | decide: kept in a `NULL` group, or dropped | `SELECT COUNT(*), COUNT(<fk>) FROM <fact>`, and orphans: `… LEFT OUTER JOIN <dimension> … WHERE <fk> IS NOT NULL AND <dimension key> IS NULL` |
+
+The checks in the table — *verified: 9.5.1 (live, 2026-10-05)*.
 
 **Which fact rows survive is decided by the association, not by the query** — *verified:
 9.5.1 (live, 2026-10-01)*:
@@ -87,7 +89,7 @@ views built on it stay valid while the metrics and dimensions they name stay.
 ### The metric view
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-05)
+-- verified: 9.5.1 (live, 2026-10-06)
 CONNECT DATABASE sales_analytics;
 
 CREATE OR REPLACE METRIC VIEW household_metrics
@@ -169,7 +171,7 @@ declared answers every `HAVING` grouped by that key with no rows.
 ### Selection views, a total and a share
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-05)
+-- verified: 9.5.1 (live, 2026-10-06)
 CONNECT DATABASE sales_analytics;
 
 CREATE OR REPLACE VIEW households_by_band
@@ -221,7 +223,7 @@ CREATE OR REPLACE VIEW household_share_by_band
 - **An average per member** — per customer, per store — is a selection grouped by the
   member, averaged in the view above: `SELECT type, AVG(m.total) FROM (SELECT type,
   customer_id, evaluate_metric(revenue) AS total … GROUP BY type, customer_id) m GROUP BY
-  type`. Its denominator is the members that have facts; members without any are absent
+  type` — *verified: 9.5.1 (live, 2026-10-05)*. Its denominator is the members that have facts; members without any are absent
   under `RIGHT`. When they must count as zero, take the members from a dimensions-only query
   (it lists every one) and `LEFT OUTER JOIN` the totals to it.
 - **When nothing may be created** — a question to answer, not a view to build — the same
@@ -230,7 +232,7 @@ CREATE OR REPLACE VIEW household_share_by_band
 ### Query it ad hoc
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-05)
+-- verified: 9.5.1 (live, 2026-10-06)
 SELECT income_band_sk, buy_potential,
        evaluate_metric(household_count) AS household_count
   FROM household_metrics
@@ -255,7 +257,7 @@ calendar — not the members that have facts. Ask with a metric to see what has 
 ## 3. Read what exists
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-05)
+-- verified: 9.5.1 (live, 2026-10-06)
 SELECT column_name, column_organization, column_dimension, column_definition, column_vdp_type
   FROM GET_VIEW_COLUMNS()
  WHERE input_database_name = 'sales_analytics' AND input_view_name = 'household_metrics';
@@ -280,10 +282,10 @@ it runs only because the outer `SUM` is ignored.
 
 ## Who applies what
 
-A new metric view and the views over it, in a database or project that is yours, are yours
-to apply and verify. Changing a metric view someone else owns — `CREATE OR REPLACE METRIC
-VIEW` over theirs, even to add one metric — rewrites what every dashboard on it reads: show
-the file and get a yes (`/denodo:vql`). A missing dimension or metric in a team's metric
+A new metric view and the views over it, created in this session, are yours to apply and
+verify. Changing a metric view you did not create in this session — `CREATE OR REPLACE METRIC
+VIEW` over it, even to add one metric — rewrites what every dashboard on it reads: show the
+file and get a yes (`/denodo:vql`). A missing dimension or metric in another team's metric
 view is a proposal to them; until they add it, your own metric view over the same sources
 answers the question without touching theirs.
 
@@ -292,7 +294,7 @@ answers the question without touching theirs.
 The one check that catches the silent failures of the model: the same figure three ways.
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-05)
+-- verified: 9.5.1 (live, 2026-10-06)
 CONNECT DATABASE sales_analytics;
 
 -- 1. The fact itself.
@@ -326,7 +328,8 @@ differs, checks every slice at once. Compare averages with a tolerance: an `AVG`
 integer is a `double` in the metric and a `decimal` in hand-written SQL over a decimal
 column, and a `ROUND` inside the metric can then differ in the last digit. Also: `SELECT
 name, view_status FROM GET_VIEWS() WHERE input_database_name = '<db>' AND
-input_retrieve_invalid_views_only = true` is empty, and every selection view returns rows.
+input_retrieve_invalid_views_only = true` is empty, and every selection view returns rows —
+*verified: 9.5.1 (live, 2026-10-05)*.
 
 ## Silent failures
 

@@ -13,4 +13,4 @@ append_system_prompt: |
 ---
 
 The Oracle source `ds_orders_db` is already set up in Denodo 9.5 and reachable. Show me what
-tables it has in the `RETAIL` schema, then turn two of them into base views.
+tables it has in the `OMS` schema, then turn two of them into base views.

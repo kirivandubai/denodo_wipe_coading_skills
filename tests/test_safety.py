@@ -321,6 +321,23 @@ class StateChangingProcedureTest(unittest.TestCase):
             self.assertEqual(classify_vql(f"SELECT * FROM {name}()"), "procedure", name)
             self.assertEqual(classify_vql(f"CALL {name}(null)"), "procedure", name)
 
+    def test_procedures_that_change_more_than_their_name_suggests_are_flagged(self):
+        # each changes state although it reads like a lookup: the whole cache data source,
+        # a base view's schema, tag assignments, the server's logging, stored statistics,
+        # statistics computed in the source, the metadata database
+        for call in (
+            "CALL COMPACT_CACHE('sales_analytics', true)",
+            "SELECT * FROM REFRESH_BASE_VIEW() WHERE db_name = 'd' AND table_name = 'bv'",
+            "SELECT * FROM CREATE_TAGS_FROM_VIEW() WHERE input_action = 'CREATE'",
+            "CALL CREATE_TAGS_FROM_COLLIBRA(null)",
+            "CALL LOGCONTROLLER('com.denodo.vdp.requests', 'DEBUG')",
+            "SELECT * FROM GENERATE_STATS_FOR_FIELDS() WHERE input_database_name = 'd'",
+            "SELECT * FROM GENERATE_SMART_STATS_FOR_FIELDS() WHERE input_database_name = 'd'",
+            "CALL COMPUTE_SOURCE_TABLE_STATS('d', 'bv')",
+            "CALL MAINTAIN_METADATA_TABLES()",
+        ):
+            self.assertEqual(classify_vql(call), "procedure", call)
+
     def test_reading_procedures_are_not_flagged(self):
         self.assertIsNone(classify_vql("SELECT name FROM GET_ELEMENTS() WHERE input_database_name = 'd'"))
         self.assertIsNone(classify_vql("SELECT 1 AS a FROM DUAL()"))

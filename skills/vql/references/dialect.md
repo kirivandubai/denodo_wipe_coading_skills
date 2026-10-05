@@ -41,7 +41,7 @@ rounding. After a parse or a cast over real rows, count the `NULL`s it produced 
 | `SPLIT_PART(s, ',', 2)` | does not exist. `SPLIT(',', s)` takes the **regex first** and returns an array, indexed from **0** | parse with `SUBSTR` and `POSITION`, or see `/denodo:views` for arrays |
 | `TRIM(BOTH 'xy' FROM s)` | only the **first** character of the trim set is used: `'xxabcyy'` → `'abcyy'` | a regex, below |
 | `CONCAT('abc', NULL)`, and the operator form below | `NULL` — as in PostgreSQL, unlike Oracle | `COALESCE(x, '')` around each nullable part |
-| `'' IS NULL`, `COUNT(s)` to find missing values | `''` is a value, unlike Oracle. A file source writes a missing field as `''`, padded to the column width, so `COUNT(s)` counts it as a value, and a `NULL` count reports nothing missing | `COUNT(NULLIF(TRIM(s), ''))` counts the values actually there |
+| `'' IS NULL`, `COUNT(s)` to find missing values | `''` is a value, unlike Oracle. A file source may write a missing field as `''` — some also pad text to the column width; `LEN(s)` shows which — so `COUNT(s)` counts it as a value, and a `NULL` count reports nothing missing | `COUNT(NULLIF(TRIM(s), ''))` counts the values actually there |
 | `ORDER BY name` | by Unicode code point: `A, B, a, b` | `ORDER BY UPPER(name)` when people read the order |
 
 `'abc' || NULL` is `NULL`, like `CONCAT`. A set of trim characters needs a regex:
@@ -72,10 +72,10 @@ Java does.
 
 - **`SUM` over an `int` column stays `int` and overflows silently** — past 2 147 483 647 it
   returns `NULL` or a wrong number that looks real: three rows of 2 000 000 000 summed to
-  `2000000000`; on a 68 636-row fact column `1140298269` instead of `168668968269`
+  `2000000000`; measured once on a fact column, `1140298269` instead of `168668968269`
   (*verified: 9.5.1 (live, 2026-09-12)*). Cast the input: `SUM(CAST('long', x))`.
-  **Never over `decimal`**: the same cast truncates every row before the sum — `183734747`
-  against a true `183801994.51` on a 144 067-row money column (*verified: 9.5.1 (live,
+  **Never over `decimal`**: the same cast truncates every row before the sum — measured once
+  on a money column, `183734747` against a true `183801994.51` (*verified: 9.5.1 (live,
   2026-09-12)*). `decimal` and `double` measures need no cast. `AVG` over `int` does not
   overflow and returns `double`.
 - `COUNT(x)` skips `NULL`; `AVG(x)` divides by `COUNT(x)`, not by `COUNT(*)`. When the two
@@ -106,7 +106,7 @@ Java does.
 
 | Pattern letter | Means | Wrong guess and what it does |
 |---|---|---|
-| `yyyy` | calendar year | `YYYY` is the **week year**: `FORMATDATE('YYYY-MM', DATE '2015-12-30')` → `'2016-12'`. A monthly report labelled this way puts the last days of December under the next year — measured on a real fact: 774 lines under `2015-12`, 120 under `2016-12` |
+| `yyyy` | calendar year | `YYYY` is the **week year**: `FORMATDATE('YYYY-MM', DATE '2015-12-30')` → `'2016-12'`. A monthly report labelled this way puts the last days of December under the next year |
 | `MM` | month | `mm` is minutes: `TO_LOCALDATE('yyyy-mm-dd', '2024-03-15')` → `2024-01-15`; `FORMATDATE('yyyy-mm-dd', …)` → `'2024-00-15'` |
 | `dd` | day of month | `DD` is day of year: `FORMATDATE('yyyy-MM-DD', DATE '2024-03-15')` → `'2024-03-75'`; `TO_LOCALDATE('YYYY-MM-DD', …)` → `NULL` |
 | `HH` | hour 0–23 | `hh` is 1–12: `'13:45'` parsed with `hh:mm` → `NULL` |
@@ -137,7 +137,7 @@ Two recipes that come up with every customer table, both checked:
   `TO_LOCALDATE('yyyy-M-d', CAST(y AS varchar) || '-' || CAST(m AS varchar) || '-' || CAST(d AS varchar))`
   — single `M` and `d`, because the cast gives no leading zeros; an impossible date such as
   `1937-2-29` comes back `NULL`, so count them.
-- **Age in completed years:** `FLOOR(GETMONTHSBETWEEN(birth_date, DATE '2026-09-30') / 12)` —
+- **Age in completed years:** `FLOOR(GETMONTHSBETWEEN(birth_date, CURRENT_DATE) / 12)` —
   `GETMONTHSBETWEEN` counts completed months, so the day before the birthday still gives the
   lower age. There is no `GETYEARSBETWEEN` and no `AGE`.
 
@@ -200,12 +200,12 @@ source, a cache, or a change of source, the query plan and the answer move toget
 
 | Expression | Denodo computes it | Delegated |
 |---|---|---|
-| `category = 'household'` against `'Household'` | no match — exact | SQL Server: 667 matches, case and trailing spaces ignored (*delegated*) |
+| `category = 'household'` against `'Household'` | no match — exact | SQL Server: matches, case and trailing spaces ignored (*delegated*) |
 | `CAST(2.75 AS integer)` | `2` | PostgreSQL: `3` (*delegated*) |
 | `GETDAYOFWEEK`, `EXTRACT(DOW …)`, `FIRSTDAYOFWEEK` | the i18n of the connection | the database's own rule |
 | `SUBSTRING(s, 1, 3)` | `'bc'` | PostgreSQL: `'bc'` too — Denodo translates it (*delegated*) |
 | window functions | not executable | the database runs them (*delegated*) |
-| `MEDIAN(x)` | the mean of the two middle values, rounded to two places | PostgreSQL: `PERCENTILE_DISC(0.5)`, full precision and no mean — `107.5242857…` where Denodo says `107.53` over the same 62 874 rows (*delegated*); SQL Server does not take it at all |
+| `MEDIAN(x)` | the mean of the two middle values, rounded to two places | PostgreSQL: `PERCENTILE_DISC(0.5)`, full precision and no mean — a different figure over the same rows (*delegated*); SQL Server does not take it at all |
 
 Whether an expression was delegated at all is in the query plan — `/denodo:views`,
 `references/delegation.md`.

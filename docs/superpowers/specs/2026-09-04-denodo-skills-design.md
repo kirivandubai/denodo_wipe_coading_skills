@@ -335,8 +335,9 @@ session's own objects: every `localElements` entry is the element of a view the 
 (its own renamed view, with the pair matched in the call, included), and every `serverElements`
 entry is a database or view the session created. `modifiedElements` do not change this: that
 mode keeps every description edited in the marketplace. After the call the agent reads
-`removed` and `inserted` against the radius it read and tells the human at once about anything
-else. Any other radius waits for the yes. Renaming a view that existed before the session: one
+`removed` and `inserted` against the radius it read, and both `changes` again — once a database
+is gone from VDP, its elements leave the catalog with `removed` empty (T37, measured on 9.5.1) —
+and tells the human at once about anything else. Any other radius waits for the yes. Renaming a view that existed before the session: one
 yes covers the `ALTER … RENAME` and the `synchronize` with the pair matched, when both are shown
 together. The first import on an external tool server created in the same session stays the
 other exception. The rule is the same as "your own new — yourself" for tables (T34): the call
@@ -363,7 +364,10 @@ on a production profile is the same as everywhere: every change waits.
 меняющие состояние, вызываются как чтение — `SELECT … FROM DROP_REMOTE_TABLE(…)`,
 `CALL CLEAN_CACHE_DATABASE(…)` — и по первому ключевому слову не ловятся. Инструмент
 (T20) сверяет имя процедуры в `SELECT … FROM <имя>(` и `CALL <имя>(` с чёрным списком
-из девяти процедур: `GENERATE_STATS`, `CREATE_REMOTE_TABLE`, `DROP_REMOTE_TABLE`,
+из процедур (nine in T20; T37 added `COMPACT_CACHE`, `REFRESH_BASE_VIEW`, `CREATE_TAGS_FROM_VIEW`,
+`CREATE_TAGS_FROM_COLLIBRA`, `LOGCONTROLLER`, `GENERATE_STATS_FOR_FIELDS`,
+`GENERATE_SMART_STATS_FOR_FIELDS`, `COMPUTE_SOURCE_TABLE_STATS`, `MAINTAIN_METADATA_TABLES` — each
+changes state and was named by a skill without being on the list): `GENERATE_STATS`, `CREATE_REMOTE_TABLE`, `DROP_REMOTE_TABLE`,
 `CLEAN_CACHE_DATABASE`, `DROP_NONACTIVE_CACHE_TABLES`, `CREATE_SCHEMA_ON_SOURCE`,
 `DROP_SCHEMA_ON_SOURCE`, `REMOVE_ICEBERG_VIEW_SNAPSHOTS`, `ROLLBACK_ICEBERG_VIEW_TO_SNAPSHOT`
 — и помечает вызов `destructive: "procedure"`. Именно чёрный

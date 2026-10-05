@@ -73,6 +73,7 @@ side has a match on the principal side. `PRINCIPAL` marks which side that is.
   declaring:
 
   ```sql
+  -- verified: 9.5.1 (live, 2026-10-05)
   SELECT COUNT(*) AS orphans
   FROM bv_household_demographics hd
   WHERE hd.hd_income_band_sk NOT IN ( SELECT ib_income_band_sk FROM bv_income_band );
@@ -118,6 +119,7 @@ CREATE OR REPLACE ASSOCIATION a_income_band_household REFERENTIAL CONSTRAINT
 ## Reading associations back
 
 ```sql
+-- verified: 9.5.1 (live, 2026-10-05)
 SELECT association_name, left_view_name, left_role, left_multiplicity,
        right_view_name, right_role, right_multiplicity, mappings, valid,
        is_left_principal, is_referential_constraint, association_database

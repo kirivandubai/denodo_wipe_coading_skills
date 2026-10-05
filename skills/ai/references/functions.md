@@ -43,7 +43,8 @@ FROM Dual();
   a text that fits none is given the nearest. With an `other` label, "what are your opening
   hours" was `other`; without one, `billing`.
 - The labels can come from a table: `CLASSIFY_AI('<text>', NEST(label))` over a view of
-  labels is one request — `NEST` builds the array (documentation; `/denodo:views` for `NEST`).
+  labels is one request — `NEST` builds the array (`/denodo:views`).
+  *unverified: 9.5 documentation only*
 
 ## SENTIMENT_AI
 
@@ -107,8 +108,8 @@ FROM (SELECT EXTRACT_AI('Hi, this is Maria Lopez. Since Tuesday my fibre in Vale
   already in the language, and the translation otherwise:
   `COALESCE(NULLIF(ENRICH_AI('If this text is in English, reply exactly ENGLISH; otherwise
   reply with its English translation only: ' || body, 0.0), 'ENGLISH'), body)`. English texts
-  then stay exactly as written. `NULLIF` and `COALESCE` evaluate the call once — the same time
-  as the bare call.
+  then stay exactly as written — *verified: 9.5.1 (live, 2026-10-06)*. `NULLIF` and `COALESCE`
+  evaluate the call once — the same time as the bare call.
 
 ## ENRICH_AI
 

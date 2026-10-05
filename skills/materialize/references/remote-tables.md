@@ -13,7 +13,7 @@ CREATE_REMOTE_TABLE(
     , query : text                             -- runs in Denodo; quotes doubled
     , datasource_database_name : text          -- null: the current database
     , datasource_name : text                   -- a JDBC data source whose adapter the cache engine supports
-    , datasource_catalog : text                -- mandatory; null where the database has no catalogs
+    , datasource_catalog : text                -- mandatory; null where the database has no catalogs ('' in the documentation's own example)
     , datasource_schema : text                 -- mandatory; null where the database has no schemas
     , base_view_database_name : text           -- null: the current database
     , base_view_name : text                    -- null: the table's name
@@ -25,8 +25,9 @@ CREATE_REMOTE_TABLE(
 )
 ```
 
-Called as a read — `SELECT … FROM CREATE_REMOTE_TABLE() WHERE <param> = <value> AND …` — or
-positionally with `CALL CREATE_REMOTE_TABLE('name', false, 'SELECT …', …)`.
+Called as a read — `SELECT … FROM CREATE_REMOTE_TABLE() WHERE <param> = <value> AND …` —
+*verified: 9.5.1 (live, 2026-10-05)*. Or positionally, with `CALL CREATE_REMOTE_TABLE('name',
+false, 'SELECT …', …)` — *unverified: 9.5 documentation only*.
 
 **Result** (*measured*): three rows, one per phase — `phase`, `status`, `error`,
 `remote_table`, `base_view`, `base_view_database`, `inserted_rows` (phase 2 only),
@@ -82,8 +83,7 @@ true`, then `DROP_REMOTE_TABLE` — a replacement, so the human's yes when it is
 **Table creation templates.** `@{internal_parameter_table_name}`, `@{internal_parameter_columns}`
 and `@{internal_parameter_restrictions}` are filled by the server; anything else is a parameter
 with a `DEFAULT`. On the command a template that declares extra columns next to
-`@{internal_parameter_columns}` worked (an identity key, measured in the verification chain of
-`/denodo:dml`); on the procedure, a template holding only the placeholders failed with a bare
+`@{internal_parameter_columns}` worked (an identity key, measured on SQL Server); on the procedure, a template holding only the placeholders failed with a bare
 error and left an empty table (*measured*, twice). Widen a text column with
 `CAST(<text> AS varchar(<n>))` in the query instead (*measured*: `varchar(8000)` held 5,000
 characters).
@@ -138,7 +138,7 @@ job (documentation).
 
 - Whether a name is taken: `GET_JDBC_DATASOURCE_TABLES()` answers `catalog_name`,
   `schema_name`, `table_name`, `type` (`TABLE`, `VIEW`); its `table_name` filter is exact —
-  `'ZQ_X'` does not find `zq_x` — while SQL Server names are not, so compare `UPPER` of both
+  `'HOUSEHOLD_INCOME'` does not find `household_income` — while SQL Server names are not, so compare `UPPER` of both
   (*measured*).
 - A table's readers: the base views whose wrapper points at it. `GET_SOURCE_TABLE()` answers
   `source_catalog_name`, `source_schema_name`, `source_table_name` (and `sqlsentence` for a base

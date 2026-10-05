@@ -62,7 +62,7 @@ CREATE OR REPLACE TABLE bv_crm_customers I18N us_pst (
 
 | Element | Required? |
 |---|---|
-| `I18N <map>` after the name | **yes** — the parser needs it. `us_pst` unless the project says otherwise; `LIST MAPS I18N` lists all 76 |
+| `I18N <map>` after the name | **yes** — the parser needs it, and it decides the zone and language dates are read in. The one the database's other base views declare, or the project's; `us_pst` (US Pacific) only when there is nothing to follow. `LIST MAPS I18N` lists them |
 | `CACHE OFF` | no, but explicit is better than a server default that may differ per environment |
 | `TIMETOLIVEINCACHE DEFAULT` | **yes when `CACHE OFF` is followed by `ADD SEARCHMETHOD`** — otherwise `Syntax error … near 'ADD'`. *verified: 9.5.1 (live, 2026-09-09)* |
 | `ADD SEARCHMETHOD … WRAPPER (…)` | **yes** — without it the view has no source |
@@ -99,6 +99,7 @@ plus every user-defined type (`CREATE TYPE … AS REGISTER OF (…)` / `ARRAY OF
 ## Primary keys, tags, indexes
 
 ```sql
+-- verified: 9.5.1 (live, 2026-10-06) — in this order, between the field list and CACHE
 CONSTRAINT 'pk_customer' PRIMARY KEY ( 'cust_id' )
 TAGS ( pii )
 DECLARE VIEW INDEX idx_customer_country ON ( country ASC )
@@ -108,8 +109,8 @@ DECLARE VIEW INDEX idx_customer_country ON ( country ASC )
   it when the source really guarantees it, not because it looks tidy.
 - `TAGS ( … )` attaches existing VDP tags at creation; the tags themselves are
   `/denodo:catalog`.
-- View indexes are hints for the optimizer over a source that has them; cache indexes
-  belong to cache work, outside v1.
+- View indexes are hints for the optimizer over a source that has them; cache indexes are a
+  cache setting, made in Design Studio (`/denodo:cache`).
 
 ## Cache, swap, MPP
 

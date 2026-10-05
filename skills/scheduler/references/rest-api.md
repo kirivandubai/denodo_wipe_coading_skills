@@ -2,8 +2,7 @@
 
 The administration tool of Denodo Scheduler serves the API at
 `<web container>/webadmin/denodo-scheduler-admin/public/api/…`, and its own description at
-`…/denodo-scheduler-admin/v3/api-docs` (OpenAPI, readable without logging in; 91 paths on
-9.5.1). Every call needs the `uri` query parameter — the Scheduler server as the
+`…/denodo-scheduler-admin/v3/api-docs` (OpenAPI, readable without logging in). Every call needs the `uri` query parameter — the Scheduler server as the
 administration tool reaches it, `//<host>:8000` by default — and HTTP Basic with a Virtual
 DataPort account; `api --server scheduler` adds both from the profile (`scheduler_url`,
 `scheduler_uri`; without them the origin of `marketplace_url` and `//<host>:8000`). The tool

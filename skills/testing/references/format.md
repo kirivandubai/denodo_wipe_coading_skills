@@ -70,11 +70,11 @@ on the way stops the pass, and the TEARDOWN after it does not run (below).
 | `type:superset` | the opposite: every obtained row must be among the expected ones, which may hold more. Same sorting rule as `subset` |
 | Expected data with only the header line | means "no rows": passes on an empty result, fails with `Obtained 1 rows, but expected 0` otherwise |
 | Numbers | compared as numbers: `12.5` equals `12.50`, `long` equals `int`. A `double` compares by its exact value: `0.1 + 0.2` is `0.30000000000000004`, not `0.3` — `ROUND` it in the query |
-| Text | exact: case, inner and trailing spaces. Text from a file source is often padded to the column width, and an editor strips trailing spaces from the expected line — `TRIM` in the query, or quote the padded value |
+| Text | exact: case, inner and trailing spaces. Text from a file source may be padded to the column width, and an editor strips trailing spaces from the expected line — `TRIM` in the query, or quote the padded value |
 | Text that looks like a number | under `ordered:false` the two sides are sorted differently (`'10'` before `'9'` as text, after it as a number) and equal data fails. Compare such columns ordered, with an `ORDER BY` |
 | `NULL` | an empty field and the word `NULL` (any case) in expected data both mean `NULL`, and `NULL` equals an empty string. **No test can tell `NULL` from `''`** — compare `x IS NULL` as a column if it matters |
 | `localdate` | `2024-03-05` |
-| `timestamp` | `2024-03-05 10:11:12.000` — exactly; without the milliseconds, or with a `T`, it fails (the obtained value prints in the tool's own time zone, `2024-03-05T10:11:12+04:00`) |
+| `timestamp` | `2024-03-05 10:11:12.000` — exactly; without the milliseconds, or with a `T`, it fails (the obtained value prints in the tool's own time zone, `2024-03-05T10:11:12+<its offset>`) |
 | `timestamptz` | ISO 8601 with its offset, `2024-03-05T02:11:12-08:00`, compared as an instant |
 | `boolean` | `true`, `false` |
 | An error in `%EXECUTION` | the test fails with `Test raised an unexpected java.sql.SQLException: <message>` |
@@ -130,7 +130,7 @@ points at.
 ## The trace
 
 `%TRACE` evaluates MVEL expressions such as `EXECUTION PLAN.state == 'OK'` against the trace of
-the execution. *measured*: on Virtual DataPort 9.5.1 every test with a `%TRACE` failed with
+the execution. *measured*, with the Testing Tool release 20260428: on Virtual DataPort 9.5.1 every test with a `%TRACE` failed with
 `Test raised an unexpected java.util.NoSuchElementException: null`, with the 9.0.0 driver the
 tool ships and with the server's own 9.5.1 driver alike. Check a plan with a query on
 `GET_QUERY_EXECUTION_PLAN()` instead — the template is in the skill.
@@ -183,7 +183,9 @@ vdp.connectionTestQuery=SELECT * FROM Dual()
 ```
 
 - `jdbc_port` comes from the profile, 9999 when it names none; the profile's `port` is the ODBC
-  one. `jdbc:denodo://` and the older `jdbc:vdb://` both connect — *measured*. `--db-adapter` names another folder under the tool's `drivers/` — *measured*: the 9.0.0
+  one. `jdbc:denodo://` and the older `jdbc:vdb://` both connect — *measured*. `vdp.dbAdapter`
+  is a folder under the tool's `drivers/`; the default, `denodo-9.0.0`, is the one the release
+  measured here ships — another release may ship another. `--db-adapter` names another folder — *measured*: the 9.0.0
   driver the tool ships works against a 9.5.1 server, and so does the server's own driver
   (`<DENODO_HOME>/tools/client-drivers/jdbc/denodo-vdp-jdbcdriver.jar`) copied into a folder of
   its own. A driver newer than the server fails (manual).

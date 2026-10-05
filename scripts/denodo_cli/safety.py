@@ -83,6 +83,15 @@ STATE_CHANGING_PROCEDURES = frozenset({
     "DROP_SCHEMA_ON_SOURCE",
     "REMOVE_ICEBERG_VIEW_SNAPSHOTS",
     "ROLLBACK_ICEBERG_VIEW_TO_SNAPSHOT",
+    "COMPACT_CACHE",
+    "REFRESH_BASE_VIEW",
+    "CREATE_TAGS_FROM_VIEW",
+    "CREATE_TAGS_FROM_COLLIBRA",
+    "LOGCONTROLLER",
+    "GENERATE_STATS_FOR_FIELDS",
+    "GENERATE_SMART_STATS_FOR_FIELDS",
+    "COMPUTE_SOURCE_TABLE_STATS",
+    "MAINTAIN_METADATA_TABLES",
 })
 # ``FROM name(`` anywhere in the statement (a view defined over the procedure would run it
 # on every query), ``CALL name(`` at the start; an optional ``database.`` qualifier.

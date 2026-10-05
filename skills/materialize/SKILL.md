@@ -1,6 +1,6 @@
 ---
 name: materialize
-description: Use when the result of a Denodo 9.5 query has to be stored as a table, or a slow federated query should run from data placed next to it — a remote table in a database other tools read (CREATE_REMOTE_TABLE, CREATE REMOTE TABLE, REFRESH), a frozen snapshot, a summary the optimizer answers aggregate queries from without the queries changing (CREATE SUMMARY VIEW, summary_rewrite), a data movement that copies the small side of a join into the other data source (DATAMOVEMENTPLAN), a materialized table ("store this view as a table in our warehouse", "a nightly table for the data science team", "a frozen copy for the auditors", "the dashboard is slow and we can't change its SQL", "precompute the aggregates", "the join between the file and the database is slow"). Also when "The REFRESH command is only valid for Summaries and Remote Tables", a refreshed table came back empty, a summary answers different numbers than the views, DROP_REMOTE_TABLE fails, or a materialized table refuses an UPDATE. Not for the full cache of a view (/denodo:cache), not for changing rows of an existing table (/denodo:dml).
+description: Use when the result of a Denodo 9.5 query has to be stored as a table, or a slow federated query should run from data placed next to it — a remote table other tools read ("store this view as a table in our warehouse", "a nightly table for the data science team"), a frozen snapshot ("a frozen copy for the auditors"), a summary that answers aggregate queries without them changing ("the dashboard is slow and we can't change its SQL", "precompute the aggregates"), a data movement ("the join between the file and the database is slow"), a materialized table. Also when "The REFRESH command is only valid for Summaries and Remote Tables", a refreshed table came back empty, a summary answers other numbers than the views, DROP_REMOTE_TABLE fails, or a materialized table refuses an UPDATE. Not for the full cache of a view (/denodo:cache), not for changing rows of an existing table (/denodo:dml).
 ---
 
 # Results stored as tables, and data placed for a query
@@ -68,7 +68,7 @@ else — not for anything another person reads.
 
 ## The rule: new is yours, existing is the human's
 
-*Owner's decision for this plugin.* A table that did not exist before this session, created by
+A table that did not exist before this session, created by
 a statement that cannot overwrite anything, where the human said it should go, is yours to
 create. Anything that replaces, empties or drops a table that existed before this session, or
 changes the answers of queries you did not write, waits for the human's yes.
@@ -126,13 +126,14 @@ query; `env.production` is `true`.
 
 The example database is `sales_analytics`; `ds_dwh` is a JDBC data source over the team's
 reporting warehouse (`/denodo:datasources`), with tables going to catalog `dwh`, schema
-`reporting`. On a database without catalogs the catalog is `''`; without schemas, the schema.
-The blocks run in this order in the verification chain.
+`reporting`. On a database without catalogs the documentation says `null` for the catalog, and
+its own example passes `''` — *unverified: 9.5 documentation only*; the same for a database
+without schemas. The blocks build on each other, in this order.
 
 ### Before you create: is the name free, and what will land
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-05)
+-- verified: 9.5.1 (live, 2026-10-06)
 CONNECT DATABASE sales_analytics;
 
 SELECT table_name
@@ -168,7 +169,7 @@ FROM iv_household_income;
 ### A remote table
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-05)
+-- verified: 9.5.1 (live, 2026-10-06)
 CONNECT DATABASE sales_analytics;
 
 SELECT phase, status, error, inserted_rows, "stored procedure result"
@@ -196,10 +197,13 @@ WHERE remote_table_name = 'household_income'
   `ALTER TABLE bv_dwh_household_income DESCRIPTION = '…'` and `ALTER TABLE … ADD PRIMARY KEY (
   'household_sk' )` — several columns: `( 'a', 'b' )` — keep its `DATA_LOAD_QUERY`: your own
   new object, no yes needed.
-- **A text column that may hold characters beyond Latin** (names, addresses, free text): `CAST(
-  <col> AS nvarchar(<n>))` in `query`. A `varchar` column turns them into `?` without an error.
-- **A failure after phase 1** (a value the database refuses — a text over 4000 characters
-  into `varchar(4000)`) leaves the table created and empty, without a base view. Fix the
+- **A text column that may hold characters beyond Latin** (names, addresses, free text): on SQL
+  Server (measured) a text without a source size lands as `varchar`, which turns them into `?`
+  without an error, and `CAST(<col> AS nvarchar(<n>))` in `query` keeps them. Other databases
+  map the types their own way: read what landed ("Verify") before a reader relies on it.
+- **A failure after phase 1** (a value the database refuses — on SQL Server, a text over 4000
+  characters into the `varchar(4000)` such a text gets) leaves the table created and empty,
+  without a base view. Fix the
   cause, then the same call with `replace_remote_table_if_exist = true`: that table is the one
   you just made — check with the name query that nothing else had the name before you.
 - **A frozen snapshot is this call, once**: the period in the table name
@@ -209,12 +213,13 @@ WHERE remote_table_name = 'household_income'
   view is a `REFRESH` handle and writable: put "frozen, never REFRESH" in its `DESCRIPTION`,
   and tell the human that only the database's owner can make the table read-only (a `DENY`).
 - When the query runs entirely in the target data source, the copy happens inside the database
-  (sixty thousand rows in under a second); otherwise every row passes through Denodo.
+  (measured once: sixty thousand rows in under a second); otherwise every row passes through
+  Denodo.
 
 ### Refresh it
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-05)
+-- verified: 9.5.1 (live, 2026-10-06)
 CONNECT DATABASE sales_analytics;
 
 SELECT COUNT(*) AS will_load
@@ -250,7 +255,7 @@ FROM bv_dwh_household_income;
 ### A summary — created unloaded, proved by the plan, then loaded
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-05)
+-- verified: 9.5.1 (live, 2026-10-06)
 CONNECT DATABASE sales_analytics;
 
 CREATE OR REPLACE SUMMARY VIEW s_household_band
@@ -294,7 +299,7 @@ WHERE input_query = 'SELECT income_band_sk, COUNT(*) AS households FROM iv_house
 **Load it — on the human's yes**, and check it against the views themselves:
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-05)
+-- verified: 9.5.1 (live, 2026-10-06)
 CONNECT DATABASE sales_analytics;
 
 REFRESH s_household_band;
@@ -331,7 +336,7 @@ CONTEXT ('summary_rewrite' = 'off');
 ### Data movement for a federated join
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-05)
+-- verified: 9.5.1 (live, 2026-10-06)
 CONNECT DATABASE sales_analytics;
 
 CREATE OR REPLACE VIEW household_band_detail
@@ -365,7 +370,7 @@ WHERE input_query = 'SELECT buy_potential, COUNT(*) AS households FROM household
 ### A materialized table
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-05)
+-- verified: 9.5.1 (live, 2026-10-06)
 CONNECT DATABASE sales_analytics;
 
 CREATE MATERIALIZED TABLE income_band_target (
@@ -392,13 +397,14 @@ FROM income_band_target;
 - It lives in the cache database (`C_INCOME_BAND_TARGET<digits>`); the cache has to be
   configured for the database (*documentation*). `SELECT … INTO <new name> FROM …` creates one
   from a query; it refuses a name that exists.
-- **A `decimal` keeps twenty decimals whatever you declare** — `DECIMAL(12,2)` in the SQL form of
-  the column list stored `10.555` as `10.55500000000000000000`. Round in the `INSERT`.
+- **A `decimal` kept twenty decimals whatever was declared**, with the cache database on SQL
+  Server (measured) — `DECIMAL(12,2)` in the SQL form of the column list stored `10.555` as
+  `10.55500000000000000000`. Round in the `INSERT`.
 
 ### Drop — on the human's yes
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-05)
+-- verified: 9.5.1 (live, 2026-10-06)
 CONNECT DATABASE sales_analytics;
 
 SELECT used_by_name, depth
@@ -448,7 +454,8 @@ WHERE base_view_database_name = 'sales_analytics' AND base_view_name = 'bv_dwh_h
 
 ## Silent failures
 
-Each runs without an error — *verified: 9.5.1 (live, 2026-10-02)*.
+Each runs without an error — *verified: 9.5.1 (live, 2026-10-02)*; rows 12, 13 and 15 with the
+target database on SQL Server — another database maps types and compares text its own way.
 
 | You did | What happens | Instead |
 |---|---|---|

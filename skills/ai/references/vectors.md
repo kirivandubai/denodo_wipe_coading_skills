@@ -22,12 +22,12 @@ A vector column in a base view, as the server prints it in `DESC VQL` of a pgvec
 the `embeddingmodel` field property is what `VECTOR_DISTANCE` reads:
 
 ```
-embedding:vector<float,3072> (embeddingmodel = 'text-embedding-3-large', sourcetypeid = '10006', …)
+embedding:vector<float,<dimension>> (embeddingmodel = '<model>', sourcetypeid = '10006', …)
 ```
 
 It is set in Design Studio (*Edit → the field → Source type properties → Embedding model*)
 or in that field list. A derived view keeps it, renamed or not: `GET_VIEW_COLUMNS()` answers
-`column_extra_properties = [embeddingmodel text-embedding-3-large ]` for the view's column.
+`column_extra_properties = [embeddingmodel <model> ]` for the view's column.
 A column computed with `EMBED_AI` in a view has no property (`[]`).
 
 **A full cache cannot store a vector column**: `ALTER VIEW … CACHE FULL` over a view with one
@@ -77,11 +77,11 @@ SQL Server 2025, Snowflake, Databricks, BigQuery (documentation) — which Denod
   `VECTOR_DISTANCE` in both the `SELECT` list and the `WHERE` made two requests, over 32 rows.
 - **A view parameter is not a literal**: `VECTOR_DISTANCE(<column>, <parameter>)` plans as
   `vector_cosine_distance(<column>, embed_ai(<parameter>, <column>))` in the per-row
-  projection, and runs one request per row — 4 rows 2 s, 32 rows 13 s. Embedding the
-  parameter in a `Dual()` branch joined to the rows (the skill's search view) is one request:
-  0.9 s over the same 32 rows.
-- `GET_QUERY_EXECUTION_PLAN` of a query with a literal text embeds it while planning: the plan
-  took 1 s against 0.3 s for one without AI.
+  projection, and runs one request per row — measured once, 4 rows took 2 s and 32 rows 13 s.
+  Embedding the parameter in a `Dual()` branch joined to the rows (the skill's search view) is
+  one request: 0.9 s over the same 32 rows.
+- `GET_QUERY_EXECUTION_PLAN` of a query with a literal text embeds it while planning — one
+  request; measured once, the plan took 1 s against 0.3 s for one without AI.
 
 ## Delegation
 
@@ -96,7 +96,7 @@ No `LIMIT` in the planned query: with one the procedure answers `Error executing
 | In the plan | Means |
 |---|---|
 | `SQLSentence = … (t0.embedding <=> …) …` | the distance runs in PostgreSQL (`<=>` is pgvector's cosine distance) |
-| `noDelegationCause = Vector literal cannot be delegated to this database`, and the `SQLSentence` selects the vector column | every row's vector travels to Denodo, which computes the distance — 12 KB a row at 3,072 floats |
+| `noDelegationCause = Vector literal cannot be delegated to this database`, and the `SQLSentence` selects the vector column | every row's vector travels to Denodo, which computes the distance — 4 bytes a dimension, 12 KB a row at 3,072 |
 | `noDelegationCause = The function 'embed_ai' cannot be delegated to this database` on the projection | Denodo embeds per row — a parameter search, above |
 
 The second line comes from the data source: its `SOURCECONFIGURATION ( delegatevectorliteral

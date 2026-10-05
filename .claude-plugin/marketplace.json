@@ -12,7 +12,7 @@
     {
       "name": "denodo",
       "source": "./",
-      "description": "Create Denodo 9.5 objects from plain-language intent: catalog, data sources, views, and Data Marketplace entries."
+      "description": "Create Denodo 9.5 objects from plain-language intent: catalog, data sources, views and metric views, Data Marketplace entries, cache, security, AI functions, writes through views, tables from queries, regression tests and Scheduler jobs."
     }
   ]
 }

@@ -67,7 +67,7 @@ USERNAME = <literal> USERPASSWORD = <literal> [ ENCRYPTED ]
 A credentials vault, Kerberos, OAuth, AWS IAM, GCP service accounts and pass-through session
 credentials are set up in the Design Studio wizard, not here.
 
-The ciphertext comes from `scripts/denodo secret encrypt --env <env>` — never write the
+The ciphertext comes from `scripts/denodo secret encrypt --env dev` — never write the
 underlying `ENCRYPT_PASSWORD '<password>'` yourself, because the plaintext would land in a
 Bash argument and stay in the transcript (`/denodo:execute`, "A password for a data
 source"). Encrypt on the server the data source will live on: the ciphertext is
@@ -102,8 +102,8 @@ snowflake-1.x spanner sqreamdb trino-4xx vdp-8.0 vdp-9 vertica-7 vertica-9
 
 Drivers Denodo may not redistribute (MySQL, IBM DB2, Teradata, BigQuery, Hive, Impala)
 have to be installed on the server first — an administrator's job in Design Studio
-(`File > Extensions management`), not VQL.
-The current list on any server: `ls <DENODO_HOME>/lib/extensions/jdbc-drivers`.
+(`File > Extensions management`), not VQL. Which drivers a server has is in that dialog;
+there is no VQL that lists them, and you have no shell on the server.
 
 `DATABASENAME` / `DATABASEVERSION` select the **adapter**: the dialect, the delegation
 rules and the ping query. The value is not validated — `DATABASEVERSION = '99'` is created
@@ -177,7 +177,7 @@ What generated VQL looks like, and what to change in it:
 
 `DATA_LOAD_CONFIGURATION ( USE_FOR_QUERY_OPTIMIZATION = DATA_MOVEMENT … )`,
 `EMBEDDED_MPP`, `PROCESSING_UNITS`, external tables and bulk-load settings belong to
-performance work, which is outside v1. The clauses exist in the grammar above; the
+performance work, which these skills leave to Design Studio. The clauses exist in the grammar above; the
 Administration Guide documents what they do. A data movement written into a view, a remote
 table or a summary created in this data source's database is `/denodo:materialize`; the
 temporary tables of a data movement go to its `TARGET_CATALOG` and `TARGET_SCHEMA`.

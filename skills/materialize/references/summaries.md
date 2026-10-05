@@ -99,8 +99,8 @@ A summary is a copy as of its last load, and nothing marks it old:
 - a row inserted into the fact table under it: the rewritten query answered the old sum and
   count, the same query with `summary_rewrite` off the new ones, one row more;
 - the view under it re-declared with an extra column, and then with a new filter
-  (`WHERE amount > 100`): still rewritten, still the old figures — about two per cent more rows
-  than the view now returns. The documentation says a summary is invalidated when the definition of a view under
+  (`WHERE amount > 100`): still rewritten, still the old figures — more rows than the view now
+  returns. The documentation says a summary is invalidated when the definition of a view under
   it changes; on 9.5.1 neither change did it;
 - `REFRESH <summary>` brought both back in line.
 
@@ -120,8 +120,9 @@ matched nothing.
 
 `REFRESH <summary>` truncates the table and runs the summary's query (*measured*). A `CUSTOM LOAD
 QUERY` turns a refresh into an incremental load: a query that returns only the new rows,
-filtered on a timestamp against `LAST_DATE_REFRESH` — `CUSTOM LOAD QUERY 'SELECT * FROM sales
-WHERE sale_date >= LAST_DATE_REFRESH'` (documentation; not tried). It is not the cache's
+filtered on a timestamp against `LAST_DATE_REFRESH` — `CUSTOM LOAD QUERY 'SELECT <the summary's
+columns, named> FROM sales WHERE sale_date >= LAST_DATE_REFRESH'`.
+*unverified: 9.5 documentation only* It is not the cache's
 `@LAST_REFRESH_DATE`. Rows can also be added with `INSERT` into the summary (documentation).
 After a promotion to another environment a summary is unused until its first `REFRESH`.
 
@@ -143,7 +144,7 @@ CREATE OR REPLACE VIEW <view> … AS SELECT …
 
 SELECT … FROM <view> CONTEXT ( DATAMOVEMENTPLAN = <view to move> : OFF );    -- one query, off
 
-ALTER VIEW <view> DATAMOVEMENTPLAN = { <view to move>: () (JDBC <target>) };
+ALTER VIEW <view> DATAMOVEMENTPLAN = { <view to move>: () (JDBC <target>) };   -- unverified: 9.5 documentation only
 ```
 
 - *Measured*: the plan is kept in the view's `CONTEXT` and printed by `DESC VQL`. A query plans as
@@ -151,8 +152,8 @@ ALTER VIEW <view> DATAMOVEMENTPLAN = { <view to move>: () (JDBC <target>) };
   the target whose `SQLSentence` joins `<schema>.t_<moved view>_<uuid>`; the table was gone after
   the query. A data source given database-qualified (`admin.ds`) works.
 - *Measured*: moved into a data source the other side is not in, the plan still says `Data
-  Movement` and the join stays in Denodo. Moving a dimension of a few thousand rows next to a fact
-  of a million made an aggregate with `COUNT(DISTINCT)` about five times faster.
+  Movement` and the join stays in Denodo. Measured once, moving a dimension of a few thousand rows
+  next to a fact of a million made an aggregate with `COUNT(DISTINCT)` about five times faster.
 - The target is a JDBC data source the view already uses, or the cache data source, with an
   adapter the cache engine supports and a connection URI that names the database
   (documentation). The tables go to its data-load target schema; its account needs to create

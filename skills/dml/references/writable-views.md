@@ -37,7 +37,7 @@ Measured with query simplification on (the default; `GET_DATABASES()` → `query
 | The write | Without `WITH CHECK OPTION` | With it |
 |---|---|---|
 | `UPDATE` / `DELETE` of rows the view does not show | `affected = 0` — the view's `WHERE` is added | the same |
-| `UPDATE` that moves a row out of the view (`SET status = 'shipped'` through `WHERE status = 'open'`) | accepted | `Error executing sentence: CHECK OPTION failed: (status,eq,['open'], us_pst)` |
+| `UPDATE` that moves a row out of the view (`SET status = 'shipped'` through `WHERE status = 'open'`) | accepted | `Error executing sentence: CHECK OPTION failed: (status,eq,['open'], <i18n>)` |
 | the same `UPDATE` with a `WHERE` no row matches | `affected = 0` | **the same failure** — the check runs on the statement's values, before any row is read |
 | `INSERT` of a row the view would not show | accepted, invisible | `CHECK OPTION failed: …` |
 | `INSERT` that leaves the filtered column out | accepted, `NULL` stored, invisible | **accepted, `NULL` stored, invisible** |
@@ -62,7 +62,7 @@ CREATE OR REPLACE VIEW <name> AS SELECT … FROM <one view> WHERE <filter>
 - **A condition that is unknown passes.** `status = 'open'` is neither true nor false for
   `NULL`, so an `INSERT` without `status` and `SET status = NULL` go through. `AND status IS
   NOT NULL` fails both — and fails every `UPDATE` whose `SET` does not name `status`:
-  `CHECK OPTION failed: ((status,eq,['open'], us_pst) AND (status,isnotnull,[], us_pst))`.
+  `CHECK OPTION failed: ((status,eq,['open'], <i18n>) AND (status,isnotnull,[], <i18n>))`.
   The writer then sends the column on every statement, or the source makes it `NOT NULL`
   (its owner's change) and the view keeps the plain filter.
 - Without a keyword it is `CASCADED`: an `INSERT` through a view over `WHERE status = 'open'`,
@@ -87,8 +87,9 @@ CREATE OR REPLACE WRAPPER JDBC <name> …
 | `ALLOWINSERT = false`, `ALLOWUPDATE = false` | the same for `Insert` / `Update` (documentation) |
 | `NOT UPDATEABLE` on a field | `UPDATE`: `The field '<f>' is not updateable`; `INSERT`: `Cannot insert a value into the non updateable field '<f>'` |
 
-`DEFAULT` (or no `SOURCECONFIGURATION`) allows all three. `vql desc --env dev <base view>
---type "wrapper jdbc" --vql` shows what is set. Changing a wrapper someone else owns to make a
+`DEFAULT` (or no `SOURCECONFIGURATION`) allows all three. `DESC VQL WRAPPER JDBC <wrapper>
+('includeDependencies' = 'no', 'dropElements' = 'no')` shows what is set, without the data
+source and its encrypted password; the wrapper's name is in the base view's `WRAPPER ( jdbc … )`. Changing a wrapper someone else owns to make a
 write pass is not a fix — it is a change to their object, for their yes.
 
 ## Writes and the cache

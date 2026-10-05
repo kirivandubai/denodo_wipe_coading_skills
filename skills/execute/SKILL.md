@@ -148,18 +148,19 @@ A statement is destructive when it destroys or overwrites something that exists,
 state outside your own project: server settings, data in sources, objects of other databases,
 global objects. `CREATE` of a new object is not. The tool cannot tell whose object a `DROP`
 or `ALTER` hits, so it flags every one. The flag is not the rule: an `ALTER` of an object you
-created in this session, which nothing else reads yet, is yours to apply (`/denodo:vql`); on a
-production profile every flagged statement still needs the human's yes and the flag.
+created in this session, which nothing else reads yet, is yours to apply, and so is a
+marketplace catalog `synchronize` whose radius, read right before it, holds only what you
+created in this session (`/denodo:vql`); on a production profile every flagged statement and
+call still needs the human's yes and the flag.
 
 `DROP`, `ALTER`, `DELETE`, `TRUNCATE`; `INSERT` and `UPDATE` (a write through a view lands in
 the source behind it — `INSERT … ON DUPLICATE KEY UPDATE` included, VQL has no `MERGE`); the
 server-wide `SET '<property>' = …` (it rewrites the configuration of the whole server, `= NULL`
 deletes the property) and `WEBCONTAINER` except `STATUS`; a `SELECT … FROM name(…)` or `CALL name(…)` of a
 predefined procedure that changes state — `GENERATE_STATS`, `CREATE_REMOTE_TABLE`,
-`DROP_REMOTE_TABLE`, `CLEAN_CACHE_DATABASE`, `DROP_NONACTIVE_CACHE_TABLES`,
-`CREATE_SCHEMA_ON_SOURCE`, `DROP_SCHEMA_ON_SOURCE`, `REMOVE_ICEBERG_VIEW_SNAPSHOTS`,
-`ROLLBACK_ICEBERG_VIEW_TO_SNAPSHOT` (the list, with what each
-one destroys, is in `/denodo:procedures`, `references/predefined.md`); a query whose
+`DROP_REMOTE_TABLE`, `CLEAN_CACHE_DATABASE`, `COMPACT_CACHE`, `REFRESH_BASE_VIEW`,
+`LOGCONTROLLER` and the rest of the list in `/denodo:procedures`, `references/predefined.md`,
+with what each one changes; a query whose
 `CONTEXT` loads or invalidates a view's cache — `'cache_preload' = 'true'` or any
 `'cache_invalidate'` (`/denodo:cache`); a `CREATE [OR REPLACE]` of a `USER`, a `ROLE` or a
 `GLOBAL_SECURITY_POLICY`, `CHOWN`, and a `CREATE DATABASE` with a `GRANT` — each changes who
@@ -183,7 +184,7 @@ these, and `null` — not `false` — when it is not. Session settings come back
 any profile: `SET QUERYTIMEOUT TO …` (property name unquoted) and `ALTER SESSION SET
 'querytimeout' = …` last until the connection closes; a quoted property after a bare `SET` is
 the server. The procedure check goes by name and catches only
-those nine: a VQL procedure of your own that runs `DROP` through `EXECUTE` inside its body
+the names on that list: a VQL procedure of your own that runs `DROP` through `EXECUTE` inside its body
 comes back `null`, and reading what a procedure does before calling it stays your job. On a profile with `production: true` the tool refuses them with
 `error.kind = "refused"` and executes **nothing**.
 
@@ -200,7 +201,7 @@ When refused:
 | Rationalization | Reality |
 |---|---|
 | "The user named this file and this profile — that is the confirmation" | Naming a file is not reading a `DROP`. The confirmation comes after the refusal, on the listed statements. |
-| "The user said they can't answer right now / just make it work" | Then the answer is "waiting for your confirmation", not the flag. A demo is cheaper than a dropped object. |
+| "The user said they can't answer right now / just make it work" | Then the answer is "waiting for your confirmation", not the flag. A missed deadline is cheaper than a dropped object. |
 | "It's `DROP … IF EXISTS` on the object the next line recreates" | `IF EXISTS` silences the error, not the data loss; and the recreate may fail after the drop succeeded. |
 | "The object doesn't even exist, the drop is a no-op" | Your read of the catalog is a snapshot. The refusal is on the statement, not on its effect. |
 | "It's only a test database on the production server" | The profile says `production`. Database names are not the rule. |
@@ -210,7 +211,8 @@ When refused:
 previous result had `error.kind: "refused"`; `env.production` is `true` and the VQL
 contains `DROP` or `ALTER`, writes with `INSERT` or `UPDATE`, sets a server property with
 `SET '…'`, loads a cache with `'cache_preload'` or `'cache_invalidate'`, or calls a procedure
-whose name starts with `DROP_`, `CLEAN_`, `REMOVE_`, `ROLLBACK_`.
+on the list of `/denodo:procedures` — `DROP_…`, `CLEAN_…`, `COMPACT_CACHE`, `LOGCONTROLLER` and
+the rest.
 
 ### Error in the middle of a file
 

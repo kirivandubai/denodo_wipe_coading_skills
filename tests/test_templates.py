@@ -169,8 +169,9 @@ class RealSkillFileTest(unittest.TestCase):
 
     def test_when_you_cannot_see_the_file_section_resolves_and_marks_are_read(self):
         root = Path(__file__).resolve().parents[1]
+        # the donor search: unmarked until the review of 2026-10-05 asked for a mark on it
         first = load_block(root, "skills/datasources/SKILL.md#When you cannot see the file")
-        self.assertIsNone(first.mark)
+        self.assertEqual(first.mark, "verified: 9.5.1 (live, 2026-10-05)")
 
         # the donor read-back: a bash fence, so its mark is a `#` comment
         second = load_block(root, "skills/datasources/SKILL.md#When you cannot see the file[1]")

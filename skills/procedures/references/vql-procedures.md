@@ -180,11 +180,16 @@ to the server with the rest of the body and **the server does not keep them**:
 (*verified: 9.5.1 (live, 2026-09-12)*). Comment for the human reading the `.vql` file in
 the repository, and do not expect the comment back from the server.
 
-Step-by-step logging, for a procedure that misbehaves in the middle:
+Step-by-step logging, for a procedure that misbehaves in the middle — **a change to the whole
+server**: the level holds for every session until it is set back or the server restarts, and
+`DEBUG` may write query data into the log. It is the human's yes (`/denodo:vql`), with the level
+to return to, read first from `GET_ACTIVE_LOGGERS()` (`log_category`, `log_level` — *verified: 9.5.1 (live, 2026-10-05)*):
 
 ```sql
 -- unverified: 9.5 documentation only
 CALL LOGCONTROLLER('com.denodo.vdb.engine.storedprocedure.CommandExecutorVisitorImpl', 'DEBUG');
+-- …reproduce, read the log, then set it back:
+CALL LOGCONTROLLER('com.denodo.vdb.engine.storedprocedure.CommandExecutorVisitorImpl', '<the level it had>');
 ```
 
 ## Documentation

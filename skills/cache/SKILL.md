@@ -1,6 +1,6 @@
 ---
 name: cache
-description: Use when a Denodo 9.5 view should be answered from a stored copy instead of its sources, or when that copy misbehaves — putting a full cache (materialization) on a view or a base view (ALTER VIEW … CACHE FULL), loading or refreshing it with a preload query (CONTEXT 'cache_preload', 'cache_invalidate'), caching only some rows, clearing it, switching it off, "the view is slow, cache it", "materialize this view", "give me the statement that loads the cache", a cached view that returns 0 rows, old rows, every row twice, or fails with "Invalid object name" on its cache table. Also for any other cache setting — partial or query-results cache, time to live, incremental loads, cache indexes. Not for building or changing what the view computes — /denodo:views; not for refreshing it on a schedule, a Scheduler cache job — /denodo:scheduler.
+description: Use when a Denodo 9.5 view should be answered from a stored copy instead of its sources, or when that copy misbehaves — putting a full cache (materialization) on a view or a base view (ALTER VIEW … CACHE FULL), loading or refreshing it with a preload query (CONTEXT 'cache_preload', 'cache_invalidate'), caching only some rows, clearing it, switching it off, "the view is slow, cache it", "materialize this view", "give me the statement that loads the cache", a cached view that returns 0 rows, old rows, every row twice, or fails because its cache table is missing ("Invalid object name" on SQL Server). Also for any other cache setting — partial or query-results cache, time to live, incremental loads, cache indexes. Not for building or changing what the view computes — /denodo:views; not for refreshing it on a schedule — /denodo:scheduler; not for a table of its own that other tools read — /denodo:materialize.
 ---
 
 # Full cache of a view
@@ -89,14 +89,14 @@ were empty or partial, and the loaded copy stays behind (Silent failures, 4).
 | "It is dev, and it is the team's own database" | Your own objects are the ones you created in this session. The team's view has readers you do not know. |
 | "It is reversible with `CACHE OFF`" | The readers already got 0 rows; `OFF` keeps the loaded copy, and the next `CACHE FULL` serves it again, however old. |
 | "There is a deadline" | A report that shows 0 rows or a subset is worse than a slow one, and nobody is told. |
-| "I'll run a second reload to test it" | Every reload is a write to what people read. Test on a view you created. |
+| "I'll run a second reload to test it" | Every reload is a write to what people read. Test on the view you are building in this session's file — never on a probe object (`/denodo:vql`). |
 
 ## Templates
 
 ### Switch it on — in the view's own file
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-05)
+-- verified: 9.5.1 (live, 2026-10-06)
 CONNECT DATABASE sales_analytics;
 
 ALTER VIEW iv_household_income CACHE FULL WITH_STATUS;
@@ -108,7 +108,8 @@ ALTER VIEW iv_household_income CACHE FULL WITH_STATUS;
   no `CACHE` clause; `ALTER VIEW` is the only way for a derived view.
 - **Always `WITH_STATUS`.** With `NO_STATUS` every load with `'all_rows'` builds a new cache
   table and drops the old one, and every view above that had already been queried keeps
-  reading the dropped table: `Invalid object name '<catalog>.<schema>.C_<VIEW>…'` until its own
+  reading the dropped table — `Invalid object name '<catalog>.<schema>.C_<VIEW>…'` with the
+  cache database on SQL Server, another database's own words for a missing table — until its own
   `CREATE OR REPLACE VIEW` is re-applied — not after minutes, not after the next load.
   With `WITH_STATUS` the table stays and loads are atomic. A bare `CACHE FULL` is
   `WITH_STATUS` on some servers and `NO_STATUS` on others (the documentation says the latter
@@ -125,7 +126,7 @@ ALTER VIEW iv_household_income CACHE FULL WITH_STATUS;
 ### Load it — a file of its own
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-05)
+-- verified: 9.5.1 (live, 2026-10-06)
 CONNECT DATABASE sales_analytics;
 
 SELECT * FROM iv_household_income
@@ -187,7 +188,7 @@ are cleaned (Clear it, below).
 ### Clear it, switch it off
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-05)
+-- verified: 9.5.1 (live, 2026-10-06)
 CONNECT DATABASE sales_analytics;
 
 ALTER VIEW iv_household_income CACHE INVALIDATE;
@@ -260,7 +261,7 @@ Each runs without an error — *verified: 9.5.1 (live, 2026-09-30)*.
 | 6. re-applied a `CREATE OR REPLACE VIEW` without the `ALTER VIEW … CACHE` line | the sources again, slowly; the loaded rows wait to come back stale | the line stays in the view's file |
 | 7. the load over a view built on the cached one | nothing loaded, `ok` | the load names the cached view itself |
 | 8. `'cache_wait_for_load' = 'false'` | the old content, while the load reported `ok` | `'true'` |
-| 9. switched a view on | its queries, and the filters, `GROUP BY`, `DISTINCT`, joins and `ORDER BY` of every view on it, now run in the cache database with that database's rules. A case-insensitive SQL Server collation matched `reason = 'did not fit'` against `'Did not fit'` (0 rows from the files, 1,988 from the cache), and a trailing space in a literal stopped mattering; `NULL`s sorted first; `decimal` came back with 20 decimal places. Switching off reverses all of it | before switching: `SELECT UPPER(TRIM(<col>)), COUNT(DISTINCT <col>) FROM <view> GROUP BY UPPER(TRIM(<col>)) HAVING COUNT(DISTINCT <col>) > 1` finds the values a case-insensitive database would merge; after: the readers' filters against `CONTEXT ('cache' = 'off')`. `CAST(<expression> AS decimal(12,2))` around the final value in the view that reads it gives the scale back — an `AVG` over an already-cast column still came back as `1.890000`. Tell the human what differs — the adapter's name does not say the collation |
+| 9. switched a view on | its queries, and the filters, `GROUP BY`, `DISTINCT`, joins and `ORDER BY` of every view on it, now run in the cache database with that database's rules. A case-insensitive SQL Server collation matched `reason = 'did not fit'` against `'Did not fit'` — no rows from the files, every such row from the cache — and a trailing space in a literal stopped mattering; `NULL`s sorted first; `decimal` came back with 20 decimal places. Switching off reverses all of it | before switching: `SELECT UPPER(TRIM(<col>)), COUNT(DISTINCT <col>) FROM <view> GROUP BY UPPER(TRIM(<col>)) HAVING COUNT(DISTINCT <col>) > 1` finds the values a case-insensitive database would merge; after: the readers' filters against `CONTEXT ('cache' = 'off')`. `CAST(<expression> AS decimal(12,2))` around the final value in the view that reads it gives the scale back — an `AVG` over an already-cast column still came back as `1.890000`. Tell the human what differs — the adapter's name does not say the collation |
 | 10. a load over a view whose cache is off — a refresh job left running | nothing loaded, `ok` | stop the job when you switch the cache off |
 
 ## Common mistakes
@@ -270,9 +271,9 @@ Each runs without an error — *verified: 9.5.1 (live, 2026-09-30)*.
 | `ALTER VIEW bv_x CACHE FULL` on a base view | `the view : 'bv_x' is a base view` | `CACHE FULL WITH_STATUS` in its `CREATE OR REPLACE TABLE` |
 | `SELECT a, b FROM v CONTEXT ('cache_preload' = 'true', …)` | `All view fields should be projected with cache full mode` | `SELECT *` |
 | a load while the database's cache is off | `Operation not allowed because the cache is disabled or not correctly configured` | the administrator enables it; stop |
-| a text value longer than the cache column (4000 on SQL Server) | `Error loading cache: … String or binary data would be truncated` | the previous content is still served; show the human the value |
-| a view on a `NO_STATUS` cache, after a load | `Invalid object name '<catalog>.<schema>.C_<VIEW>…'` | `ALTER VIEW <cached view> CACHE FULL WITH_STATUS;` (keeps the rows), then re-apply the failing view's file |
-| `ALTER VIEW <metric view> CACHE FULL` | `Metric views do not support cache mode` | cache its source views, or a summary in Design Studio (`/denodo:metrics`) |
+| a text value longer than the cache column (4000 on SQL Server) | `Error loading cache: …` — on SQL Server, `String or binary data would be truncated` | the previous content is still served; show the human the value |
+| a view on a `NO_STATUS` cache, after a load | its cache table is gone — on SQL Server `Invalid object name '<catalog>.<schema>.C_<VIEW>…'` | `ALTER VIEW <cached view> CACHE FULL WITH_STATUS;` (keeps the rows), then re-apply the failing view's file |
+| `ALTER VIEW <metric view> CACHE FULL` | `Metric views do not support cache mode` | cache its source views (`/denodo:metrics`), or a summary over them (`/denodo:materialize`) |
 | `ALTER VIEW v CACHE RECREATE` to clear | nothing: the view is empty, but `CACHE_CONTENT` keeps the old load's date | `CACHE INVALIDATE` |
 
 ## Reference

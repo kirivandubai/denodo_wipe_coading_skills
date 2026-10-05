@@ -1,6 +1,6 @@
 ---
 name: vql
-description: Use when doing anything with Denodo — creating or changing a database, folder, tag, data source, wrapper, base view, derived view, interface view, metric view, association, a Data Marketplace object or a Scheduler job; writing or fixing VQL; deciding where an object lives and what to name it; "build a mart", "connect a source", "vibe-code on Denodo". Start here when the request is ambiguous: this skill holds the working loop, the naming conventions, the safety rule and the map of the other Denodo skills.
+description: Use when doing anything with Denodo — creating or changing a database, folder, tag, data source, wrapper, base, derived, interface or metric view, association, cache, role or security policy, remote table or summary, a Data Marketplace object, a regression test or a Scheduler job; writing or fixing VQL, or an expression in a SELECT — text, dates, casts; deciding where an object lives and what to name it; "where do I start", "build a mart", "connect a source", "vibe-code on Denodo". Start here when the request is ambiguous or names no single object.
 ---
 
 # Working with Denodo
@@ -43,9 +43,11 @@ Templates are `CREATE OR REPLACE`, so when a statement fails, fix that statement
 re-apply the same file from the top.
 
 Chain order, when several objects are involved: `database → folder → datasource → wrapper
-→ base view → derived view → association`. Tags and marketplace objects come last: they
-attach to things that must already exist — except a tag that a view's own file names
-(`TAGS`), which is created before that view.
+→ base view → derived view → association → metric view → the views over it`. A view's cache
+line goes in the view's own file, right after its `CREATE`, and the load after that; remote
+tables, summaries and Scheduler jobs come after the views they read. Tags and marketplace
+objects come last: they attach to things that must already exist — except a tag that a view's
+own file names (`TAGS`), which is created before that view.
 
 ## Naming and layout
 
@@ -89,8 +91,9 @@ default. If the project has one, it wins — do not "improve" its naming with th
 
 ## Idempotency
 
-**`CREATE OR REPLACE` for every object type**, in every file. All twelve VQL object types
-of v1 support it, including `DATABASE`.
+**`CREATE OR REPLACE` for every object type**, in every file — `DATABASE` included. The
+exception is a table that holds rows: over a remote table, a summary or a materialized table
+`OR REPLACE` drops or empties what is there (`/denodo:materialize`).
 
 - `IF NOT EXISTS` does not exist in Denodo. The server answers
   `Syntax error: Exception parsing query near 'IF'` — *verified: 9.5.1 (live, 2026-09-09)*.
@@ -102,34 +105,35 @@ of v1 support it, including `DATABASE`.
   dependent view uses — selects, joins on, filters or groups by — is a breaking change:
   check dependents first (`/denodo:views`, "Before a column changes").
 - Assigning a tag needs both blocks — `ADD_TO ( ... ) REMOVE_FROM ( VIEWS () COLUMNS () )`
-  — or it is a syntax error.
+  — or it is a syntax error — *verified: 9.5.1 (live, 2026-10-06)*.
 - **Data Marketplace has no `OR REPLACE`.** Every operation goes by numeric id, and an id
   only exists after creation, so idempotency there is a pair: `GET` the object by name,
   then `POST` to create or `PUT` to update. The status of a repeated `DELETE` differs per
   object type (`500`, `200`, `404`) — never rely on it, rely on the lookup.
 
-Templates in the domain skills carry `-- verified: 9.5 (live, date)` or
-`-- unverified: 9.5 documentation only`. An unverified template is still worth using;
+Templates in the domain skills carry `-- verified: 9.5.1 (live, <date>)` — the release and the
+day it ran — or `-- unverified: 9.5 documentation only`. An unverified template is still worth using;
 it just means the verification is yours to do, with `DESC` and a `SELECT`.
 
 ## Safety: you create, the human confirms destruction
 
 | You do it yourself | Only after the human confirms |
 |---|---|
-| `CREATE` / `CREATE OR REPLACE` of an object | `DROP`, `TRUNCATE`, `DELETE` |
+| `CREATE` / `CREATE OR REPLACE` of an object — a new one, or one your project's own file declares | `DROP`, `TRUNCATE`, `DELETE` |
 | Read-only `SELECT`, `DESC`, `GET_*`, `env check` — on any profile, production included | `ALTER` of an object that existed before this session, or that something you did not create already reads. Your own new view takes the `ALTER VIEW … CACHE` line of its file without a yes; a `DROP`, even of your own object, does not |
-| Session settings: `SET QUERYTIMEOUT TO …`, `ALTER SESSION SET 'querytimeout' = …` | `INSERT`, `UPDATE` — the rows land in the source behind the view, at once: over this connection `ROLLBACK` undoes nothing (`/denodo:dml`) |
+| Session settings: `SET QUERYTIMEOUT TO …`, `ALTER SESSION SET 'querytimeout' = …` | `INSERT`, `UPDATE` — the rows land in the source behind the view, at once: over this connection `ROLLBACK` undoes nothing (`/denodo:dml`). The one `INSERT` that is yours: into a materialized table you created in this session (`/denodo:materialize`) |
 | A **new** table in a source database: `CREATE_REMOTE_TABLE` with `replace_remote_table_if_exist = false`, in the data source and schema the human named, under a name you checked is free; its `REFRESH` while it is yours from this session; a summary created unloaded; a new materialized table in your project's database (`/denodo:materialize`) | replacing, emptying or dropping a table in a source database that existed before this session — `replace … = true`, `OR REPLACE` before `REMOTE TABLE`, `SUMMARY VIEW` or `MATERIALIZED TABLE`, `REFRESH`, `DROP_REMOTE_TABLE` — and **every load of a summary**: from then on the optimizer answers other people's queries from it (`/denodo:materialize`) |
 | — | `SET '<property>' = …`, `WEBCONTAINER SET / STOP / START / RELOAD` — the whole server's configuration, not your session |
 | — | `CREATE OR REPLACE` of an existing view that drops or renames a column other objects use — the server accepts it and breaks them without an error (`/denodo:views`, "Before a column changes") |
+| — | `CREATE OR REPLACE` of an existing object no file of your project declares — made in Design Studio, or another team's: your text replaces its whole configuration, a data source's stored password and a view's cache settings included (`/denodo:datasources`) |
 | — | loading, reloading or clearing the cache of a view you did not create in this session — `SELECT … CONTEXT ('cache_preload' = 'true', …)`, `ALTER VIEW … CACHE` (`/denodo:cache`) |
 | — | `CREATE OR REPLACE METRIC VIEW` over a metric view you did not create in this session — a changed join type, filter or metric changes every figure built on it, with no column dropped (`/denodo:metrics`) |
 | — | the description, field descriptions, primary key or tags of a view you did not create in this session — by `ALTER VIEW`, `ALTER TAG`, or by re-declaring the view with `CREATE OR REPLACE`: the human approves the texts; naming a view to be made visible to an agent is the yes for its tag (`/denodo:semantics`) |
 | — | who may read what: a role, a user or a global security policy, created or changed, a grant of a role or a privilege to a person, or a tag that a policy names put on or taken off a column — unless every object it touches was created by you in this session. A `CREATE` counts: a new policy restricts people who exist, and `CREATE OR REPLACE` of an existing role adds to it (`/denodo:security`) |
 | `…_AI` calls on `Dual()` — to see that the server answers, or to try an expression on up to three texts — and a search whose text is embedded once | an AI function — `CLASSIFY_AI`, `SENTIMENT_AI` and the rest, or an embedding computed per row — evaluated on the rows of a view, a cache load of a view with such a column included: every row is a paid request to an outside provider, and its text goes with it. The human agrees to the number of requests, or names a ceiling (`/denodo:ai`) |
-| — | a predefined procedure that changes state, however it is spelled: `SELECT * FROM DROP_REMOTE_TABLE(…)`, `CALL CLEAN_CACHE_DATABASE(…)`, `GENERATE_STATS(…)` — `CREATE_REMOTE_TABLE` of a new table, above, is the exception — the list is in `/denodo:procedures` |
+| — | a predefined procedure that changes state, however it is spelled: `SELECT * FROM DROP_REMOTE_TABLE(…)`, `CALL CLEAN_CACHE_DATABASE(…)`, `GENERATE_STATS(…)`, `LOGCONTROLLER(…)` — the list is in `/denodo:procedures`. Two exceptions, both on what you created in this session: `CREATE_REMOTE_TABLE` of a new table, above, and `CLEAN_CACHE_DATABASE` of the cache of your own view (`/denodo:cache`) |
 | a Scheduler job created disabled — it runs nothing — and one whose runs touch only what you created in this session; every Scheduler `GET` (`/denodo:scheduler`) | enabling, starting or changing a Scheduler job whose runs reload a cache, refresh a table or write a file that existed before this session — the job is that statement, every time it fires — and anything on a job that existed before this session (`/denodo:scheduler`) |
-| `GET` calls to the marketplace | every destructive marketplace call (below) |
+| `GET` calls to the marketplace; a catalog `synchronize` whose radius is yours (below) | every other destructive marketplace call (below) |
 | — | **any change at all on a profile with `production: true`, `CREATE` included** |
 
 Destruction, for this rule, is anything that destroys or overwrites what exists, or changes
@@ -156,7 +160,7 @@ destructive as a `DROP`, and none of them contains the word:
 | `POST /public/api/element-management/{all,DATABASES,VIEWS,…}/synchronize` | everything the marketplace holds that VDP no longer has — `changes.localElements` is that list, and it goes whatever `proceedWithConflicts` says; `"SERVER"` additionally overwrites descriptions edited in the marketplace. A view renamed in VDP is on that list under its old name, with everything people attached to it, unless the pair is matched in the call (`/denodo:marketplace`) |
 | `POST /public/api/views/{id}/tags`, `.../categories`, `/public/api/property-management/views/{id}/groups` | the view's previous assignments — this is "set", not "add"; a property group left out takes its values with it |
 
-Sending a *complete* list to a `synchronize` call is not a substitute for asking: you are
+Sending a *complete* list to `tags/vdp/synchronize` is not a substitute for asking: you are
 still replacing a set you did not read out to the human.
 
 | Rationalization | Reality |
@@ -167,17 +171,33 @@ still replacing a set you did not read out to the human.
 | "There's no `DROP` in this call" | The rule is method and path. `POST …/synchronize` deletes. |
 | "Cleanup of my own probe objects doesn't count" | It is a `DROP` on a shared server. Same rule. |
 | "I'll list what I removed in the summary" | Disclosure after the fact is not consent. |
-| "The radius is clean — the pair is matched, nothing gets removed — and waiting costs them" | A `synchronize` still rewrites a catalog everybody shares. Leave the body in a file and say what waiting risks; the human sends it or says yes. |
+| "Nothing gets removed — the rest of the radius only adds" | Clean is not the test; whose is. Another team's new database or view under `serverElements` lands in the catalog everybody browses before its owner chose to publish it. One entry you did not create in this session, and the body goes in a file with what waiting risks; the human sends it or says yes. |
+| "The pair is matched, so the rename costs nothing" | A view that existed before this session is someone's: the rename and its matched `synchronize` wait for one yes, shown together. |
 
-**One named exception, and only this one:** the first
-`POST /public/api/external-tool-servers/synchronize` on an external tool server you created
-in this same session imports elements and can delete none, because that server has imported
-none yet. Every later import on it is back under the rule. Nothing else about a `synchronize`
-is exempt, and on a `production` profile the tool refuses it regardless — see
-`/denodo:marketplace`.
+**Two named exceptions, and only these.** On a `production` profile neither applies: the tool
+refuses every `synchronize` there regardless (`/denodo:marketplace`).
 
-**Red flags — stop and ask:** you are about to send `DELETE` or a `synchronize`; you are
-writing `--allow-destructive`; `env.production` is `true`; you are removing something you
+1. **A catalog `synchronize` whose radius is yours.** `VIEWS/synchronize` — preceded by
+   `DATABASES/synchronize` when the database is new — with `proceedWithConflicts:
+   "SERVER_WITH_LOCAL_CHANGES"`, when both `…/changes`, `DATABASES` and `VIEWS`, read right
+   before the call, hold only what you created in this session: every
+   `serverElements` entry a database or view you created, every `localElements` entry the
+   element of a view you created — your own view renamed, with the pair matched in the call,
+   included. `modifiedElements` do not change this: that mode keeps every description edited
+   in the marketplace. After the call, read `removed` and `inserted` against the radius you
+   read, then both `changes` again — `removed` can be empty while elements went
+   (`/denodo:marketplace`) — and tell the human at once about anything you did not expect. Any other entry — a database
+   or view you did not create in this session, an orphan you did not make — and the call waits
+   for the yes.
+2. The first `POST /public/api/external-tool-servers/synchronize` on an external tool server
+   you created in this same session imports elements and can delete none, because that server
+   has imported none yet. Every later import on it is back under the rule.
+
+Nothing else about a `synchronize` is exempt.
+
+**Red flags — stop and ask:** you are about to send `DELETE`; a `synchronize` whose radius
+you have not read just now, or that holds anything you did not create in this session; you
+are writing `--allow-destructive`; `env.production` is `true`; you are removing something you
 did not create in this session; you are "cleaning up" anything.
 
 ## Expressions: VQL is not PostgreSQL
@@ -199,7 +219,7 @@ the input so the wrong reading shows: `'abcdef'` for a substring, `2024-12-30` f
 | You write | Denodo gives | Write instead |
 |---|---|---|
 | `SUBSTRING(s, 1, 3)` | `'bc'` — the comma form is 0-based and its third argument is an end index. `INSTR` is 0-based (`-1` when absent), `POSITION` 1-based | `SUBSTR(s, 1, 3)` or `LEFT(s, 3)`; never mix the 0-based and 1-based functions in one expression |
-| `s = 'abc'`, `num_col > '9'` | exact: case and trailing spaces count, and file sources pad text to the column width. A comparison mixing text and a number compares as text — `day > '9'` finds nothing. Delegated to SQL Server, case and spaces are ignored instead | `UPPER(TRIM(s)) = 'ABC'`; numbers compared as numbers |
+| `s = 'abc'`, `num_col > '9'` | exact: case and trailing spaces count, and a file source may pad text to the column width (`LEN` shows it). A comparison mixing text and a number compares as text — `day > '9'` finds nothing. Delegated to SQL Server, case and spaces are ignored instead | `UPPER(TRIM(s)) = 'ABC'`; numbers compared as numbers |
 | `CAST(x AS integer)` | truncates, `2.9` → `2` — yet rounds when the cast runs in PostgreSQL. `'12abc'` → `12`; past the range it wraps around | `ROUND`, `FLOOR` or `TRUNC`, whichever you mean; check text with `TRIM(s) REGEXP_LIKE '^-?[0-9]+$'` before casting it |
 | `a / 0`, `int + int` past 2 147 483 647 | `NULL`, no error | guard the denominator; `CAST(a AS bigint)` before adding |
 | `SUM(int_col)` | stays `int`: past 2 147 483 647 it returns `NULL` or a wrong number that looks real | `SUM(CAST('long', x))` — for `int` only: over a `decimal` the same cast truncates every row. `decimal` and `double` need nothing |

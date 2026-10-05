@@ -10,16 +10,16 @@ Two classes of errors reach the agent through `scripts/denodo`:
 
 Client-side failures (exit `2`/`3`, `error.kind` set) are listed last.
 
-Every row was reproduced on a 9.5.1 server on 2026-09-08 unless marked
-*observed once* (recorded on the same server and day during an exploratory session
-rather than re-triggered).
+Every row was reproduced on a 9.5.1 server — the first ones on 2026-09-08, the rest as the
+skills that meet them were verified — unless marked *observed once* (recorded during an
+exploratory session rather than re-triggered).
 
 ## 1. Virtual DataPort messages
 
 ### Object already exists (idempotency)
 
-Fix for all of them: use `CREATE OR REPLACE` — supported by every VQL object type
-in v1 — instead of retrying `DROP` + `CREATE`.
+Fix for all of them: use `CREATE OR REPLACE` — supported by every VQL object type these
+skills create — instead of retrying `DROP` + `CREATE`.
 
 | Substring | Statement | Meaning |
 |---|---|---|
@@ -130,7 +130,7 @@ object back** — that is what the Verify section of every domain skill is for.
 | `500` | `GENERIC` "Cannot invoke \"java.lang.Long.longValue()\" because \"elementId\" is null" | `null` inside the id list of a body | resolve every id before the call |
 | `500` | `GENERIC` "Error executing query…" (`view-details`) | `databaseName` does not exist in VDP | fix the database name |
 | `200` | `[<viewId>, …]` from `POST /tags/{id}/views` or `/categories/…` | ids that were **not** assigned: unknown view, or already assigned | success is `[]`; unknown ids are not errors for the server |
-| `200` | `{"id":null,"inLocal":false,"inVDP":true}` from `GET view-details` | the view exists in VDP but is not synchronised into the marketplace, so it has no id to assign anything to | synchronise the catalog first — `/denodo:marketplace` covers which call and which conflict mode, and both are choices a human confirms |
+| `200` | `{"id":null,"inLocal":false,"inVDP":true}` from `GET view-details` | the view exists in VDP but is not synchronised into the marketplace, so it has no id to assign anything to | synchronise the catalog first — `/denodo:marketplace` covers which call and which conflict mode; a radius that holds only what you created in this session is yours to synchronise, any other the human confirms (`/denodo:vql`) |
 
 Repeated `DELETE` is not idempotent across object types: `500` for tags, `200` for
 categories, `404` for element types and servers. Look up by name before deleting

@@ -1,6 +1,6 @@
 ---
 name: views
-description: Use when building on top of views that already exist in Denodo 9.5 — a derived view over base views (CREATE VIEW … AS SELECT: a join, an aggregate, a mart, a parameterised view, a UNION ALL of views of one entity, FLATTEN of an array such as JSON order lines into rows, NEST of rows into an array), an interface view as a contract whose implementation can be swapped (CREATE INTERFACE VIEW … SET IMPLEMENTATION), or an association between two views (CREATE ASSOCIATION … REFERENTIAL CONSTRAINT). Also before changing a view others depend on — "what uses this view", "can I drop this column", "where does this field come from" — for whether a mart over a database runs there or pulls every row into Denodo, for "make a mart", "combine these sources into one view", "expose this as a data product", and for a view created without an error that fails on SELECT or turns up INVALID. Not for connecting a source or making base views — /denodo:datasources; not for databases, folders or VDP tags — /denodo:catalog; not for a view's cache or materialization — /denodo:cache; not for KPIs defined once for every tool as a metric view — /denodo:metrics.
+description: Use when building on top of views that already exist in Denodo 9.5 — a derived view (a join, an aggregate, a mart, a filtered or parameterised view, a UNION ALL of views of one entity, FLATTEN of a JSON array into rows, NEST of rows into an array), an interface view whose implementation can be swapped, or an association between two views. Also before changing a view others depend on — "what uses this view", "can I drop this column", "where does this field come from" — for whether a mart over a database runs there or pulls every row into Denodo, for "combine these sources into one view", "expose this as a data product", and for a view created without an error that fails on SELECT or turns up INVALID. Not for sources and base views — /denodo:datasources; databases, folders, VDP tags — /denodo:catalog; a view's cache — /denodo:cache; a copy stored as a table — /denodo:materialize; a metric view — /denodo:metrics.
 ---
 
 # Derived views, interface views and associations
@@ -41,7 +41,7 @@ silently — keep them in the file (`/denodo:semantics`).
 ### Derived view
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-05)
+-- verified: 9.5.1 (live, 2026-10-06)
 CONNECT DATABASE sales_analytics;
 
 CREATE OR REPLACE VIEW iv_household_income
@@ -99,15 +99,15 @@ Clause order: `FOLDER` → `DESCRIPTION` → `PRIMARY KEY` → `TAGS` → `( fie
 - **Count the dimension before you join it.** `SELECT COUNT(*), COUNT(DISTINCT <business
   key>) FROM <dimension>` — a dimension that keeps history has several rows per business
   key, and joining on that key multiplies every figure in the mart with no error anywhere.
-  In the sample data behind the templates the `store` dimension is 12 rows for 6 stores and
-  `call_center` 6 rows for 3 centres; the fact carries the surrogate key, so join on that
-  and project the business key as a column, so the consumer can still roll up. **The hint
+  In the TPC-DS sample data the `store` and `call_center` dimensions keep two rows per business
+  key; the fact carries the surrogate key, so join on that and project the business key as a
+  column, so the consumer can still roll up. **The hint
   is a pair of validity columns** (`rec_start_date` / `rec_end_date`), and the `COUNT`
   decides: validity columns over one row per business key are not history.
 - **`INNER` drops facts, and nobody is told.** The template joins `INNER` because its two
-  sample files match completely; real files do not — 10 062 of the 287 514 sample store
-  returns carry no store key at all, and 3 212 of the 71 763 web returns name no reason. Decide
-  which you want and record the decision in the `DESCRIPTION`:
+  sample files match completely; real files do not — in the TPC-DS returns, some store returns
+  carry no store key at all and some web returns name no reason. Decide which you want and
+  record the decision in the `DESCRIPTION`:
   - the unmatched rows matter → `LEFT OUTER JOIN` from the fact, with a label for the
     group: `COALESCE(TRIM(r.reason_desc), '(reason not specified)')`. Two different things
     land in that group — the fact's key is `NULL`, or the key has no row in the dimension —
@@ -146,7 +146,7 @@ Clause order: `FOLDER` → `DESCRIPTION` → `PRIMARY KEY` → `TAGS` → `( fie
 ### Union — one entity from several views
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-05)
+-- verified: 9.5.1 (live, 2026-10-06)
 CONNECT DATABASE sales_analytics;
 
 CREATE OR REPLACE VIEW returns
@@ -211,7 +211,7 @@ One branch per source, and a constant column that says which source a row came f
 ### Arrays — `FLATTEN` to rows, `NEST` back
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-05)
+-- verified: 9.5.1 (live, 2026-10-06)
 CONNECT DATABASE sales_analytics;
 
 CREATE OR REPLACE VIEW iv_oms_order_lines
@@ -284,7 +284,7 @@ elements, a re-nested array), arrays inside registers, two arrays at once, and `
 ### Interface view — a contract you can re-implement
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-05)
+-- verified: 9.5.1 (live, 2026-10-06)
 CREATE OR REPLACE INTERFACE VIEW household_income (
         household_sk:int,
         income_band_sk:int,
@@ -352,7 +352,7 @@ not.
 ### Association — the relationship, recorded
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-05)
+-- verified: 9.5.1 (live, 2026-10-06)
 CREATE OR REPLACE ASSOCIATION a_income_band_household REFERENTIAL CONSTRAINT
     FOLDER = '/06 - associations'
     ENDPOINT income_band bv_household_demographics (0,*)
@@ -482,7 +482,7 @@ return *lines*. Publish both counts under names that say which is which
 a view that already has dependants, before anything is changed. Everything here only reads.
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-05)
+-- verified: 9.5.1 (live, 2026-10-06)
 -- Can ib_income_band_sk go from bv_income_band?
 -- 1. The views that name bv_income_band in their own definition. Only these can use its columns.
 SELECT used_by_database_name, used_by_name
@@ -608,7 +608,7 @@ the reason this skill exists.** After applying, always:
 
 | Question | Read-back |
 |---|---|
-| Did the objects land, and where | `SELECT name, type, subtype, folder FROM GET_ELEMENTS() WHERE input_database_name = '<db>' AND type = 'view'` — `subtype` is `base`, `derived` or `interface`; associations are `type = 'association'`. `type` is an output column and takes `IN`; the `input_…` parameters take `=` only |
+| Did the objects land, and where | `SELECT name, type, subtype, folder FROM GET_ELEMENTS() WHERE input_database_name = '<db>' AND type = 'view'` — `subtype` is `base`, `derived`, `interface` or `metric` (*verified: 9.5.1 (live, 2026-10-05)*); associations are `type = 'association'`. `type` is an output column and takes `IN`; the `input_…` parameters take `=` only |
 | **Is anything broken now** | `SELECT name, view_type, view_status FROM GET_VIEWS() WHERE input_database_name = '<db>' AND input_retrieve_invalid_views_only = true` — **empty is the only good answer.** It is not the whole answer: a view built on an `INVALID` one stays `OK` and fails on `SELECT`, so everything `USED_BY()` lists above an `INVALID` view is broken too. `view_type` here is the same fact as `subtype` above in numbers: `0` base, `1` derived, `2` interface, `5` metric |
 | Does it carry rows | `SELECT * FROM <view> LIMIT 10`, and a count that can be checked against the input |
 | **Did the join keep every fact** | add the mart's row counters back up and compare with the fact it was built from: `SUM(<row count column>)` over the mart equals `COUNT(*)` of the input, minus exactly the rows you decided to drop. A join that quietly dropped the unmatched facts, or doubled them on a duplicated dimension key, passes every other check in this table |
