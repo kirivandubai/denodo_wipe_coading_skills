@@ -26,7 +26,7 @@ tool reads host, user and password from `~/.denodo/profiles.toml` itself.
 | Read stdin | `vql run --env dev -` |
 | Another database | add `--database <db>` (or put `CONNECT DATABASE <db>;` first in the file) |
 | What a file would do, before applying it | `vql plan --env dev model/sales/views.vql` (also `-e`, `-`, `--database`) — reads the server and the session's ledger, executes nothing; per statement `action`, `object`, `exists`, `own`, `needs_yes`, `why`, `conditions`. The rule it applies is `/denodo:vql`'s safety table |
-| What this session created | `vql ledger --env dev` — every object a `vql run` of this session created on the profile's server, each re-checked: `present`, `missing`, `replaced` (the name now has another object), `dropped` |
+| What this session created | `vql ledger --env dev` — every object a `vql run` of this session created on the profile's server, each with its `state`, re-checked against the server: `present`, `missing` (gone without a `DROP` this session ran), `replaced` (the name now has another object), `dropped`; `states` counts them |
 | Schema of an object | `vql desc --env dev bv_orders` (`--type view` is the default and covers base views too — there is no `DESC TABLE`) |
 | Server-generated VQL | `vql desc --env dev bv_orders --vql` — read it, do not apply it: it opens with `DROP … CASCADE` and rebuilds the object **together with what it depends on** in its own database — dependencies in another database are left out, except under a metric view of another database: the metric view is left out and its source views come back unqualified, as if they were in yours — never with what depends on it. Which object you ask therefore decides what you get: a base view returns source, wrapper and `CREATE TABLE` in one answer; the source alone returns only itself, without the column list. A name can be qualified — `vql desc --env dev "other_db.bv_orders" --vql` reads another database without switching yours — *verified: 9.5.1 (live, 2026-09-12)*. The object alone, without the data source its dependencies bring (and that source's encrypted password): `vql run --env dev -e "DESC VQL VIEW bv_orders ('includeDependencies' = 'no', 'dropElements' = 'no')"` — *verified: 9.5.1 (live, 2026-10-02)* |
 | Other types | `--type database`, `--type "datasource df"`, `--type "wrapper df"`, `--type tag`, `--type association`, `--type "interface view"`, `--type role`, `--type global_security_policy` (with `--vql`, read only: it starts with `DROP … CASCADE`); folders take a quoted path: `vql desc --env dev "'/sales'" --type folder --vql` |
@@ -95,7 +95,11 @@ the profiles, never in the project.
 `needs_yes` at the top lists the statements that wait for the human, `not_recognised` those the
 table decides. `session: null` (no session id) means only an object an earlier statement of the
 same input creates counts as yours. `project.base` is the commit the plan read declarations
-from — the last one before this session started.
+from — the last one before this session started; `project: null` means the input is not in a
+git work tree, so no file of it vouches for an object that already exists, however old the
+file — re-declaring such an object waits for the yes, and the summary says the project is not
+versioned. As for `vql run`, `env.database` is the connection's database; where each statement
+lands is its `object.database`, which follows the file's `CONNECT DATABASE`.
 
 **`vql desc`** returns the DESC rows as `columns`/`rows` **at the top level of the
 envelope** — `statements[]` belongs to `vql run` alone, and a parser that expects it
