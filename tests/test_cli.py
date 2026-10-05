@@ -70,6 +70,9 @@ class CliHarness:
         env.start()
         self.addCleanup(env.stop)
         os.environ.pop("DENODO_ENV", None)
+        # the developer's own session must not switch the ledger on in these suites
+        os.environ.pop("DENODO_SESSION", None)
+        os.environ.pop("CLAUDE_CODE_SESSION_ID", None)
         for p in (mock.patch.object(cli, "resolve_vql_factory", lambda profile: FakeVql),
                   mock.patch.object(cli, "resolve_rest_factory", lambda: FakeRest)):
             p.start()
@@ -122,6 +125,27 @@ class CliTest(CliHarness, unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertEqual(doc["failed_at"], 1)
         self.assertEqual(doc["source"], str(script))
+
+    def test_a_session_keeps_a_ledger_beside_the_profiles(self):
+        os.environ["DENODO_SESSION"] = "cli-test"
+        doc, code = self.run_cli("vql", "run", "--env", "dev", "-e", "CREATE OR REPLACE FOLDER '/a'")
+        self.assertEqual(code, 0, doc)
+        ledger = Path(self.tmp.name) / "sessions" / "cli-test.json"
+        self.assertTrue(ledger.is_file())
+        self.assertIn("ledger", doc)   # the fake server answers no catalog: nothing could be recorded, nothing failed
+
+    def test_vql_plan_executes_nothing(self):
+        doc, code = self.run_cli("vql", "plan", "--env", "dev", "-e", "DROP VIEW v; SELECT 1 FROM DUAL()")
+        self.assertEqual(code, 0, doc)
+        self.assertEqual(doc["command"], "vql plan")
+        self.assertEqual(doc["needs_yes"], [0])
+        self.assertFalse(any(s.startswith("DROP") for s in FakeVql.executed))
+
+    def test_api_plan_sends_nothing(self):
+        doc, code = self.run_cli("api", "delete", "--env", "dev", "/public/api/tags/5", "--plan")
+        self.assertEqual(code, 0)
+        self.assertEqual((doc["sent"], doc["needs_yes"]), (False, True))
+        self.assertEqual(FakeRest.calls, [])
 
     def test_vql_run_from_stdin(self):
         with mock.patch("sys.stdin", io.StringIO("SELECT 7 FROM DUAL()")):
