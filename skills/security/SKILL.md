@@ -253,15 +253,15 @@ SELECT COUNT(*) AS unmasked FROM household_income WHERE buy_potential <> '******
 CONTEXT ('impersonate_user' = 'mlee');
 
 SELECT avg_dependents FROM household_income_by_band LIMIT 3
-CONTEXT ('impersonate_roles' = 'sales_analyst');
+CONTEXT ('impersonate_roles' = 'sales_analyst,allusers');
 ```
 
 - One impersonated query **per person the request names**, plus one person outside the
   audience who must still see the values, plus every view the audience can read below the
   tagged one. Write down what each returned; that table is the result of the work.
-- A role nobody holds yet is checked with `impersonate_roles` — named roles only, so add `allusers`,
-  which a local user holds too: `'sales_analyst,allusers'`. When no reader outside the audience
-  exists, say so — the administrator is not one: it sees everything anyway.
+- A role nobody holds yet is checked with `impersonate_roles` — named roles only, so `allusers`,
+  which a local user holds too, goes with it. When no reader outside the audience exists, say so —
+  the administrator is not one: it sees everything anyway.
 - A file stops at its first failure: an expected refusal (`does not have EXECUTE
   privileges`) goes last, or into a call of its own.
 - A filter compares the masked value, so `unmasked` is `0` when every row is masked. For a
