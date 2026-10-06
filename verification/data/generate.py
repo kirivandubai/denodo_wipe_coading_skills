@@ -1,7 +1,8 @@
 """Write the fixture files of the verification chain: synthetic rows under the TPC-DS names.
 
-The chain's fixtures read seven delimited files through a DF data source; any server can reach
-them over HTTP from the repository, or from a folder they were copied into (see README.md here).
+The chain reads eight delimited files and one JSON file through DF and JSON data sources; any
+server can reach them over HTTP from the repository, or from a folder they were copied into (see
+README.md here).
 They are laid out like the TPC-DS files — the header quoted and upper case, text columns padded to
 their CHAR width, an empty field for NULL — so one set of wrappers reads either.
 

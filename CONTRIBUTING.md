@@ -152,7 +152,9 @@ in the templates, and adding one is not a fix.
 
 Four, each answering a different question. The first runs in CI on every pull request
 (`.github/workflows/ci.yml`), together with `claude plugin validate .`; the other three
-need a server or a paid model and are yours to run.
+need a server or a paid model and are yours to run. The validator's warning about a missing
+`version` is expected: without one Claude Code versions an install by its commit, so every merge
+reaches `claude plugin update`, and a `version` in either manifest would hold every user on it.
 
 **Unit tests** — the execution layer, and the lint of what a plugin user and the agent
 read. No dependencies, no server, fast:
@@ -189,13 +191,16 @@ order, and cleans up after itself:
 scripts/denodo verify --env dev
 ```
 
-`--with-marketplace` adds the REST tail (which writes to the shared marketplace catalog),
+`--with-marketplace` adds the REST tail (which synchronises the shared marketplace catalog, and
+is skipped while anything but the run's own database is pending there),
 `--with-ai` adds the steps that call the server's LLM and embedding model (about 50 paid
 requests), `--with-writes` the tables in the cache database, `--with-scheduler` the Scheduler
 jobs, `--testing-tool <dir>` the `.denodotest` templates; `--keep` leaves the objects for
 inspection, and `--update-marks` rewrites the `verified:` line of every step that passed. Run
 this before blaming a skill's text for a failure — a broken template looks exactly like a badly
-worded skill.
+worded skill. Two runs against one server must not overlap: `--database` gives a run its own
+database, but the few server-wide `verify_…` objects are shared by name, and each run's cleanup
+drops them.
 
 It runs on any 9.5 server. What belongs to an installation is read from the server before the
 first step — the embedding model, the cache data source with its catalog, schema and product,
@@ -209,7 +214,9 @@ the chain's. `--without <feature>` rehearses a server that lacks one. A step tha
 earlier step creates declares it in `needs = [...]` unless both are gated alike; a unit test reads
 the manifest and fails when a step that may be skipped would leave a later one to fail on its
 missing object. The data files are written by `verification/data/generate.py`
-and held to it by a unit test; change the generator, not the files.
+and held to it by a unit test; change the generator, not the files. A file on `main` never
+changes its rows or columns: installed copies of the plugin read the files from `main` with the
+manifest they were installed with, so new data goes into a file under a new name.
 
 **Eval suite** — does the right skill fire for a given phrase? From the repository root,
 no installation needed:
