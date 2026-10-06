@@ -37,12 +37,13 @@ unless it says documentation.*
 | `GET /public/api/meta/defaultConfig/job/VDPCache`, `…/job/VDP`, `…/exporter/CSV` | the defaults a new element gets | the source of the defaults below |
 
 Left to the administration tool: data sources (`…/dataSources`, `…/csvDataSources`, keytab and
-cloud sources — they take passwords and key files), `draftJobs`, Data Load, DAG and indexer
-jobs, `configuration/*`, `tool-configuration/*`, `roles`, `drivers`, `plugins`,
-`serverMetadata/export|import` (an import replaces every project, job and data source), the
-deletion of reports. The plugin's tool classifies them anyway: `PUT` of configuration and
-`POST` of drivers and plugins as `setting`, roles and passwords as `security`, the metadata
-import as `replace`, report deletions as `delete`.
+cloud sources — they take passwords and key files), `draftJobs`, Data Loader, DAG Cache
+Management and Data Indexer jobs, `configuration/*`, `tool-configuration/*`, `roles`, `drivers`,
+`plugins`, `serverMetadata/export|import` (an import can replace existing jobs, data sources,
+plugins and drivers of the same name — documentation), the deletion of reports. The plugin's
+tool classifies them anyway: `PUT` of configuration and `POST` of drivers and plugins as
+`setting`, roles and passwords as `security`, the metadata import as `replace`, report deletions
+as `delete`.
 
 ## A cache job (`VDPCache`, *Simple Cache Management*)
 
@@ -92,10 +93,10 @@ The rows carry, besides the query's columns, `_$job_project`, `_$job_name`, `_$j
 | `createNewFile` | `true` | the start time of the run is added to the name: a new file every run |
 | `overwriteFile` | `false` | `true` with `createNewFile: false`: one file, replaced by each run |
 | `appendFile` | `false` | |
-| `allowEmptyFile` | `false` | `false` + no rows: the file the previous run wrote is **deleted**; `true`: a header-only file |
+| `allowEmptyFile` | `false` | `false` + no rows: the file the previous run wrote is **deleted** (the documentation says a file from an earlier run is kept; measured otherwise); `true`: a header-only file |
 | `includeHeader` | `false` | no header line |
 | `exportInternalFields` | `false` | |
-| `separator` | `,` | `;` for a file Excel opens directly (documentation) |
+| `separator` | `,` | `;` for Excel in locales whose list separator is `;` (decimal comma); the documentation's Excel note gives `;` unconditionally |
 | `encoding` | `UTF-8` | BOM variants exist |
 | `quoteFieldsOption` | `WHEN_REQUIRED` (RFC 4180) | |
 | `filter` | `NONE` | required: `400 Validation error` without it |
@@ -108,8 +109,8 @@ A run's report: `exportedDocs: {"CSVExporter0": n}` and `exporterResources: {"CS
 
 Status: `state` — `NOT_RUNNING`, `RUNNING`, `DISABLED`, `WAITING` (for a dependency), `DRAFT`,
 `POLLING` (a trigger condition); `result` of the last run — `COMPLETE`, `WARNING`, `ERROR`,
-`STOPPED`, `NEVER_EXECUTED`, `MISFIRED` (it was due while the server was down); `nextExecution`
-in UTC, absent when disabled or without a trigger.
+`STOPPED`, `NEVER_EXECUTED`, `MISFIRED` (it missed its time: the server was down or had no free
+thread — documentation); `nextExecution` in UTC, absent when disabled or without a trigger.
 
 A job created without `reportSection` stores `{}`; the run's own report exists either way, and
 a `PUT` may come back with `reportConfig` filled in (`maxIndividualReports: 100`,

@@ -31,10 +31,10 @@ which roles. There is no VQL for Scheduler objects. Applying calls and reading t
 
 Everything else is set up by the human in the administration tool
 (`<web container>/webadmin/denodo-scheduler-admin`): data sources — they hold a password —,
-the other job types (Data Load, DAG cache load, indexer), exporters other than CSV (JDBC,
-Excel, Elasticsearch, cloud storage), mail handlers, retries, trigger conditions, a query fed
-with parameters from a source, dependencies between jobs, the server's configuration, roles,
-import and export. Say so and stop.
+the other job types (Data Loader, DAG Cache Management, Data Indexer), exporters other than
+CSV (JDBC, Excel, Elasticsearch, Scheduler Index, custom), a CSV route to cloud storage, mail
+handlers, retries, trigger conditions, a query fed with parameters from a source, dependencies
+between jobs, the server's configuration, roles, import and export. Say so and stop.
 
 ## Before you create a job
 
@@ -43,18 +43,20 @@ All of these are reads:
 1. **The Scheduler answers.** `env check --env dev` → `scheduler.ok: true`, and `roles`
    names a Scheduler role that may create jobs. `scheduler: null` means the profile names
    neither `scheduler_url` nor `marketplace_url` and the check was not tried:
-   `api --server scheduler get /public/api/me --env dev` asks the default address.
+   `api --server scheduler get /public/api/me --env dev` asks the default address. No answer
+   there either: the Scheduler runs elsewhere or is not installed — the human adds
+   `scheduler_url` / `scheduler_uri` to the profile (`/denodo:execute`); say so and stop.
 2. **The VDP data source the job runs through.**
    `api --server scheduler get /public/api/dataSources --env dev` — every data source of every
    project; take those with `"type": "VDP"` and read `id`, `projectName`, `login` and
    `connectionURI`. **The job runs as `login`**, with that user's privileges, and its statement
    runs in the database at the end of `connectionURI`. A job may use a data source of another
    project — *verified: 9.5.1 (live, 2026-10-05)*. Which one is the human's choice when there
-   are several; with one, use it and name its `login` in the message — `admin` means every run
-   is an administrator's, with no privilege check. None, or none they accept → they create one
-   in the administration tool (*Data sources → New → VDP*); it needs a password: never write one
-   into a file or a call. One data source of a known project:
-   `GET /public/api/projects/<project_id>/dataSources/<id>`.
+   are several; with one, use it and name its `login` in the message — a login with
+   administrator rights (`admin` by default) means every run is an administrator's, with no
+   privilege check. None, or none they accept → they create one in the administration tool
+   (*Data sources → New → VDP*); it needs a password: never write one into a file or a call.
+   One data source of a known project: `GET /public/api/projects/<project_id>/dataSources/<id>`.
 3. **The project.** `api --server scheduler get /public/api/projects --param name=<project>
    --env dev` answers the project — one object, not a list — or `404`. Use the one the human
    names; when they name none, create one named after the VDP database (below).
@@ -289,7 +291,7 @@ break a reader without an error — *verified: 9.5.1 (live, 2026-10-05)*:
 |---|---|
 | `"includeHeader": true` | no header line: a reader that finds columns by name finds none |
 | `"overwriteFile": true`, `"createNewFile": false` | the default name is `@{projectName}_@{jobName}_@{jobID}_CSVExporter#@{exporterID}.csv` plus the start time of each run: a new file every run, piling up, never the name the reader opens |
-| `"allowEmptyFile": true` | with `false`, a run that returns no rows **deletes the file the last run wrote** and reports `COMPLETE`, 0 rows; with `true` it leaves a file with only the header |
+| `"allowEmptyFile": true` | with `false`, a run that returns no rows **deletes the file the last run wrote** (the documentation says a file from an earlier run is kept; measured otherwise) and reports `COMPLETE`, 0 rows; with `true` it leaves a file with only the header |
 | `"exportInternalFields": false` | `true` adds the job's own columns (`_$job_project`, `_$job_name`, …) |
 | `"filter": "NONE"` | required: without it `400 Validation error` — `exportationSection.exporters[0].filter must not be null` |
 
@@ -428,9 +430,8 @@ and the refusal of `0 0 2 * * *` below, *verified: 9.5.1 (live, 2026-10-05)*:
 `api --server scheduler post /public/api/projects/jobs/validateCronExpressions --json '["0 0 2 * * ?"]' --env dev`.
 Validate before creating: a five-field cron makes the create call fail with nothing but
 `500 Internal error`; `0 0 2 * * *` is invalid too (`Day-of-Month and Day-of-Week can not both
-be a specific value`).
-A zone with daylight saving time moves against a UTC server twice a year; say so, and name the
-hour it becomes.
+be a specific value`). When the server's zone and the human's change for daylight saving time
+on different dates, or only one does, the hour moves twice a year; say so and name the new hour.
 
 ## What you need
 
@@ -473,7 +474,7 @@ Each runs without an error — *verified: 9.5.1 (live, 2026-10-05)*:
 | an export with the exporter's defaults | no header; a new file with a timestamp every run | the export template |
 | an export that returned no rows, `allowEmptyFile: false` | the previous file is deleted | `allowEmptyFile: true`, and a reader that checks the row count |
 | an `@` in a literal | accepted when created, every run fails | `\@` |
-| a job over a view whose cache was switched off | `WARNING` every run, nothing loaded | stop or delete the job when the cache goes off (`/denodo:cache`) |
+| a job over a view whose cache was switched off | `WARNING` every run, nothing loaded | disable the job when the cache goes off (`/denodo:cache`) |
 
 ## Common errors
 
@@ -490,7 +491,7 @@ Each runs without an error — *verified: 9.5.1 (live, 2026-10-05)*:
 | run `ERROR`: `Missing configuration parameter: 'loadProcessName'` / `'parameterizedQuery'` | a load process without them | the cache template |
 | run `ERROR`: `No configuration found for the following parameters of the query: [x]` | an unescaped `@` | `\@` |
 | run `ERROR`: `Syntax error: Exception parsing query near 'SELECT'` | two statements in one job | one job each |
-| run `WARNING`: `The cache is not configured for the selected view…` | the view's cache is off | `/denodo:cache`, or stop the job |
+| run `WARNING`: `The cache is not configured for the selected view…` | the view's cache is off | `/denodo:cache`, or disable the job |
 
 ## Reference
 
