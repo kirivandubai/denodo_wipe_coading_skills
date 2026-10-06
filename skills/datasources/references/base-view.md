@@ -90,8 +90,9 @@ plus every user-defined type (`CREATE TYPE … AS REGISTER OF (…)` / `ARRAY OF
 - `date` is deprecated (a timestamp with a zone offset): declare `localdate`, `timestamp` or
   `timestamptz`.
 - The base view's declared type is what Denodo *parses the source value into*. Over a text
-  file, `created_dt:localdate` on `2021-04-12` works; a type that does not match returns `NULL`
-  for that column, with **no error**. *verified: 9.5.1 (live, 2026-10-07)*
+  file, `created_dt:localdate` on `2021-04-12` works (*verified: 9.5.1 (live, 2026-10-07)*); a
+  type that does not match returns `NULL` for that column, with **no error**.
+  *verified: 9.5.1 (live, 2026-09-09)*
 - Over JDBC, introspection picks the type from the source: Oracle `NUMBER(10)` → `long`,
   `NVARCHAR2` → `text`, PostgreSQL `date` → `localdate`, SQL Server `bigint` → `long`.
   *verified: 9.5.1 (live, 2026-09-09)*
