@@ -665,6 +665,8 @@ def run_chain(
     way past the flag either: a run's own ``DROP DATABASE ... CASCADE`` is exactly the kind
     of operation the gate exists for, not an exception to it.
     """
+    if keep and cleanup_only:
+        raise ChainError("cleanup_only and keep contradict each other: one removes what the other keeps")
     if profile.production and not allow_destructive:
         values = {**chain.values, **({"database": database} if database else {})}
         return _refused_on_production(profile, values), EXIT_USAGE

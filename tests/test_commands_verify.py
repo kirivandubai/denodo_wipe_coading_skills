@@ -778,6 +778,10 @@ vql = "CONNECT DATABASE {database};"
         self.assertIn("--cleanup-only", doc["steps"][0]["reason"])
         self.assertEqual(doc["summary"]["skipped_because"], {"cleanup-only": 1})
 
+    def test_cleanup_only_and_keep_contradict(self):
+        with self.assertRaises(ChainError):
+            run_chain(profile(), self.chain, root=self.root, vql_factory=FakeVql, cleanup_only=True, keep=True)
+
     def test_cleanup_only_keeps_the_gates(self):
         # The writes statements stay behind --with-writes: a cleanup-only run of a manifest
         # whose write steps never ran must not touch the source database either.
