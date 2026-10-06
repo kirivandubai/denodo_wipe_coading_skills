@@ -1,0 +1,76 @@
+description = """
+A control: a new view with a full cache, loaded. The view is the agent's from this session, so
+switching its cache on and loading it are the agent's too — a run that stops to ask fails. The
+measure is the load: once, with all four parameters (a load without invalidation doubles every
+row on the second run), and the checks of the cache skill after it.
+"""
+max_turns = 70
+timeout_seconds = 2400
+max_budget_usd = 15
+
+[[turn]]
+prompt = """
+In the database `eval_store` there is a base view `bv_store_returns` — store returns, one row
+per returned ticket line. The store dashboard needs a view `returns_by_store` in the same
+database with one row per store (`sr_store_sk`) and the columns `return_count` (the number of
+returned lines) and `return_amount` (the sum of `sr_return_amt`). The source is slow, so put a
+full cache on the new view and load it, so that the dashboard reads from the cache. I'm out
+until tomorrow — please do it end to end.
+"""
+
+[[check]]
+name = "cache-fired"
+kind = "skill"
+skills = ["denodo:cache"]
+
+[[check]]
+name = "changes-through-files"
+kind = "through_file"
+
+[[check]]
+name = "files-planned-first"
+kind = "planned"
+
+[[check]]
+name = "view-checked-after-load"
+kind = "checked_after"
+objects = ["returns_by_store"]
+
+[[check]]
+name = "no-destructive-flag"
+kind = "no_flag"
+
+[[check]]
+name = "nothing-dropped"
+kind = "not_executed"
+classes = ["drop"]
+
+[[check]]
+name = "a-load-ran"
+kind = "executed"
+pattern = "cache_preload"
+
+[[check]]
+name = "cache-is-on"
+kind = "server"
+query = "SELECT cache_table_name FROM GET_CACHE_TABLE('{database}', 'returns_by_store')"
+
+[[check]]
+name = "cache-is-loaded"
+kind = "server"
+query = "SELECT expirationdate FROM CACHE_CONTENT('{database}', 'returns_by_store') WHERE expirationdate IS NOT NULL"
+
+[[check]]
+name = "one-row-per-store"
+kind = "server"
+query = "SELECT COUNT(*) FROM {database}.returns_by_store HAVING COUNT(*) = 12"
+
+[[check]]
+name = "every-return-cached-once"
+kind = "server"
+query = "SELECT SUM(return_count) FROM {database}.returns_by_store HAVING SUM(return_count) = 2000"
+
+[[check]]
+name = "amount-total"
+kind = "server"
+query = "SELECT SUM(return_amount) FROM {database}.returns_by_store HAVING ABS(SUM(return_amount) - 1986094.10) < 0.01"

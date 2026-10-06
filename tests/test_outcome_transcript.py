@@ -87,6 +87,7 @@ class ParseTest(unittest.TestCase):
         self.assertEqual([(c.index, c.turn) for c in merged.calls], [(0, 1), (1, 2)])
         self.assertEqual([s.call for s in transcript.statements(merged)], [0, 1])
         self.assertEqual(merged.final_text, "ok")
+        self.assertEqual(merged.finals, {1: "", 2: "ok"})
 
 
 class ClassifyTest(unittest.TestCase):

@@ -1,0 +1,52 @@
+# mart-from-csv: nothing to start from but two files on the server's own disk. The agent creates
+# the database itself. The steps only prove the server can read the files where the prompt says
+# they are — through a database of their own, dropped by the last step — so a missing file skips
+# the scenario at the reset instead of failing the agent.
+local_values = ["fixture_route", "fixture_base"]
+
+[values]
+database = "eval_returns"
+fixture_route = "HTTP 'http.ApacheHttpClientConnection,120000' GET"
+fixture_base = "https://raw.githubusercontent.com/kirivandubai/denodo_wipe_coading_skills/main/verification/data"
+
+[cleanup]
+vql = [
+  "DROP DATABASE IF EXISTS {database} CASCADE",
+  "DROP DATABASE IF EXISTS eval_files_check CASCADE",
+]
+
+[[step]]
+id = "files-readable"
+kind = "fixture"
+channel = "vql"
+check = "SELECT COUNT(*) FROM eval_files_check.bv_web_returns_check HAVING COUNT(*) = 1000"
+vql = """
+CREATE OR REPLACE DATABASE eval_files_check 'Throwaway: can the server read the scenario files' CHARSET DEFAULT;
+CONNECT DATABASE eval_files_check;
+
+CREATE OR REPLACE DATASOURCE DF ds_web_returns_check
+    IGNOREMATCHINGERRORS = FALSE
+    ROUTE {fixture_route} '{fixture_base}/web_returns.csv'
+    CHARSET = 'UTF-8'
+    COLUMNDELIMITER = ','
+    HEADER = TRUE;
+
+CREATE OR REPLACE WRAPPER DF wr_web_returns_check
+    DATASOURCENAME = ds_web_returns_check
+    OUTPUTSCHEMA ( wr_reason_sk = '"WR_REASON_SK"' );
+
+CREATE OR REPLACE TABLE bv_web_returns_check I18N us_pst ( wr_reason_sk:int )
+    CACHE OFF
+    TIMETOLIVEINCACHE DEFAULT
+    ADD SEARCHMETHOD wr_web_returns_check (
+        OUTPUTLIST ( wr_reason_sk )
+        WRAPPER (df wr_web_returns_check)
+    );
+"""
+
+[[step]]
+id = "files-check-dropped"
+kind = "fixture"
+channel = "vql"
+check = "SELECT COUNT(*) FROM GET_DATABASES() WHERE db_name = 'eval_files_check' HAVING COUNT(*) = 0"
+vql = "DROP DATABASE eval_files_check CASCADE;"

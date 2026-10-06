@@ -95,6 +95,13 @@ def _inside(source: str | None, project: Path) -> bool:
         return False
 
 
+def _final(ev: Evidence, turn: int | None) -> str:
+    """The agent's last answer — of the run, or of one turn."""
+    if turn is None:
+        return ev.transcript.final_text
+    return ev.transcript.finals.get(turn, "")
+
+
 def _short(text: str, limit: int = 90) -> str:
     text = " ".join(text.split())
     return text if len(text) <= limit else text[: limit - 1] + "…"
@@ -256,8 +263,9 @@ def check_file(spec, ev, server, judge):
 
 
 def check_final(spec, ev, server, judge):
-    found = re.search(spec["pattern"], ev.transcript.final_text, re.IGNORECASE | re.DOTALL)
-    return bool(found), "matched" if found else f"not in the last message: {_short(ev.transcript.final_text, 160)}"
+    text = _final(ev, spec.get("turn"))
+    found = re.search(spec["pattern"], text, re.IGNORECASE | re.DOTALL)
+    return bool(found), "matched" if found else f"not in the last message: {_short(text, 160)}"
 
 
 def check_final_number(spec, ev, server, judge):
@@ -270,7 +278,7 @@ def check_final_number(spec, ev, server, judge):
     expected = round(float(rows[0][0]), decimals)
     tolerance = 0.5 * 10 ** -decimals + 1e-9
     said = []
-    for token in NUMBER.findall(ev.transcript.final_text):
+    for token in NUMBER.findall(_final(ev, spec.get("turn"))):
         try:
             said.append(float(re.sub(r"[,  ]", "", token)))
         except ValueError:
@@ -283,7 +291,7 @@ def check_final_number(spec, ev, server, judge):
 def check_judge(spec, ev, server, judge):
     if judge is None:
         return False, "no judge (run without --no-judge)"
-    return judge(spec["criterion"], ev.transcript.final_text)
+    return judge(spec["criterion"], _final(ev, spec.get("turn")))
 
 
 KINDS: dict[str, tuple[Callable, tuple[str, ...]]] = {

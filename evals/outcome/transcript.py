@@ -69,6 +69,8 @@ class Transcript:
     cost_usd: float | None = None
     turns: int | None = None
     session_id: str | None = None
+    # the last answer of each turn, by turn number (merge fills it; parse gives its own turn's)
+    finals: dict[int, str] = field(default_factory=dict)
 
     @property
     def cut(self) -> list[int]:
@@ -168,6 +170,7 @@ def parse(lines: Iterable[str], turn: int = 1) -> Transcript:
             t.turns = event.get("num_turns")
             t.session_id = event.get("session_id")
     t.final_text = final if isinstance(final, str) and final.strip() else last_text
+    t.finals = {turn: t.final_text}
     return t
 
 
@@ -179,6 +182,7 @@ def merge(transcripts: list[Transcript]) -> Transcript:
         for call in part.calls:
             merged.calls.append(Call(index=len(merged.calls), turn=call.turn, tool=call.tool, input=call.input,
                                      result=call.result, is_error=call.is_error, docs=call.docs, cut=call.cut))
+        merged.finals.update(part.finals)
         if part.final_text:
             merged.final_text = part.final_text
         if part.cost_usd is not None:

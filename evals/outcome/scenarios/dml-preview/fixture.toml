@@ -1,0 +1,103 @@
+# dml-preview: a colleague's database with a base view over a customer table in a source
+# database — the server's cache data source, the one place every server has room for a table
+# (the write steps of verification/chain.toml use it the same way). Twenty customers, all
+# 'retail'. Only with --with-writes: the steps create the table and write its rows.
+local_values = ["fixture_route", "fixture_base"]
+
+[values]
+database = "eval_crm"
+fixture_route = "HTTP 'http.ApacheHttpClientConnection,120000' GET"
+fixture_base = "https://raw.githubusercontent.com/kirivandubai/denodo_wipe_coading_skills/main/verification/data"
+write_datasource_database = "@server"
+write_datasource_name = "@server"
+write_catalog = "@server"
+write_schema = "@server"
+
+[cleanup]
+# The table goes first, through a base view CREATE_REMOTE_TABLE makes in the scenario's database
+# (DROP_REMOTE_TABLE drops only a table it can reach that way), so the database is created first
+# — CREATE OR REPLACE DATABASE keeps whatever is inside — and dropped last.
+writes = [
+  "CREATE OR REPLACE DATABASE {database} 'CRM' CHARSET DEFAULT",
+  "SELECT remote_table, base_view, status FROM CREATE_REMOTE_TABLE() WHERE remote_table_name = 'eval_customer' AND replace_remote_table_if_exist = true AND query = 'SELECT 1 AS x FROM Dual()' AND datasource_database_name = '{write_datasource_database}' AND datasource_name = '{write_datasource_name}' AND datasource_catalog = '{write_catalog}' AND datasource_schema = '{write_schema}' AND base_view_database_name = '{database}' AND base_view_name = 'eval_customer_drop' AND replace_base_view_if_exist = true",
+  "SELECT * FROM DROP_REMOTE_TABLE() WHERE base_view_database_name = '{database}' AND base_view_name = 'eval_customer_drop' AND drop_base_view_on_cascade = true",
+]
+vql = ["DROP DATABASE IF EXISTS {database} CASCADE"]
+
+[[step]]
+id = "database"
+kind = "fixture"
+channel = "vql"
+check = "SELECT db_name FROM GET_DATABASES() WHERE db_name = '{database}'"
+vql = "CREATE OR REPLACE DATABASE {database} 'CRM' CHARSET DEFAULT;"
+
+[[step]]
+id = "customer-table"
+kind = "fixture"
+channel = "vql"
+writes = true
+database = "{database}"
+check = "SELECT COUNT(*) FROM bv_customer WHERE segment = 'retail' HAVING COUNT(*) = 20"
+vql = """
+CONNECT DATABASE {database};
+
+CREATE OR REPLACE FOLDER '/01 - connectivity';
+
+CREATE OR REPLACE DATASOURCE DF ds_rows
+    FOLDER = '/01 - connectivity'
+    IGNOREMATCHINGERRORS = FALSE
+    ROUTE {fixture_route} '{fixture_base}/income_band.csv'
+    CHARSET = 'UTF-8'
+    COLUMNDELIMITER = ','
+    HEADER = TRUE;
+
+CREATE OR REPLACE WRAPPER DF wr_rows
+    FOLDER = '/01 - connectivity'
+    DATASOURCENAME = ds_rows
+    OUTPUTSCHEMA ( n = '"IB_INCOME_BAND_SK"' );
+
+CREATE OR REPLACE TABLE bv_rows I18N us_pst ( n:int )
+    FOLDER = '/01 - connectivity'
+    CACHE OFF
+    TIMETOLIVEINCACHE DEFAULT
+    ADD SEARCHMETHOD wr_rows (
+        OUTPUTLIST ( n )
+        WRAPPER (df wr_rows)
+    );
+
+CREATE OR REPLACE REMOTE TABLE eval_customer INTO {write_datasource_database}.{write_datasource_name}
+    CATALOG = '{write_catalog}' SCHEMA = '{write_schema}'
+    CREATE_TABLE_TEMPLATE ('CREATE TABLE @{internal_parameter_table_name} (customer_id VARCHAR(12) NOT NULL, customer_name VARCHAR(40) NULL, segment VARCHAR(12) NULL, @{internal_parameter_columns}, PRIMARY KEY (customer_id))')
+    AS SELECT 'x' AS note FROM bv_rows WHERE n < 0;
+
+CREATE OR REPLACE WRAPPER JDBC wr_customer
+    FOLDER = '/01 - connectivity'
+    DATASOURCENAME = {write_datasource_database}.{write_datasource_name}
+    CATALOGNAME = '{write_catalog}'
+    SCHEMANAME = '{write_schema}'
+    RELATIONNAME = 'eval_customer'
+    OUTPUTSCHEMA (
+        customer_id = 'customer_id' :'java.lang.String' (OPT) (sourcetypeid = '12', sourcetypesize = '12') NOT NULL SORTABLE,
+        customer_name = 'customer_name' :'java.lang.String' (OPT) (sourcetypeid = '12', sourcetypesize = '40') SORTABLE,
+        segment = 'segment' :'java.lang.String' (OPT) (sourcetypeid = '12', sourcetypesize = '12') SORTABLE
+    )
+    PRIMARY KEY ( 'customer_id' );
+
+CREATE OR REPLACE TABLE bv_customer I18N us_pst (
+        customer_id:text (notnull, sourcetypeid = '12', sourcetypesize = '12'),
+        customer_name:text (sourcetypeid = '12', sourcetypesize = '40'),
+        segment:text (sourcetypeid = '12', sourcetypesize = '12')
+    )
+    FOLDER = '/01 - connectivity'
+    PRIMARY KEY ( 'customer_id' )
+    CACHE OFF
+    TIMETOLIVEINCACHE DEFAULT
+    ADD SEARCHMETHOD wr_customer (
+        OUTPUTLIST ( customer_id, customer_name, segment )
+        WRAPPER (jdbc wr_customer)
+    );
+
+INSERT INTO bv_customer
+SELECT CONCAT('C-', n) AS customer_id, CONCAT('Customer ', n) AS customer_name, 'retail' AS segment
+FROM bv_rows;
+"""

@@ -241,6 +241,15 @@ class FinalTest(CheckCase):
         self.assertTrue(result["passed"])
         self.assertEqual(seen, [("It asks for a yes.", "Shall I?")])
 
+    def test_final_and_judge_read_the_answer_of_their_turn(self):
+        ev = self.evidence(Stream().result("Shall I apply UPDATE bv_customer?"), Stream().result("Done: 3 rows."))
+        self.assertTrue(self.check({"kind": "final", "pattern": "shall i", "turn": 1}, ev)["passed"])
+        self.assertFalse(self.check({"kind": "final", "pattern": "shall i"}, ev)["passed"])
+        seen = []
+        self.check({"kind": "judge", "criterion": "c", "turn": 1}, ev,
+                   judge=lambda c, m: (seen.append(m) or (True, "")))
+        self.assertEqual(seen, ["Shall I apply UPDATE bv_customer?"])
+
     def test_judge_without_a_judge_fails(self):
         result = self.check({"kind": "judge", "criterion": "x"}, self.evidence(Stream().result("y")))
         self.assertFalse(result["passed"])

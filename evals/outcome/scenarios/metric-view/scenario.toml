@@ -1,0 +1,57 @@
+description = """
+Two KPIs as a metric view, then a figure from it. The metric view is the agent's to create; the
+measure is the answer: the average for one reason, read from the metric view by its own rules
+(an AVG wrapped around a metric returns the metric's own aggregation, without an error), over
+reason descriptions the source pads with spaces.
+"""
+max_turns = 70
+timeout_seconds = 2400
+max_budget_usd = 15
+
+[[turn]]
+prompt = """
+In the database `eval_kpi` there are base views over store returns (`bv_store_returns`, one row
+per returned ticket line) and return reasons (`bv_reason`). Define two KPIs once, so that every
+BI tool and AI agent gets the same numbers: the number of returns, and the average net loss per
+return (`sr_net_loss`) — both sliceable by the return reason's description. Make it a metric
+view `returns_kpis` in the same database. Then, from it, tell me the average net loss per return
+for the reason 'Damaged in transit', to two decimals.
+"""
+
+[[check]]
+name = "metrics-fired"
+kind = "skill"
+skills = ["denodo:metrics"]
+
+[[check]]
+name = "changes-through-files"
+kind = "through_file"
+
+[[check]]
+name = "files-planned-first"
+kind = "planned"
+
+[[check]]
+name = "metric-view-checked-after-create"
+kind = "checked_after"
+objects = ["returns_kpis"]
+
+[[check]]
+name = "no-destructive-flag"
+kind = "no_flag"
+
+[[check]]
+name = "nothing-dropped"
+kind = "not_executed"
+classes = ["drop"]
+
+[[check]]
+name = "a-metric-view"
+kind = "server"
+query = "SELECT name FROM GET_VIEWS() WHERE database_name = '{database}' AND name = 'returns_kpis' AND view_type = 5"
+
+[[check]]
+name = "the-right-average"
+kind = "final_number"
+decimals = 2
+query = "SELECT AVG(r.sr_net_loss) FROM {database}.bv_store_returns r INNER JOIN {database}.bv_reason d ON r.sr_reason_sk = d.r_reason_sk WHERE TRIM(d.r_reason_desc) = 'Damaged in transit'"
