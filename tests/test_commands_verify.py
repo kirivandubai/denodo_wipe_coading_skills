@@ -241,6 +241,14 @@ def profile(**over):
     return Profile(**base)
 
 
+def nothing_pending_in_the_catalog(test):
+    """The marketplace catalog as a test about something else needs it: nothing pending, so the
+    run's read of it (CatalogGuardTest) neither stops the tail nor shows among the calls sent."""
+    patcher = mock.patch.object(verify_module, "catalog_pending", lambda *args, **kwargs: ([], None))
+    patcher.start()
+    test.addCleanup(patcher.stop)
+
+
 class FakeVql:
     instances = []
 
@@ -1097,6 +1105,7 @@ class HttpStepTest(unittest.TestCase):
     def setUp(self):
         FakeVql.instances.clear()
         HttpStepTest.FakeRest.calls.clear()
+        nothing_pending_in_the_catalog(self)
         self.root = Path(tempfile.mkdtemp())
         (self.root / "skills" / "marketplace").mkdir(parents=True)
         (self.root / "skills" / "marketplace" / "SKILL.md").write_text(
@@ -1215,6 +1224,7 @@ class ExpectBodyTest(unittest.TestCase):
     def setUp(self):
         FakeVql.instances.clear()
         HttpStepTest.FakeRest.calls.clear()
+        nothing_pending_in_the_catalog(self)
         self.root = Path(tempfile.mkdtemp())
         (self.root / "skills" / "marketplace").mkdir(parents=True)
         (self.root / "skills" / "marketplace" / "SKILL.md").write_text(
@@ -1349,6 +1359,7 @@ class HttpDestructiveGateTest(unittest.TestCase):
     def setUp(self):
         FakeVql.instances.clear()
         HttpDestructiveGateTest.FakeRest.calls.clear()
+        nothing_pending_in_the_catalog(self)
         self.root = Path(tempfile.mkdtemp())
         (self.root / "skills" / "marketplace").mkdir(parents=True)
         (self.root / "skills" / "marketplace" / "SKILL.md").write_text(
@@ -1573,6 +1584,7 @@ class CleanupHttpBodyTest(unittest.TestCase):
     def setUp(self):
         FakeVql.instances.clear()
         CleanupHttpBodyTest.FakeRest.calls.clear()
+        nothing_pending_in_the_catalog(self)
         self.root = Path(tempfile.mkdtemp())
         self.manifest = self.root / "chain.toml"
         self.manifest.write_text("""
@@ -1990,6 +2002,7 @@ class MultipartStepTest(unittest.TestCase):
     def setUp(self):
         FakeVql.instances.clear()
         MultipartStepTest.FakeRest.calls.clear()
+        nothing_pending_in_the_catalog(self)
         self.root = Path(tempfile.mkdtemp())
         (self.root / "skills" / "marketplace").mkdir(parents=True)
         (self.root / "skills" / "marketplace" / "SKILL.md").write_text(
@@ -2280,3 +2293,222 @@ class SchedulerChainTest(unittest.TestCase):
                 self.manifest.write_text(text, encoding="utf-8")
                 with self.assertRaises(ChainError):
                     load_chain(self.manifest)
+
+
+CATALOG_SKILL = """### Sync
+
+```bash
+# verified: 9.5.1 (live, 2026-09-10)
+api get /public/api/element-management/DATABASES/changes
+api get /public/api/element-management/VIEWS/changes
+api post /public/api/element-management/DATABASES/synchronize --json '{"proceedWithConflicts":"SERVER_WITH_LOCAL_CHANGES"}'
+api post /public/api/element-management/VIEWS/synchronize --json '{"proceedWithConflicts":"SERVER_WITH_LOCAL_CHANGES"}'
+```
+
+### Tag
+
+```bash
+""" + BASH_BLOCK + "```\n"
+
+CATALOG_MANIFEST = """
+[values]
+database = "denodo_skills_test"
+
+[cleanup]
+vql = ["DROP DATABASE IF EXISTS {database} CASCADE"]
+http = [
+  { method = "delete", path = "/public/api/tags/{tag_id}" },
+  { method = "post", path = "/public/api/element-management/DATABASES/synchronize", json = { proceedWithConflicts = "SERVER_WITH_LOCAL_CHANGES" } },
+  { method = "post", path = "/public/api/element-management/VIEWS/synchronize", json = { proceedWithConflicts = "SERVER_WITH_LOCAL_CHANGES" } },
+]
+
+[[step]]
+id = "database"
+kind = "fixture"
+channel = "vql"
+vql = "CREATE OR REPLACE DATABASE {database} 'x';"
+
+[[step]]
+id = "mp-sync"
+kind = "template"
+channel = "http"
+address = "skills/marketplace/SKILL.md#Sync"
+marketplace = true
+
+[[step]]
+id = "mp-tag"
+kind = "template"
+channel = "http"
+address = "skills/marketplace/SKILL.md#Tag"
+marketplace = true
+calls = [0, 1]
+capture = { tag_id = "id" }
+substitute = { "\\"pii\\"" = "\\"verify_pii\\"" }
+"""
+
+
+class CatalogGuardTest(unittest.TestCase):
+    """``--with-marketplace`` synchronises the whole marketplace catalog with VDP — in the tail and
+    again at the end of cleanup — and a synchronisation cannot be narrowed to one database: what
+    other people left pending would be published or removed with the run's own entries. So the run
+    reads both ``changes`` before the tail's first step and before the cleanup's synchronize pair,
+    its own database aside, and leaves the catalog alone when anything else is pending."""
+
+    OWN = {"databaseName": "denodo_skills_test", "elementName": "iv_household_income"}
+    FOREIGN = {"databaseName": "finance", "elementName": "v_new_ledger"}
+
+    class FakeRest:
+        calls = []
+        # One entry per read of the catalog (a DATABASES changes call starts one): what each
+        # half answers then — a body, or a status to fail with. The last entry stays.
+        reads = []
+        current = None
+
+        def __init__(self, profile, server="marketplace"):
+            self.profile = profile
+
+        def call(self, method, path, *, json_body=None, params=None, multipart=None, timeout=None):
+            from denodo_cli.transports.base import HttpResult
+            cls = CatalogGuardTest.FakeRest
+            cls.calls.append((method, path))
+            if method == "GET" and path.endswith("/changes"):
+                if "/DATABASES/" in path:
+                    cls.current = cls.reads.pop(0) if len(cls.reads) > 1 else cls.reads[0]
+                answer = cls.current.get("DATABASES" if "/DATABASES/" in path else "VIEWS", {})
+                if isinstance(answer, int):
+                    return HttpResult(status=answer, body={"message": "unavailable"})
+                return HttpResult(status=200, body=answer)
+            if method == "POST" and path == "/public/api/tags":
+                return HttpResult(status=200, body={"id": 4242, "name": "verify_pii"})
+            if method == "POST" and path.endswith("/synchronize"):
+                return HttpResult(status=200, body={"inserted": [], "modified": [], "removed": []})
+            if method == "DELETE":
+                return HttpResult(status=204, body=None)
+            return HttpResult(status=200, body={"count": 0, "elements": []})
+
+    def setUp(self):
+        FakeVql.instances.clear()
+        CatalogGuardTest.FakeRest.calls.clear()
+        CatalogGuardTest.FakeRest.reads = [{}]
+        self.root = Path(tempfile.mkdtemp())
+        (self.root / "skills" / "marketplace").mkdir(parents=True)
+        (self.root / "skills" / "marketplace" / "SKILL.md").write_text(CATALOG_SKILL, encoding="utf-8")
+        self.manifest = self.root / "chain.toml"
+        self.manifest.write_text(CATALOG_MANIFEST, encoding="utf-8")
+
+    def run_chain(self, **kw):
+        kw.setdefault("with_marketplace", True)
+        return run_chain(profile(marketplace_url="http://x/y"), load_chain(self.manifest), root=self.root,
+                         vql_factory=FakeVql, rest_factory=CatalogGuardTest.FakeRest, **kw)
+
+    def synchronizations(self):
+        return [path for method, path in CatalogGuardTest.FakeRest.calls
+                if method == "POST" and path.endswith("/synchronize")]
+
+    def sync_cleanup(self, doc):
+        return [h for h in doc["cleanup"]["http"] if h["path"].endswith("/synchronize")]
+
+    def test_a_catalog_with_nothing_pending_runs_the_tail_and_the_cleanup_pair(self):
+        doc, code = self.run_chain()
+        self.assertEqual(code, 0, json.dumps(doc, indent=1)[:3000])
+        self.assertFalse(any(s["skipped"] for s in doc["steps"]))
+        self.assertEqual(len(self.synchronizations()), 4)          # two in the tail, two in cleanup
+        self.assertTrue(all(not h["skipped"] and h["ok"] for h in self.sync_cleanup(doc)))
+
+    def test_the_runs_own_database_is_not_pending_for_it(self):
+        own_upper = dict(self.OWN, databaseName="DENODO_SKILLS_TEST")
+        CatalogGuardTest.FakeRest.reads = [
+            {"DATABASES": {"serverElements": [{"databaseName": "denodo_skills_test"}]},
+             "VIEWS": {"serverElements": [self.OWN, own_upper]}},
+            {"DATABASES": {"localElements": [{"databaseName": "denodo_skills_test"}]},
+             "VIEWS": {"localElements": [self.OWN]}},
+        ]
+        doc, code = self.run_chain()
+        self.assertEqual(code, 0, json.dumps(doc, indent=1)[:3000])
+        self.assertFalse(any(s["skipped"] for s in doc["steps"]))
+        self.assertEqual(len(self.synchronizations()), 4)
+
+    def test_modified_descriptions_are_not_pending(self):
+        # SERVER_WITH_LOCAL_CHANGES keeps a description edited in the marketplace: a modified
+        # element is not something the synchronisation would bring in or take out.
+        CatalogGuardTest.FakeRest.reads = [{"VIEWS": {"modifiedElements": [self.FOREIGN]}}]
+        doc, code = self.run_chain()
+        self.assertEqual(code, 0, json.dumps(doc, indent=1)[:3000])
+        self.assertEqual(len(self.synchronizations()), 4)
+
+    def test_foreign_pending_entries_skip_every_marketplace_step_and_every_synchronisation(self):
+        CatalogGuardTest.FakeRest.reads = [{"VIEWS": {"serverElements": [self.OWN, self.FOREIGN]}}]
+        doc, code = self.run_chain()
+        self.assertEqual(code, 0, json.dumps(doc, indent=1)[:3000])   # a skip, not a failure
+        steps = {s["id"]: s for s in doc["steps"]}
+        self.assertFalse(steps["database"]["skipped"])
+        for step_id in ("mp-sync", "mp-tag"):
+            self.assertTrue(steps[step_id]["skipped"], steps[step_id])
+            self.assertEqual(steps[step_id]["cause"], "catalog")
+            self.assertIn("finance.v_new_ledger", steps[step_id]["reason"])
+        self.assertNotIn("iv_household_income", steps["mp-sync"]["reason"])   # its own: not named
+        self.assertEqual(doc["summary"]["skipped_because"], {"catalog": 2})
+        self.assertEqual(self.synchronizations(), [])                       # nothing synchronised
+        self.assertNotIn(("POST", "/public/api/tags"), CatalogGuardTest.FakeRest.calls)
+        for entry in self.sync_cleanup(doc):
+            self.assertTrue(entry["skipped"] and entry["ok"], entry)
+            self.assertIn("finance.v_new_ledger", entry["reason"])
+
+    def test_pending_that_appears_during_the_run_keeps_the_cleanup_pair_back(self):
+        CatalogGuardTest.FakeRest.reads = [
+            {},
+            {},   # the template's own two reads of changes, in the tail
+            {"DATABASES": {"localElements": [{"databaseName": "denodo_skills_test"}]},
+             "VIEWS": {"localElements": [self.OWN, self.FOREIGN]}},
+        ]
+        doc, code = self.run_chain()
+        self.assertEqual(code, 0, json.dumps(doc, indent=1)[:3000])
+        self.assertFalse(any(s["skipped"] for s in doc["steps"]))
+        self.assertEqual(len(self.synchronizations()), 2)          # the tail's two, not cleanup's
+        pair = self.sync_cleanup(doc)
+        self.assertEqual(len(pair), 2)
+        for entry in pair:
+            self.assertTrue(entry["skipped"] and entry["ok"], entry)
+            self.assertIn("finance.v_new_ledger", entry["reason"])
+            self.assertIn("orphans", entry["reason"])
+        # read once more after DROP DATABASE, before the pair: the guard, the template, cleanup
+        reads = [path for method, path in CatalogGuardTest.FakeRest.calls if path.endswith("/changes")]
+        self.assertEqual(len(reads), 6)
+
+    def test_a_catalog_that_cannot_be_read_fails_the_tail_before_it_synchronises(self):
+        CatalogGuardTest.FakeRest.reads = [{"VIEWS": 503}]
+        doc, code = self.run_chain()
+        self.assertEqual(code, 1)
+        steps = {s["id"]: s for s in doc["steps"]}
+        self.assertFalse(steps["mp-sync"]["ok"])
+        self.assertEqual(steps["mp-sync"]["error"]["kind"], "catalog")
+        self.assertIn("VIEWS/changes", steps["mp-sync"]["error"]["message"])
+        self.assertTrue(steps["mp-tag"]["skipped"])
+        self.assertEqual(self.synchronizations(), [])
+        for entry in self.sync_cleanup(doc):                       # cleanup could not read it either
+            self.assertTrue(entry["skipped"])
+            self.assertFalse(entry["ok"])
+
+    def test_without_the_flag_the_catalog_is_not_read(self):
+        doc, code = self.run_chain(with_marketplace=False)
+        self.assertEqual(code, 0, json.dumps(doc, indent=1)[:3000])
+        self.assertEqual(CatalogGuardTest.FakeRest.calls, [])
+
+    def test_cleanup_only_reads_the_catalog_before_the_pair_too(self):
+        CatalogGuardTest.FakeRest.reads = [{"DATABASES": {"localElements": [{"databaseName": "finance"}]}}]
+        doc, code = self.run_chain(cleanup_only=True)
+        self.assertEqual(code, 0, json.dumps(doc, indent=1)[:3000])
+        self.assertEqual(self.synchronizations(), [])
+        self.assertTrue(all(entry["skipped"] for entry in self.sync_cleanup(doc)))
+        self.assertIn("finance", self.sync_cleanup(doc)[0]["reason"])
+
+    def test_catalog_pending_lists_what_a_synchronisation_would_take_along(self):
+        CatalogGuardTest.FakeRest.reads = [
+            {"DATABASES": {"serverElements": [{"databaseName": "finance"}],
+                           "localElements": [{"databaseName": "denodo_skills_test"}]},
+             "VIEWS": {"localElements": [self.FOREIGN], "modifiedElements": [self.FOREIGN]}}]
+        pending, error = verify_module.catalog_pending(profile(marketplace_url="http://x/y"),
+                                                       CatalogGuardTest.FakeRest, ignore="denodo_skills_test")
+        self.assertIsNone(error)
+        self.assertEqual(pending, ["DATABASES serverElements: finance",
+                                   "VIEWS localElements: finance.v_new_ledger"])

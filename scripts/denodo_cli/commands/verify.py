@@ -44,6 +44,10 @@ SERVER = "@server"
 DIALECT = "@dialect"
 HTTP_SERVERS = ("marketplace", "scheduler")
 PLACEHOLDER = re.compile(r"\{([a-z_][a-z0-9_]*)\}")
+# A catalog synchronisation of the marketplace (safety.py: it replaces a whole set), and the two
+# halves of the catalog whose pending changes it would take along.
+CATALOG_SYNC = re.compile(r"^/public/api/element-management/[A-Za-z_]+/synchronize(?:-async|/all-servers)?$")
+CATALOG_HALVES = ("DATABASES", "VIEWS")
 
 
 class ChainError(Exception):
@@ -628,6 +632,13 @@ def run_chain(
     run with no http traffic at all — the common case without ``--with-marketplace`` — can
     leave it ``None``.
 
+    Before the first marketplace step that would run, the catalog is read (``catalog_pending``):
+    the tail synchronises the whole catalog with VDP, and no call narrows that to the test
+    database. Anything pending besides the run's own database skips every marketplace step,
+    with the entries in the reason (cause ``catalog``); a catalog that cannot be read fails the
+    first of them, before it sends anything. ``_cleanup_http`` reads it again before its own
+    synchronisations.
+
     ``with_ai`` gates the steps marked ``ai = true`` the same way ``with_marketplace`` gates
     the marketplace tail, for a different reason: they write nothing outside the test
     database, but each calls the LLM or the embedding model the server is configured with,
@@ -712,6 +723,8 @@ def run_chain(
     # Ids a skipped step would have captured: they skip the steps naming them, and stay out of
     # the report's `unresolved`, which lists the values an installation has to give.
     lost: dict[str, str] = {}
+    # What the marketplace catalog had pending before the tail's first step: (entries, error).
+    catalog: tuple[list[str], str | None] | None = None
     stop = False
     try:
         for step in chain.steps:
@@ -726,6 +739,20 @@ def run_chain(
                                    root=root, with_marketplace=with_marketplace, with_scheduler=with_scheduler,
                                    with_ai=with_ai, with_writes=with_writes, testing_tool=testing_tool,
                                    assumed=assume_missing)
+            if not why and step.marketplace:
+                # The tail synchronises the whole catalog, which no call narrows to one database:
+                # it runs only while nothing but the run's own database is pending there.
+                if catalog is None:
+                    catalog = catalog_pending(profile, rest_factory, ignore=values.get("database"))
+                pending, error = catalog
+                if error:
+                    reports.append(_catalog_unread(step, error))
+                    stop = True
+                    continue
+                if pending:
+                    why, cause = (f"the marketplace catalog has changes pending that this run did not make, "
+                                  f"which the tail's synchronisation would publish or remove with its own: "
+                                  f"{_listing(pending)}; the tail was skipped and nothing was synchronised"), "catalog"
             if why:
                 reports.append(_skipped(step, why, cause=cause))
                 skipped_why[step.id] = why
@@ -812,6 +839,51 @@ def _scheduler_source(profile: Profile, rest_factory: Callable) -> tuple[str | N
     except Exception:  # noqa: BLE001
         return None, []
     return scheduler_data_source(rest, profile.user)
+
+
+def catalog_pending(profile: Profile, rest_factory: Callable | None, *,
+                    ignore: str | None) -> tuple[list[str], str | None]:
+    """What a catalog synchronisation would take along now: the ``serverElements`` (it would
+    publish them) and ``localElements`` (it would remove them, with their tags, categories and
+    endorsements) of both halves' ``changes``, without the entries of ``ignore`` — the run's own
+    database, which its synchronisations publish and take back out. A modified description is not
+    counted: ``SERVER_WITH_LOCAL_CHANGES`` keeps it. The same reading as ``catalog_pending`` of
+    ``evals/outcome/run.py``, which drives the tool from outside and so cannot import this.
+
+    Returns the entries and, when a ``changes`` call did not answer, why: a catalog that could not
+    be read is not one known to have nothing pending."""
+    pending: list[str] = []
+    for half in CATALOG_HALVES:
+        path = f"/public/api/element-management/{half}/changes"
+        try:
+            doc, code = api_call(profile, "GET", path, transport_factory=rest_factory)
+        except Exception as exc:  # noqa: BLE001 — no transport (a profile without a marketplace)
+            return pending, f"GET {path} failed: {exc}"
+        body = doc.get("body")
+        if code != EXIT_OK or not isinstance(body, dict):
+            detail = (doc.get("error") or {}).get("message") or f"status {doc.get('status')}, body {body!r}"
+            return pending, f"GET {path} did not answer with the pending changes: {detail}"
+        for listing in ("serverElements", "localElements"):
+            for entry in body.get(listing) or []:
+                entry = entry if isinstance(entry, dict) else {"elementName": entry}
+                if ignore and str(entry.get("databaseName") or "").lower() == ignore.lower():
+                    continue
+                name = ".".join(str(entry[key]) for key in ("databaseName", "elementName") if entry.get(key))
+                pending.append(f"{half} {listing}: {name}")
+    return pending, None
+
+
+def _listing(pending: list[str], limit: int = 8) -> str:
+    more = f"; and {len(pending) - limit} more" if len(pending) > limit else ""
+    return "; ".join(pending[:limit]) + more
+
+
+def _catalog_unread(step: Step, error: str) -> dict:
+    """The tail's first step, failed before it sent anything: its own first call reads the same
+    ``changes``, and a tail that cannot tell what else is pending must not synchronise."""
+    return {"id": step.id, "kind": step.kind, "channel": step.channel, "source": step.address,
+            "ok": False, "skipped": False, "check": None, "statements": None, "mark": None,
+            "error": {"kind": "catalog", "message": f"{error}; the marketplace tail did not start"}}
 
 
 def resolve_values(chain: Chain, *, database: str | None, file_values: dict[str, str] | None,
@@ -1123,8 +1195,15 @@ def _cleanup_http(profile: Profile, entries: list[dict], *, values: dict[str, st
     half-rendered. The body is echoed into the report next to the method and path: for the
     catalog re-sync it is the body, not the path, that says which conflict mode the run
     used, and cleanup is part of the report rather than a line in a log.
+
+    A catalog re-sync goes only while nothing but the run's own database is pending: the
+    catalog is read again first (``catalog_pending``), because the pair takes along whatever
+    became pending since the tail read it. When something else is, the pair is not sent and the
+    run's entries stay in the catalog as orphans — reported, not hidden; when the catalog
+    cannot be read, the entries fail.
     """
     reports: list[dict] = []
+    catalog: tuple[list[str], str | None] | None = None
     for entry in entries:
         path = render(entry["path"], {}, values)
         params = {key: render(val, {}, values) for key, val in entry["params"].items()}
@@ -1138,6 +1217,22 @@ def _cleanup_http(profile: Profile, entries: list[dict], *, values: dict[str, st
             skipped = "the Scheduler tail did not run; pass --with-scheduler"
         elif _unresolved(path) or _unresolved(params) or _unresolved(body):
             skipped = "nothing was captured for a placeholder of this entry"
+        elif server == "marketplace" and CATALOG_SYNC.match(path.split("?")[0].rstrip("/")):
+            if catalog is None:
+                catalog = catalog_pending(profile, rest_factory, ignore=values.get("database"))
+            pending, error = catalog
+            if error:
+                reports.append({**described, "ok": False, "skipped": True, "status": None,
+                                "reason": ("the catalog could not be read, so this synchronisation was not sent; "
+                                           "what the run put into the catalog may stay there as orphans"),
+                                "error": {"kind": "catalog", "message": error}})
+                continue
+            if pending:
+                skipped = (f"the marketplace catalog has changes pending that this run did not make, which this "
+                           f"synchronisation would publish or remove with its own: {_listing(pending)}; it was "
+                           f"not sent, so whatever the run put into the catalog (its database "
+                           f"{values.get('database')} and its views) stays there as orphans until a "
+                           f"synchronisation of the whole catalog is agreed")
         if skipped:
             reports.append({**described, "ok": True, "skipped": True, "reason": skipped,
                             "status": None, "error": None})
@@ -1198,9 +1293,10 @@ def _summary(reports: list[dict], not_run: int = 0) -> dict:
         "failed": sum(1 for r in reports if not r["ok"]),
         "skipped": sum(1 for r in reports if r["skipped"]),
         # why: a flag not given, a feature the server lacks, a value nobody filled in, a step
-        # needed that did not run, an earlier failure
+        # needed that did not run, changes pending in the marketplace catalog, an earlier failure
         "skipped_because": {cause: sum(1 for r in reports if r["skipped"] and r.get("cause") == cause)
-                            for cause in ("flag", "server", "value", "needs", "failure", "cleanup-only")
+                            for cause in ("flag", "server", "value", "needs", "catalog", "failure",
+                                          "cleanup-only")
                             if any(r["skipped"] and r.get("cause") == cause for r in reports)},
         # marked blocks of the skills the manifest lists under [not_run], with the reason
         "not_run": not_run,
