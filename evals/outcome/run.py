@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the outcome scenarios against a test server and grade what the agent did (T42).
+"""Run the outcome scenarios against a test server and grade what the agent did.
 
     python3 evals/outcome/run.py --env <profile> [--scenario NAME ...] [--runs N] [--model M]
                                  [--with-writes] [--with-marketplace] [--keep] [--no-judge]
