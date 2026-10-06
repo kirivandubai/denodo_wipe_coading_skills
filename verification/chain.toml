@@ -183,29 +183,121 @@ database = "{database}"
 check = "SELECT name FROM GET_ELEMENTS() WHERE input_database_name = '{database}' AND type = 'folder'"
 
 [[step]]
+id = "catalog-read-database"
+kind = "template"
+channel = "vql"
+address = "skills/catalog/references/database.md#Reading databases back"
+# Read-only. The block's claim is its column list: GET_DATABASES() answers every one of them.
+substitute = { "<name>" = "{database}" }
+database = "{database}"
+
+[[step]]
+id = "catalog-read-folders"
+kind = "template"
+channel = "vql"
+address = "skills/catalog/references/folders.md#Reading folders back"
+substitute = { "'/<path>'" = "'/01 - connectivity'", "'<db>'" = "'{database}'" }
+database = "{database}"
+
+[[step]]
+id = "datasources-peek-file"
+kind = "template"
+channel = "vql"
+# The first look at a file nobody showed you: one text column per line. The template's file is
+# the chain's CRM export; the next step, df-source, re-applies the same three objects with the
+# real schema, exactly as the section tells the agent to.
+address = "skills/datasources/SKILL.md#When you cannot see the file[2]"
+substitute = { "LOCAL 'LocalConnection' '/data/exports/crm/customers.csv'" = "{fixture_route} '{fixture_base}/customers.csv'" }
+database = "{database}"
+# The header comes back as a row: the claim the section rests on.
+check = "SELECT line FROM bv_crm_customers WHERE line LIKE '%cust_id%first_name%'"
+
+[[step]]
 id = "df-source"
 kind = "template"
 channel = "vql"
 address = "skills/datasources/SKILL.md#Delimited file (CSV) — DF"
-substitute = { sales_analytics = "{database}" }
+# The template's file is the chain's CRM export (verification/data/customers.csv), so the step
+# proves the template reads, not only that it parses (T40).
+substitute = { sales_analytics = "{database}", "LOCAL 'LocalConnection' '/data/exports/crm/customers.csv'" = "{fixture_route} '{fixture_base}/customers.csv'" }
 database = "{database}"
-# no check on rows: the file this template names does not exist on the server, and that is
-# the point — the parser accepts the DDL, only SELECT would fail (spec 11.1)
-check = "SELECT name FROM GET_ELEMENTS() WHERE input_database_name = '{database}' AND name = 'bv_crm_customers'"
+# Every row of the file, every date parsed, and the empty emails NULL through NULLVALUE ''.
+check = "SELECT COUNT(*) FROM bv_crm_customers HAVING COUNT(*) = 40 AND COUNT(created_dt) = 40 AND COUNT(email) = 36"
+
+[[step]]
+id = "datasources-find-donor"
+kind = "template"
+channel = "vql"
+address = "skills/datasources/SKILL.md#When you cannot see the file"
+# Read-only, over the whole server: the base view over the CRM file is found by a word of the
+# file's name.
+substitute = { "<word from the file name>" = "crm" }
+database = "{database}"
+check = "SELECT name FROM GET_ELEMENTS() WHERE input_database_name = '{database}' AND type = 'view' AND subtype = 'base' AND name LIKE '%crm%'"
+
+[[step]]
+id = "base-view-minimum"
+kind = "template"
+channel = "vql"
+address = "skills/datasources/references/base-view.md#The minimum that works"
+# Two of the wrapper's eight columns, under a name of its own: bv_crm_customers keeps all eight.
+substitute = { "TABLE bv_crm_customers " = "TABLE bv_crm_customers_min " }
+database = "{database}"
+check = "SELECT COUNT(*) FROM bv_crm_customers_min HAVING COUNT(created_dt) = 40"
+
+[[step]]
+id = "df-raw-lines"
+kind = "template"
+channel = "vql"
+address = "skills/datasources/references/df.md#Reading a file as raw lines"
+# The block's file is the chain's order export; it is JSON, which the trick reads as well.
+substitute = { "LOCAL 'LocalConnection' '/data/exports/oms/orders.json'" = "{fixture_route} '{fixture_base}/orders.json'" }
+database = "{database}"
+check = "SELECT name FROM GET_ELEMENTS() WHERE input_database_name = '{database}' AND name = 'wr_peek'"
 
 [[step]]
 id = "json-source"
 kind = "template"
 channel = "vql"
 address = "skills/datasources/SKILL.md#JSON file"
-substitute = { sales_analytics = "{database}" }
-database = "{database}"
-# Same shape as df-source above and for the same reason: the file this block names does not
-# exist on the server, so the check asks whether the objects were created, never whether they
-# read. The three CREATE TYPE statements are part of the predicate, not scaffolding — a
+# The template's file is the chain's order export (verification/data/orders.json: 3 orders,
+# 4 lines). The three CREATE TYPE statements are part of the predicate, not scaffolding — a
 # compound column cannot be declared inline, so a template that got them wrong would fail
 # here and nowhere else.
-check = "SELECT name FROM GET_ELEMENTS() WHERE input_database_name = '{database}' AND name = 'bv_oms_orders'"
+substitute = { sales_analytics = "{database}", "LOCAL 'LocalConnection' '/data/exports/oms/orders.json'" = "{fixture_route} '{fixture_base}/orders.json'" }
+database = "{database}"
+# Every order, and a filter on a top-level field honoured — the CONSTRAINTS clause is what
+# makes a JSON base view filter at all (datasources, "JSON file").
+check = "SELECT o.n FROM (SELECT COUNT(*) AS n FROM bv_oms_orders) o, (SELECT COUNT(*) AS m FROM bv_oms_orders WHERE status = 'open') f WHERE o.n = 3 AND f.m = 1"
+
+[[step]]
+id = "json-types"
+kind = "template"
+channel = "vql"
+address = "skills/datasources/references/json.md#Compound columns need named types"
+database = "{database}"
+check = "SELECT name FROM GET_ELEMENTS() WHERE input_database_name = '{database}' AND type = 'type' AND name = 'oms_order_line_array'"
+
+[[step]]
+id = "json-wrapper-shape"
+kind = "template"
+channel = "vql"
+address = "skills/datasources/references/json.md#The shape that works"
+# The block is the shape of the wrapper's body; the statement around it is the JSON template's.
+substitute = { "TUPLEROOT '/JSONFile/JSONArray'" = "CREATE OR REPLACE WRAPPER JSON wr_oms_orders_shape\n    DATASOURCENAME = ds_oms\n    TUPLEROOT '/JSONFile/JSONArray'" }
+database = "{database}"
+check = "SELECT name FROM GET_ELEMENTS() WHERE input_database_name = '{database}' AND name = 'wr_oms_orders_shape'"
+
+[[step]]
+id = "json-flatten-read"
+kind = "template"
+channel = "vql"
+address = "skills/datasources/references/json.md#Reading the data"
+# The block's query, without the lines that show its answer.
+substitute = { "\n→ order_id, customer_id, order_dt, status, total_amount, shipping,\n  line_no, sku, qty, price          -- 3 orders, 4 lines → 4 rows" = "" }
+database = "{database}"
+# What those lines say: 3 orders, 4 lines, 4 rows.
+check = "SELECT COUNT(*) FROM FLATTEN bv_oms_orders AS v (v.lines) HAVING COUNT(*) = 4"
 
 [[step]]
 id = "jdbc-source"
@@ -314,6 +406,33 @@ database = "{database}"
 check = "SELECT COUNT(*) AS n FROM household_income_by_band"
 
 [[step]]
+id = "derived-parameterised"
+kind = "template"
+channel = "vql"
+address = "skills/views/references/derived.md#Parameterised views"
+database = "{database}"
+# A view with a parameter is read with the parameter as an equality: one band, its households.
+check = "SELECT COUNT(*) FROM household_in_band WHERE band = 5 HAVING COUNT(*) = 360"
+
+[[step]]
+id = "derived-rename"
+kind = "template"
+channel = "vql"
+address = "skills/views/references/derived.md#`ALTER VIEW`: what it cannot do"
+database = "{database}"
+check = "SELECT name FROM GET_VIEWS() WHERE input_database_name = '{database}' AND name = 'household_by_band'"
+
+[[step]]
+id = "dependencies-field-origin"
+kind = "template"
+channel = "vql"
+address = "skills/views/references/dependencies.md#Where a field comes from"
+substitute = { sales_analytics = "{database}" }
+database = "{database}"
+# The aggregate's column traced to the file's column it averages.
+check = "SELECT column_name FROM COLUMN_DEPENDENCIES() WHERE input_view_database_name = '{database}' AND input_view_name = 'household_income_by_band' AND input_column_name = 'avg_vehicles' AND dependency_column_name = 'hd_vehicle_count'"
+
+[[step]]
 id = "interface-view"
 kind = "template"
 channel = "vql"
@@ -326,6 +445,53 @@ database = "{database}"
 check = "SELECT household_sk FROM household_income LIMIT 10"
 
 [[step]]
+id = "interface-v2-implementation"
+kind = "fixture"
+channel = "vql"
+database = "{database}"
+# The second implementation the interface references swap in: the same rows under the column
+# names their mappings read.
+vql = """
+CONNECT DATABASE {database};
+
+CREATE OR REPLACE VIEW iv_household_income_v2
+    FOLDER = '/02 - integration'
+    AS SELECT household_sk AS household_key, income_band_sk AS band_key, buy_potential AS buy_potential,
+              dependents AS dependent_count, vehicles AS vehicle_count, income_lower_bound AS band_lower,
+              income_upper_bound AS band_upper
+       FROM iv_household_income;
+"""
+
+[[step]]
+id = "interface-swap"
+kind = "template"
+channel = "vql"
+address = "skills/views/references/interface.md#Swapping the implementation"
+# The block names two mappings and elides the rest; the step writes them all.
+substitute = { "income_band_sk = band_key, … );" = "income_band_sk = band_key, buy_potential = buy_potential,\n      dependents = dependent_count, vehicles = vehicle_count, income_lower_bound = band_lower,\n      income_upper_bound = band_upper );" }
+database = "{database}"
+# The consumer reads the same contract, now through the new implementation.
+check = "SELECT COUNT(*) FROM household_income WHERE vehicles = -1 HAVING COUNT(*) = 1200"
+
+[[step]]
+id = "interface-field-mapping"
+kind = "template"
+channel = "vql"
+address = "skills/views/references/interface.md#Field mapping"
+database = "{database}"
+check = "SELECT COUNT(*) FROM household_income WHERE income_lower_bound = 0 HAVING COUNT(*) = 360"
+
+[[step]]
+id = "interface-view-restored"
+kind = "template"
+channel = "vql"
+# The views skill's own interface file again: the implementation goes back to
+# iv_household_income, which the steps below build on.
+address = "skills/views/SKILL.md#Interface view — a contract you can re-implement"
+database = "{database}"
+check = "SELECT COUNT(*) FROM household_income HAVING COUNT(*) = 7200"
+
+[[step]]
 id = "association"
 kind = "template"
 channel = "vql"
@@ -333,6 +499,24 @@ address = "skills/views/SKILL.md#Association — the relationship, recorded"
 # Same reason as interface-view above: this block has no CONNECT DATABASE either.
 database = "{database}"
 check = "SELECT association_name FROM GET_ASSOCIATIONS() WHERE input_database_name = '{database}' AND input_type = 'views' AND valid = true"
+
+[[step]]
+id = "association-orphans"
+kind = "template"
+channel = "vql"
+address = "skills/views/references/associations.md#`REFERENTIAL CONSTRAINT` and `PRINCIPAL`"
+database = "{database}"
+# The count the block reads before declaring REFERENTIAL CONSTRAINT: every household has a band.
+# (HAVING COUNT(*) = 0 over no rows answers no row on 9.5.1, hence the outer query.)
+check = "SELECT o.orphans FROM (SELECT COUNT(*) AS orphans FROM bv_household_demographics hd WHERE hd.hd_income_band_sk NOT IN ( SELECT ib_income_band_sk FROM bv_income_band )) o WHERE o.orphans = 0"
+
+[[step]]
+id = "association-read-back"
+kind = "template"
+channel = "vql"
+address = "skills/views/references/associations.md#Reading associations back"
+substitute = { "'<db>'" = "'{database}'" }
+database = "{database}"
 
 # --- testing: .denodotest templates, run by the Denodo Testing Tool ---------------------
 #
@@ -517,16 +701,43 @@ database = "{database}"
 check = "SELECT input_query FROM GET_QUERY_EXECUTION_PLAN() WHERE input_query = 'SELECT COUNT(*) FROM returns WHERE channel = ''web''' AND execution_plan LIKE '%Branch Pruning%'"
 
 [[step]]
+id = "union-see-plan"
+kind = "template"
+channel = "vql"
+address = "skills/views/references/unions.md#Seeing the plan"
+database = "{database}"
+
+[[step]]
+id = "union-partitioned"
+kind = "template"
+channel = "vql"
+address = "skills/views/references/unions.md#Partitioned unions: reading only the branch a query needs"
+# The block is the view's AS clause; the statement around it is the step's. Both branches read
+# the one returns file, split at a key inside its range, as the section measured it.
+substitute = { "    AS SELECT sr_item_sk" = "CREATE OR REPLACE VIEW store_returns_by_period\n    FOLDER = '/02 - integration'\n    AS SELECT sr_item_sk", "bv_store_returns_live" = "bv_retail_store_returns", "bv_store_returns_archive" = "bv_retail_store_returns", "<first key of the live period>" = "2457754" }
+database = "{database}"
+# Its two claims: a range query reads one branch, and no row is lost — the NULL keys included.
+check = "SELECT 1 FROM GET_QUERY_EXECUTION_PLAN() p, (SELECT COUNT(*) AS n FROM store_returns_by_period) u, (SELECT COUNT(*) AS m FROM bv_retail_store_returns) f WHERE p.input_query = 'SELECT COUNT(*) FROM store_returns_by_period WHERE returned_date_sk >= 2458000' AND p.execution_plan LIKE '%Branch Pruning%' AND u.n = f.m"
+
+[[step]]
 id = "array-views"
 kind = "template"
 channel = "vql"
 address = "skills/views/SKILL.md#Arrays — `FLATTEN` to rows, `NEST` back"
 substitute = { sales_analytics = "{database}" }
 database = "{database}"
-# Over bv_oms_orders from json-source, whose file does not exist on the server (see the
-# header): the check proves both views were accepted, not that they read. What they return
-# was checked live over a real export when the template was written.
-check = "SELECT name FROM GET_ELEMENTS() WHERE input_database_name = '{database}' AND type = 'view' AND name = 'iv_customer_orders'"
+# Over bv_oms_orders from json-source, which reads the chain's order export: four lines of
+# three orders, and three customers with their array of orders.
+check = "SELECT l.n FROM (SELECT COUNT(*) AS n FROM iv_oms_order_lines) l, (SELECT COUNT(*) AS m FROM iv_customer_orders) c WHERE l.n = 4 AND c.m = 3"
+
+[[step]]
+id = "arrays-one-row-per-parent"
+kind = "template"
+channel = "vql"
+address = "skills/views/references/arrays.md#One row per parent, every parent kept"
+database = "{database}"
+# Every order once, its lines counted and valued from the element view.
+check = "SELECT COUNT(*) FROM order_line_summary HAVING COUNT(*) = 3 AND SUM(line_count) = 4 AND SUM(line_value) = 153.5"
 
 [[step]]
 id = "vql-procedure"
@@ -740,11 +951,38 @@ substitute = { sales_analytics = "{database}", "CREATE OR REPLACE TAG pii" = "CR
 database = "{database}"
 check = "SELECT tag_name FROM GET_VIEW_TAGS() WHERE input_database_name = '{database}'"
 
-# --- Metadata for AI consumers: audit, profile, write, and what re-applying undoes -----------
-# The three blocks of skills/semantics/SKILL.md over the views the steps above built. The
-# write block adds to a VDP tag, a server-wide object, so the tag it names is this run's own
-# ({tag_prefix}mcp, made by the fixture below and dropped in [cleanup]), never the MCP
-# Server's real one.
+[[step]]
+id = "catalog-read-tags"
+kind = "template"
+channel = "vql"
+requires = ["enterprise_plus"]
+address = "skills/catalog/references/tags.md#Reading tags back"
+substitute = { "<name>" = "{tag_prefix}pii", "'<db>'" = "'{database}'", "tag_name = 'pii'" = "tag_name = '{tag_prefix}pii'" }
+database = "{database}"
+
+[[step]]
+id = "derived-field-properties"
+kind = "template"
+channel = "vql"
+requires = ["enterprise_plus"]
+address = "skills/views/references/derived.md#Field properties"
+# The tags are the run's own.
+substitute = { "TAGS ( gdpr )" = "TAGS ( {tag_prefix}finance_sensitive )", "TAGS ( pii )" = "TAGS ( {tag_prefix}pii )" }
+database = "{database}"
+check = "SELECT c.column_name FROM GET_VIEW_COLUMNS() AS c, GET_VIEW_TAGS() AS t WHERE c.input_database_name = '{database}' AND c.input_view_name = 'customer_contact' AND c.column_name = 'email' AND c.column_remarks = 'Primary contact address' AND t.input_database_name = '{database}' AND t.input_view_name = 'customer_contact' AND t.column_name = 'email' AND t.tag_name = '{tag_prefix}pii'"
+
+[[step]]
+id = "base-view-key-tag-index"
+kind = "template"
+channel = "vql"
+requires = ["enterprise_plus"]
+address = "skills/datasources/references/base-view.md#Primary keys, tags, indexes"
+# The block is everything after the field list; the head is a base view of two of the CRM
+# wrapper's columns, and the tag is the run's own.
+substitute = { "    CONSTRAINT 'pk_customer'" = "CREATE OR REPLACE TABLE bv_crm_customers_keyed I18N us_pst (\n        cust_id:text,\n        country:text\n    )\n    FOLDER = '/01 - connectivity'\n    CONSTRAINT 'pk_customer'", "TAGS ( pii )" = "TAGS ( {tag_prefix}pii )" }
+database = "{database}"
+# All three landed: the key, the tag on the view and the index.
+check = "SELECT k.column_name FROM GET_VIEW_COLUMNS() AS k, GET_VIEW_TAGS() AS t, GET_VIEW_INDEXES() AS i WHERE k.input_database_name = '{database}' AND k.input_view_name = 'bv_crm_customers_keyed' AND k.column_is_primary_key = true AND t.input_database_name = '{database}' AND t.input_view_name = 'bv_crm_customers_keyed' AND t.tag_name = '{tag_prefix}pii' AND i.input_database_name = '{database}' AND i.input_view_name = 'bv_crm_customers_keyed'"
 
 [[step]]
 id = "semantics-tag"
@@ -961,6 +1199,24 @@ database = "{database}"
 # — an interface view accepts an implementation that does not match it, and only the SELECT
 # shows it". NEST over the association is exactly where that would surface.
 check = "SELECT id, associations FROM i_acme_bi_elements"
+
+[[step]]
+id = "association-precondition"
+kind = "template"
+channel = "vql"
+address = "skills/views/references/associations.md#Role preconditions"
+# The same association with a precondition on one role: a second association on the pair cannot
+# reuse the role names, so this one replaces the chain's own, and the next step puts it back.
+database = "{database}"
+check = "SELECT association_name FROM GET_ASSOCIATIONS() WHERE input_database_name = '{database}' AND input_type = 'views' AND association_name = 'a_income_band_household' AND valid = true"
+
+[[step]]
+id = "association-restored"
+kind = "template"
+channel = "vql"
+address = "skills/views/SKILL.md#Association — the relationship, recorded"
+database = "{database}"
+check = "SELECT association_name FROM GET_ASSOCIATIONS() WHERE input_database_name = '{database}' AND input_type = 'views' AND valid = true"
 
 # --- AI functions: the server's LLM and embedding model, gated behind --with-ai ---------------
 # The six blocks of skills/ai/SKILL.md. They write nothing outside {database}, but every one
@@ -1220,6 +1476,17 @@ CREATE OR REPLACE VIEW customer_update
 """
 
 [[step]]
+id = "dependencies-source-columns"
+kind = "template"
+channel = "vql"
+writes = true
+address = "skills/views/references/dependencies.md#Where a field comes from[1]"
+# The chain's JDBC base view over the table the fixture created.
+substitute = { "'<db>'" = "'{database}'", "'<jdbc base view>'" = "'bv_write_orders'" }
+database = "{database}"
+check = "SELECT column_name FROM GET_SOURCE_COLUMNS() WHERE input_database_name = '{database}' AND input_view_name = 'bv_write_orders' AND source_column_name = 'order_id'"
+
+[[step]]
 id = "dml-can-take"
 kind = "template"
 channel = "vql"
@@ -1336,6 +1603,25 @@ address = "skills/materialize/SKILL.md#Refresh it"
 substitute = { sales_analytics = "{database}" }
 database = "{database}"
 check = "SELECT COUNT(*) FROM bv_dwh_household_income HAVING COUNT(*) = 7200"
+
+[[step]]
+id = "delegation-read-plan"
+kind = "template"
+channel = "vql"
+writes = true
+address = "skills/views/references/delegation.md#Reading the plan"
+# The chain's view over one database: the remote table the steps above made.
+substitute = { "store_month_sales" = "bv_dwh_household_income" }
+database = "{database}"
+
+[[step]]
+id = "delegation-not-the-check"
+kind = "template"
+channel = "vql"
+writes = true
+address = "skills/views/references/delegation.md#`GET_DELEGATED_SQLSENTENCE` is not the check"
+substitute = { "store_month_sales" = "bv_dwh_household_income" }
+database = "{database}"
 
 [[step]]
 id = "testing-runs-in-the-database"
@@ -1607,32 +1893,21 @@ expect_body = { id = "{renamed_view_id}" }
 "skills/ai/references/vectors.md#Delegation" = "not yet a step: T40 in progress"
 "skills/ai/references/vectors.md#More like this" = "not yet a step: T40 in progress"
 "skills/cache/references/full-cache.md#`ALTER VIEW … CACHE` (`ALTER TABLE … CACHE` for a base view)" = "not yet a step: T40 in progress"
-"skills/catalog/references/database.md#CREATE DATABASE" = "not yet a step: T40 in progress"
-"skills/catalog/references/database.md#ALTER DATABASE" = "not yet a step: T40 in progress"
-"skills/catalog/references/database.md#DROP DATABASE" = "not yet a step: T40 in progress"
-"skills/catalog/references/database.md#Reading databases back" = "not yet a step: T40 in progress"
-"skills/catalog/references/folders.md#CREATE FOLDER" = "not yet a step: T40 in progress"
-"skills/catalog/references/folders.md#ALTER FOLDER" = "not yet a step: T40 in progress"
-"skills/catalog/references/folders.md#DROP FOLDER" = "not yet a step: T40 in progress"
-"skills/catalog/references/folders.md#Reading folders back" = "not yet a step: T40 in progress"
-"skills/catalog/references/tags.md#CREATE TAG / CREATE TAGS" = "not yet a step: T40 in progress"
-"skills/catalog/references/tags.md#ALTER TAG" = "not yet a step: T40 in progress"
-"skills/catalog/references/tags.md#DROP TAG / DROP TAGS" = "not yet a step: T40 in progress"
-"skills/catalog/references/tags.md#Reading tags back" = "not yet a step: T40 in progress"
-"skills/datasources/SKILL.md#Relational database over JDBC[1]" = "not yet a step: T40 in progress"
-"skills/datasources/SKILL.md#When you cannot see the file" = "not yet a step: T40 in progress"
-"skills/datasources/SKILL.md#When you cannot see the file[1]" = "not yet a step: T40 in progress"
-"skills/datasources/SKILL.md#When you cannot see the file[2]" = "not yet a step: T40 in progress"
-"skills/datasources/SKILL.md#Passwords: the file only ever holds the ciphertext, and you never see the plaintext" = "not yet a step: T40 in progress"
-"skills/datasources/references/base-view.md#The minimum that works" = "not yet a step: T40 in progress"
-"skills/datasources/references/base-view.md#Primary keys, tags, indexes" = "not yet a step: T40 in progress"
-"skills/datasources/references/df.md#Reading a file as raw lines" = "not yet a step: T40 in progress"
-"skills/datasources/references/jdbc.md#Credentials" = "not yet a step: T40 in progress"
-"skills/datasources/references/jdbc.md#CREATE WRAPPER JDBC" = "not yet a step: T40 in progress"
-"skills/datasources/references/json.md#CREATE DATASOURCE JSON" = "not yet a step: T40 in progress"
-"skills/datasources/references/json.md#The shape that works" = "not yet a step: T40 in progress"
-"skills/datasources/references/json.md#Compound columns need named types" = "not yet a step: T40 in progress"
-"skills/datasources/references/json.md#Reading the data" = "not yet a step: T40 in progress"
+"skills/catalog/references/database.md#CREATE DATABASE" = "grammar ([ … ], <…>), not a statement; the catalog template runs a CREATE DATABASE"
+"skills/catalog/references/database.md#ALTER DATABASE" = "grammar ([ … ], <…>), not a statement"
+"skills/catalog/references/database.md#DROP DATABASE" = "grammar ([ … ], <…>), not a statement; the cleanup runs a DROP DATABASE"
+"skills/catalog/references/folders.md#CREATE FOLDER" = "grammar ([ … ], <…>), not a statement; the catalog template runs it"
+"skills/catalog/references/folders.md#ALTER FOLDER" = "grammar ([ … ], <…>), not a statement"
+"skills/catalog/references/folders.md#DROP FOLDER" = "grammar ([ … ], <…>), not a statement"
+"skills/catalog/references/tags.md#CREATE TAG / CREATE TAGS" = "grammar ([ … ], <…>), not a statement; the catalog template runs a CREATE TAG with assignments"
+"skills/catalog/references/tags.md#ALTER TAG" = "grammar ([ … ], <…>), not a statement; the semantics template runs an ALTER TAG"
+"skills/catalog/references/tags.md#DROP TAG / DROP TAGS" = "grammar ([ … ], <…>), not a statement; the cleanup runs DROP TAG"
+"skills/datasources/SKILL.md#Relational database over JDBC[1]" = "introspection answers only from a database that is up, with a real credential, which the chain does not have"
+"skills/datasources/SKILL.md#When you cannot see the file[1]" = "a command line of the plugin's CLI (vql desc), not VQL; its unit tests cover it"
+"skills/datasources/SKILL.md#Passwords: the file only ever holds the ciphertext, and you never see the plaintext" = "a command the human types (secret encrypt, behind the ! prefix); the chain encrypts its own throwaway the same way"
+"skills/datasources/references/jdbc.md#Credentials" = "grammar ([ … ], <…>), not a statement; the JDBC template carries the encrypted form"
+"skills/datasources/references/jdbc.md#CREATE WRAPPER JDBC" = "grammar ([ … ], <…>), not a statement; the JDBC templates run a wrapper"
+"skills/datasources/references/json.md#CREATE DATASOURCE JSON" = "grammar ([ … ], <…>), not a statement; the JSON template runs one"
 "skills/marketplace/SKILL.md#Name the server: `serverId`" = "not yet a step: T40 in progress"
 "skills/marketplace/references/external-elements.md#Provider type" = "not yet a step: T40 in progress"
 "skills/marketplace/references/external-elements.md#The contract" = "not yet a step: T40 in progress"
@@ -1659,26 +1934,11 @@ expect_body = { id = "{renamed_view_id}" }
 "skills/security/references/privileges.md#Who reads a database, and through what" = "not yet a step: T40 in progress"
 "skills/security/references/privileges.md#Checking as someone else" = "not yet a step: T40 in progress"
 "skills/semantics/references/metadata.md#Writing — every form" = "not yet a step: T40 in progress"
-"skills/views/SKILL.md#Interface view — a contract you can re-implement[1]" = "not yet a step: T40 in progress"
-"skills/views/references/arrays.md#FLATTEN: an array to rows" = "not yet a step: T40 in progress"
-"skills/views/references/arrays.md#One row per parent, every parent kept" = "not yet a step: T40 in progress"
-"skills/views/references/arrays.md#NEST: rows to an array" = "not yet a step: T40 in progress"
-"skills/views/references/associations.md#Grammar as the server accepts it" = "not yet a step: T40 in progress"
-"skills/views/references/associations.md#Reading an endpoint" = "not yet a step: T40 in progress"
-"skills/views/references/associations.md#`REFERENTIAL CONSTRAINT` and `PRINCIPAL`" = "not yet a step: T40 in progress"
-"skills/views/references/associations.md#Role preconditions" = "not yet a step: T40 in progress"
-"skills/views/references/associations.md#Reading associations back" = "not yet a step: T40 in progress"
-"skills/views/references/delegation.md#Reading the plan" = "not yet a step: T40 in progress"
-"skills/views/references/delegation.md#`GET_DELEGATED_SQLSENTENCE` is not the check" = "not yet a step: T40 in progress"
-"skills/views/references/dependencies.md#Where a field comes from" = "not yet a step: T40 in progress"
-"skills/views/references/dependencies.md#Where a field comes from[1]" = "not yet a step: T40 in progress"
-"skills/views/references/derived.md#Grammar (documentation 9.5)" = "not yet a step: T40 in progress"
-"skills/views/references/derived.md#Field properties" = "not yet a step: T40 in progress"
-"skills/views/references/derived.md#Parameterised views" = "not yet a step: T40 in progress"
-"skills/views/references/derived.md#`ALTER VIEW`: what it cannot do" = "not yet a step: T40 in progress"
-"skills/views/references/derived.md#`DROP VIEW`" = "not yet a step: T40 in progress"
-"skills/views/references/interface.md#Grammar (documentation 9.5)" = "not yet a step: T40 in progress"
-"skills/views/references/interface.md#Field mapping" = "not yet a step: T40 in progress"
-"skills/views/references/interface.md#Swapping the implementation" = "not yet a step: T40 in progress"
-"skills/views/references/unions.md#Partitioned unions: reading only the branch a query needs" = "not yet a step: T40 in progress"
-"skills/views/references/unions.md#Seeing the plan" = "not yet a step: T40 in progress"
+"skills/views/SKILL.md#Interface view — a contract you can re-implement[1]" = "a fragment of the interface view's file; the Field mapping step of interface.md runs the whole statement with these mappings"
+"skills/views/references/arrays.md#FLATTEN: an array to rows" = "grammar ([ … ], <…>), not a statement; the arrays templates run FLATTEN"
+"skills/views/references/arrays.md#NEST: rows to an array" = "grammar ([ … ], <…>), not a statement; the arrays templates run NEST"
+"skills/views/references/associations.md#Grammar as the server accepts it" = "grammar ([ … ], <…>), not a statement; the association templates run it"
+"skills/views/references/associations.md#Reading an endpoint" = "two lines of the association template, which runs whole as a step"
+"skills/views/references/derived.md#Grammar (documentation 9.5)" = "grammar ([ … ], <…>), not a statement"
+"skills/views/references/derived.md#`DROP VIEW`" = "grammar ([ … ], <…>), not a statement"
+"skills/views/references/interface.md#Grammar (documentation 9.5)" = "grammar ([ … ], <…>), not a statement"
