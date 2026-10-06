@@ -10,14 +10,12 @@ silently. The statement succeeds; then an analyst's report shows `********` wher
 was, an amount comes back `NULL`, one analyst still reads every row, or a policy stops
 being evaluated without anyone being told. Two facts shape every step below:
 
-1. **Administrators are never restricted** — global administrators, and local
-   administrators of the view's database (`ADMIN` on it). The profile you connect with is
-   usually one: `env check` → `vdp.admin`. **Your own `SELECT` proves nothing about a
-   restriction.**
-2. **The proof is the same query run as the person** —
-   `CONTEXT ('impersonate_user' = '<user>')`, or `('impersonate_roles' = '<role>')` — with
-   their privileges and every policy, and no password. It needs `vdp.impersonation: true`
-   (the profile's user has the `impersonator` role).
+1. **Administrators are never restricted** — global administrators, and local administrators of
+   the view's database (`ADMIN` on it). The profile you connect with may be one: `env check` →
+   `vdp.admin`. **Your own `SELECT` proves nothing about a restriction.**
+2. **The proof is the same query run as the person** — `CONTEXT ('impersonate_user' = '<user>')`,
+   or `('impersonate_roles' = '<role>')` — with their privileges and every policy, and no password.
+   It needs `vdp.impersonation: true` (the profile's user has the `impersonator` role).
 
 This skill covers: a role with read access and giving it to a user; tagging the columns a
 policy should reach; a global security policy that masks columns, filters rows — by a value, or
@@ -31,7 +29,9 @@ in Design Studio by the administrator — say so and stop. Applying files is
 
 ## Before you change anything
 
-Reads only — they run on any profile, and they are where every decision below comes from.
+Reads only, and every decision below comes from them — complete only for a global administrator
+(`vdp.admin: true`). For anyone else, a local administrator too, query 1 silently returns only the
+profile's own grants and its roles': say the list of readers is partial.
 
 ```sql
 -- verified: 9.5.1 (live, 2026-10-06)
@@ -53,13 +53,16 @@ SELECT view_name, column_name, tag_name FROM GET_VIEW_TAGS() WHERE input_databas
 ```
 
 - Then `DESC VQL GLOBAL_SECURITY_POLICY <name>` for each policy that names a tag, a role or a
-  database you are about to touch — its audience is not in any of the queries above. It
-  starts with `DROP … CASCADE`: read it, never apply it.
+  database you are about to touch — its audience is not in any of the queries above. Like query 3,
+  it needs an administrator of the database. It starts with `DROP … CASCADE`: read it, never apply it.
 - **A tag that a policy names is a security switch**, not a label: adding it to a column
   restricts that column for the policy's audience, removing it lifts the restriction.
 - One user's grants in the database: query 1 with `AND username = '<user>'`. Not `DESC VQL USER`:
   without `('includeUserPrivileges' = 'yes')` it shows no roles at all, and with it, for a
   local user, it prints the password hash into the transcript.
+- Someone known only to LDAP, Kerberos or an identity provider is no VDP user: no row in query 1, and
+  `impersonate_user` says `does not exist`. Their access is the roles of their groups: ask the human
+  which, check them with `impersonate_roles`, and hand the check of a per-person filter to the human.
 - Whether a role exists: `DESC ROLE <name>` (`Error loading role` when it does not).
   `GET_USERS_WITH_ROLE()` answers a missing role with 0 rows and no error, and `LIST ROLES`
   is cut at the tool's 100 rows (`truncated: true`) unless you pass `--max-rows 5000`.
@@ -256,8 +259,9 @@ CONTEXT ('impersonate_roles' = 'sales_analyst');
 - One impersonated query **per person the request names**, plus one person outside the
   audience who must still see the values, plus every view the audience can read below the
   tagged one. Write down what each returned; that table is the result of the work.
-- A role nobody holds yet is checked with `impersonate_roles`. When no reader outside the
-  audience exists, say so — the administrator is not one: it sees everything anyway.
+- A role nobody holds yet is checked with `impersonate_roles` — named roles only, so add `allusers`,
+  which a local user holds too: `'sales_analyst,allusers'`. When no reader outside the audience
+  exists, say so — the administrator is not one: it sees everything anyway.
 - A file stops at its first failure: an expected refusal (`does not have EXECUTE
   privileges`) goes last, or into a call of its own.
 - A filter compares the masked value, so `unmasked` is `0` when every row is masked. For a
@@ -268,8 +272,9 @@ CONTEXT ('impersonate_roles' = 'sales_analyst');
 - **Impersonation checks reads only.** An `INSERT`, `UPDATE` or `DELETE` with the same
   `CONTEXT` ran with the profile's own privileges: a user with nothing but `EXECUTE` on a view
   updated it and a base view they had no grant on — *verified: 9.5.1 (live, 2026-10-02)*.
-  Whether someone may write is proven only by their own login; hand that check to the human
-  (`/denodo:dml`).
+  Whether someone may write is proven only by a session as them — their own login, or (documentation
+  only) `CONNECT USER <u>` without a password from a profile with the `impersonator` role. Both run
+  real writes: hand that check to the human (`/denodo:dml`).
 
 ### Each person sees only their own rows
 
@@ -432,9 +437,9 @@ with a yes.
 | Who is restricted, who is not | the human, as people and roles; then query 1 — the grant paths decide the audience |
 | Which columns, which views | the human names the data, often by another name than the column (`buy potential` is `hd_buy_potential` two views down): `COLUMN_DEPENDENCIES()` of the view they read gives the base column. Columns of the same kind the human did not name go into the message, not into the tag |
 | How each is shown | the human: masked text, empty, a filter, no access. Not said → ask; the treatment of numbers and dates is part of the question |
-| Which databases | the database of the views — always in `VIEW_DATABASES` |
+| Which databases | the database of every view that carries the tag — the base view's own when the tag sits there — not only the one people query; always in `VIEW_DATABASES` |
 | Tag name | the concept (`personal_data`, `sales_territory`); check that no policy already names it (query 3) |
-| Can you check it | `env check` → `vdp.admin`, `vdp.impersonation` |
+| Can you do it, and check it | `env check` → `features.enterprise_plus` (tags and global security policies need the Enterprise Plus bundle: `false` → say so and stop); `vdp.admin` (`false` → a role needs `create_role`, giving it to someone `assign_all_roles`, a privilege `ADMIN` on the database or `assignprivileges`, a tag `manage_tags`, a policy `ADMIN` on every database it names or `manage_policies`; without them the files go to the human); `vdp.impersonation` |
 
 ## Verify
 
@@ -487,7 +492,7 @@ Each runs without an error — *verified: 9.5.1 (live, 2026-10-01)*; rows 13–1
 
 ## Reference
 
-- `references/policies.md` — the whole `CREATE GLOBAL_SECURITY_POLICY` grammar, every masking
+- `references/policies.md` — the `CREATE GLOBAL_SECURITY_POLICY` grammar, every masking
   expression as measured, the row filter and deny, enabling and disabling, the audience
   table per grant path, what removes or disables a policy silently, and its errors.
 - `references/privileges.md` — roles, users and grants (`CREATE`/`ALTER ROLE`, `ALTER USER`,

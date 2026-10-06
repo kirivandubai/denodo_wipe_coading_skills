@@ -127,7 +127,9 @@ unrestricted. Measured with a policy masking one column, against six users:
 *verified: 9.5.1 (live, 2026-10-01)*. So: a role audience restricts what roles grant, a user
 audience what is granted to the user directly, `ALL` every path; a local administrator of
 the database and a global administrator are never restricted. `impersonate_roles = 'a,b'`
-gives the union of the roles, the same as a user holding both.
+gives the union of the named roles only. A local user — and an LDAP, SAML or Kerberos user when
+the server assigns `allusers` at login — also holds `allusers`: to see what a person given the
+role would read, add it (`'sales_analyst,allusers'`).
 
 `CATALOG_PERMISSIONS()` lists the paths — one row per grant. A user's row with
 `userrolename` empty is the user's own grant; a row with `username` empty is a role's grant,
