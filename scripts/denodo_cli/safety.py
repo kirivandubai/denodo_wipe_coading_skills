@@ -200,7 +200,7 @@ def _classify_scheduler(method: str, route: str, body) -> str | None:
     if _SCHEDULER_SECURITY.match(route) and method in ("POST", "PUT"):
         return "security"
     if route == "/public/api/serverMetadata/import" and method == "POST":
-        return "replace"  # the whole metadata of the server: projects, jobs, data sources
+        return "replace"  # replaces the server's jobs, data sources, plugins and drivers with the file's
     if _SCHEDULER_SETTINGS.match(route) and method in ("POST", "PUT"):
         return "setting"
     if method == "PUT":
