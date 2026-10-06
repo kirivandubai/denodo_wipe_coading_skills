@@ -31,6 +31,12 @@ class ParseTest(unittest.TestCase):
         commands = [s.command for s in transcript.statements(transcript.parse(stream.lines))]
         self.assertEqual(commands, ["vql plan", "vql run"])
 
+    def test_vql_desc_is_a_read_statement(self):
+        doc = {"ok": True, "command": "vql desc", "statement": "DESC VIEW v", "rows": [["v", "x"]]}
+        stream = Stream().bash("d vql desc --type view v", doc)
+        [s] = transcript.statements(transcript.parse(stream.lines))
+        self.assertEqual((s.command, s.text, s.ok), ("vql desc", "DESC VIEW v", True))
+
     def test_an_exit_code_line_before_the_document_is_skipped(self):
         stream = Stream().bash("d vql run a.vql", run_doc("/p/a.vql", ("DESC VIEW x", False, None)),
                                prefix="Exit code 1\n")

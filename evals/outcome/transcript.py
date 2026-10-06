@@ -52,7 +52,7 @@ class Call:
 class Statement:
     call: int
     turn: int
-    command: str          # "vql run" or "vql plan"
+    command: str          # "vql run", "vql plan" or "vql desc"
     text: str
     ok: bool | None       # None for a plan: nothing was executed
     destructive: str | None
@@ -194,6 +194,11 @@ def statements(t: Transcript) -> list[Statement]:
     for call in t.calls:
         for doc in call.docs:
             command = doc.get("command")
+            if command == "vql desc" and doc.get("statement"):
+                out.append(Statement(call=call.index, turn=call.turn, command=command, text=str(doc["statement"]),
+                                     ok=bool(doc.get("ok")), destructive=None, affected=None, rows=doc.get("rows"),
+                                     source=None))
+                continue
             if command not in ("vql run", "vql plan") or not isinstance(doc.get("statements"), list):
                 continue
             for s in doc["statements"]:
