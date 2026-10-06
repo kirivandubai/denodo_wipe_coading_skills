@@ -43,6 +43,10 @@ like any other drop. Test the real statement in the real file — re-applying it
 Templates are `CREATE OR REPLACE`, so when a statement fails, fix that statement and
 re-apply the same file from the top.
 
+**A request for a set** — every table of a schema, every column that holds an email, every
+view of a database — runs the same loop over a list, with a plan file: **Many objects at
+once**, below.
+
 Chain order, when several objects are involved: `database → folder → datasource → wrapper
 → base view → derived view → association → metric view → the views over it`. A view's cache
 line goes in the view's own file, right after its `CREATE`, and the load after that; remote
@@ -141,7 +145,7 @@ ledger knows and you do not. `vql ledger --env dev` lists what the session creat
 | — | `CREATE OR REPLACE` of an existing object no file of your project declares — made in Design Studio, or another team's: your text replaces its whole configuration, a data source's stored password and a view's cache settings included (`/denodo:datasources`) |
 | — | loading, reloading or clearing the cache of a view you did not create in this session — `SELECT … CONTEXT ('cache_preload' = 'true', …)`, `ALTER VIEW … CACHE` (`/denodo:cache`) |
 | — | `CREATE OR REPLACE METRIC VIEW` over a metric view you did not create in this session — a changed join type, filter or metric changes every figure built on it, with no column dropped (`/denodo:metrics`) |
-| — | the description, field descriptions, primary key or tags of a view you did not create in this session — by `ALTER VIEW`, `ALTER TAG`, or by re-declaring the view with `CREATE OR REPLACE`: the human approves the texts; naming a view to be made visible to an agent is the yes for its tag (`/denodo:semantics`) |
+| — | the description, field descriptions, primary key or tags of a view you did not create in this session — by `ALTER VIEW`, `ALTER TAG`, or by re-declaring the view with `CREATE OR REPLACE`: the human approves the texts; naming a view to be made visible to an agent is the yes for its tag. An association that names a view you did not create counts too: it becomes that view's dependant (`/denodo:semantics`) |
 | — | who may read what: a role, a user or a global security policy, created or changed, a grant of a role or a privilege to a person, or a tag that a policy names put on or taken off a column — unless every object it touches was created by you in this session. A `CREATE` counts: a new policy restricts people who exist, and `CREATE OR REPLACE` of an existing role adds to it (`/denodo:security`) |
 | `…_AI` calls on `Dual()` — to see that the server answers, or to try an expression on up to three texts — and a search whose text is embedded once | an AI function — `CLASSIFY_AI`, `SENTIMENT_AI` and the rest, or an embedding computed per row — evaluated on the rows of a view, a cache load of a view with such a column included: every row is a paid request to an outside provider, and its text goes with it. The human agrees to the number of requests, or names a ceiling (`/denodo:ai`) |
 | — | a predefined procedure that changes state, however it is spelled: `SELECT * FROM DROP_REMOTE_TABLE(…)`, `CALL CLEAN_CACHE_DATABASE(…)`, `GENERATE_STATS(…)`, `LOGCONTROLLER(…)` — the list is in `/denodo:procedures`. Two exceptions, both on what you created in this session: `CREATE_REMOTE_TABLE` of a new table, above, and `CLEAN_CACHE_DATABASE` of the cache of your own view (`/denodo:cache`) |
@@ -216,6 +220,55 @@ change; you are about to send `DELETE`; a `synchronize` whose radius
 you have not read just now, or that holds anything you did not create in this session; you
 are writing `--allow-destructive`; `env.production` is `true`; you are removing something you
 did not create in this session; you are "cleaning up" anything.
+
+## Many objects at once
+
+When the request names a set, what goes wrong is the list: an object missing from it, two
+that end up under one name, a check that read three of thirty, a report that says "all done".
+The loop is the same; the list becomes a file, and every step answers per object.
+
+1. **The list comes from the server, whole.** One read returns every candidate — the tables of
+   a schema (`/denodo:datasources`), the columns of a database and where each one's value comes
+   from (`/denodo:catalog`), the views and their metadata (`/denodo:semantics`). Run it with
+   `--max-rows 5000`: the tool keeps 100 rows by default, and `truncated: true` means the list
+   is not whole — narrow the read and run it again, never work from what came back. What
+   already exists is on the list too, found by what it reads, not by its name.
+2. **The plan file**, `<change>.plan.md` beside the statements: one row per candidate, and the
+   decision in the row — the object, what it comes from, the action (or none, and why: it
+   exists and is not yours, it is not what was asked, a question for the human), whose it is,
+   the file that carries its statement, and a status. Names come from one rule, unique across
+   the list; when two sources would get one name, the rule changes for all of them.
+3. **One statement file per yes.** Generate the statements from the list — a query that
+   returns them, or a script — never by hand. `vql plan` the file: `actions` counts what it
+   does, and `duplicates` lists two statements of the file declaring one object differently —
+   the later silently replaces the earlier. What is yours goes into the file you apply; what waits for the
+   human goes into a file of its own, all of it. When the human has to read every object — texts,
+   tags on views you did not create — split that file into batches one sitting reads (tens of
+   objects, grouped by schema, folder or subject), a file and a yes each.
+4. **Apply** each file as always. An object that fails and cannot be fixed now leaves the file
+   and becomes a `failed` row with the server's message; the rest goes on. Taking a failed
+   statement out of a file the human said yes to only narrows what they approved.
+5. **Check every object, then write the result into the plan file.** A catalog read compared
+   with the list row for row — `GET_ELEMENTS()`, `GET_VIEW_TAGS()`, `GET_VIEW_COLUMNS()`: a
+   missing row is a failure that raised no error. For rows, a file of reads, one `SELECT` per
+   view, run with `--continue-on-error` — `statements[i]` is that view's answer. Every row gets
+   its status: done and what the check saw, failed and the message, waiting and its file,
+   skipped and why.
+
+```
+# Base views over ds_erp, schemas sales and billing — 14 tables (GET_JDBC_DATASOURCE_TABLES, not truncated)
+| object | from | action | whose | file | status |
+|---|---|---|---|---|---|
+| bv_erp_sales_customer | sales.customer | create | new | model/erp_base_views.vql | done — 48,210 rows |
+| bv_erp_billing_customer | billing.customer | create | new | model/erp_base_views.vql | failed — permission denied on the table |
+| bv_erp_invoice | billing.invoice | none — exists | not yours, no project file declares it | — | left as it is |
+| bv_erp_sales_audit_log | sales.audit_log | none | — | — | question: wanted? |
+```
+
+The message to the human gives the count per status, names the plan file and the files that
+wait, and lists every row that is not done. Those files are what you showed: the yes to them
+covers each file as it was when shown — a file changed after the yes in any other way than a
+failed statement taken out is planned and shown again.
 
 ## Expressions: VQL is not PostgreSQL
 

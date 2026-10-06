@@ -153,6 +153,15 @@ after every nightly refresh while the job reports `COMPLETE` (`routing-scheduler
 default invalidation mode of a cache job seen only through its symptom. `/denodo:cache` may fire
 on the way in the first and the third; it is not forbidden.
 
+Three guard the requests for a set (T41): base views over every table of several schemas,
+some of them onboarded by hand before (`routing-datasources-bulk`), one VDP tag on every
+column of a few hundred views that holds an email or a phone number, some of them other
+teams' (`routing-catalog-bulk-tag`, which also forbids `/denodo:marketplace` — the phrase
+names a Virtual DataPort tag), and descriptions for three hundred views approved in batches
+(`routing-semantics-bulk`). The pattern they lead to is one section of `/denodo:vql`, *Many
+objects at once*; what has to fire is the domain skill that applies it, so a description
+that loses "every table" or "a few hundred views" shows here.
+
 **`discrimination`** — фразы на границах, где описания конкурируют. Каждый такой кейс несёт
 и положительный, и отрицательный грейдер, потому что проверяется именно выбор между двумя:
 

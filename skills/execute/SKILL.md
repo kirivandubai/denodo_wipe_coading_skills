@@ -93,7 +93,9 @@ the profiles, never in the project.
 
 **`vql plan`** answers `ok` with exit `0` whenever it could read the server, whatever it found;
 `needs_yes` at the top lists the statements that wait for the human, `not_recognised` those the
-table decides. `session: null` (no session id) means only an object an earlier statement of the
+table decides, `actions` counts the statements by what they do, and `duplicates` lists the
+statements that declare one object twice, differently — the later replaces the earlier (without
+`OR REPLACE`, fails), and the entry of each later one names the first in `duplicate_of`. `session: null` (no session id) means only an object an earlier statement of the
 same input creates counts as yours. `project.base` is the commit the plan read declarations
 from — the last one before this session started; `project: null` means the input is not in a
 git work tree, so no file of it vouches for an object that already exists, however old the
@@ -241,8 +243,11 @@ the rest.
 Do not reach for `--continue-on-error` to get past a failure. Read
 `statements[failed_at].error.message`, fix the statement in the file, re-apply the
 whole file: templates are `CREATE OR REPLACE`, so re-applying already-created
-statements is safe. `--continue-on-error` is for the human's explicit request on a
-file whose statements are independent.
+statements is safe. `--continue-on-error` is for two cases: the human's explicit request on a
+file whose statements are independent, and a file of reads that checks many objects, one
+statement per object — there each entry of `statements[]` is one object's answer, and a
+failed read is that object's failure, not the end of the check (`/denodo:vql`, **Many objects
+at once**).
 
 ## Verify before reporting
 

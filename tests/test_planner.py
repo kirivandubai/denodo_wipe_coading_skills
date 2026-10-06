@@ -151,6 +151,66 @@ class PlannerTest(unittest.TestCase):
         self.assertFalse(renamed[2]["needs_yes"], renamed[2]["why"])
         self.assertEqual(renamed[2]["dependents"], [{"database": "sales", "name": "my_report2", "own": True}])
 
+    def test_a_second_declaration_of_one_object_in_the_input_is_named(self):
+        entries = self.plan("CREATE OR REPLACE VIEW fresh AS SELECT 1 AS a FROM Dual()",
+                            "CREATE OR REPLACE VIEW other AS SELECT 1 AS a FROM Dual()",
+                            "CREATE OR REPLACE VIEW fresh AS SELECT 2 AS a FROM Dual()",
+                            "CREATE OR REPLACE VIEW theirs AS SELECT 2 AS a FROM Dual()",
+                            "CREATE OR REPLACE VIEW theirs AS SELECT 3 AS a FROM Dual()")
+        self.assertEqual([e.get("duplicate_of") for e in entries], [None, None, 0, None, 3])
+        self.assertFalse(entries[2]["needs_yes"])   # the input's own: a lost definition, not someone's object
+
+    def test_an_association_waits_unless_both_views_are_yours(self):
+        theirs = ("CREATE OR REPLACE ASSOCIATION a_x REFERENTIAL CONSTRAINT FOLDER = '/06 - associations' "
+                  "ENDPOINT left_role theirs (0,*) ENDPOINT right_role mine PRINCIPAL (1) ADD MAPPING a = b")
+        entry = self.one(theirs)
+        self.assertEqual((entry["action"], entry["needs_yes"]), ("create", True))
+        self.assertIn("sales.theirs", entry["why"])
+        mine = self.plan("CREATE OR REPLACE VIEW fresh AS SELECT 1 AS a FROM Dual()",
+                         "CREATE OR REPLACE ASSOCIATION a_y ENDPOINT l sales.fresh (0,*) "
+                         "ENDPOINT r mine PRINCIPAL (1) ADD MAPPING a = b")
+        self.assertFalse(mine[1]["needs_yes"], mine[1]["why"])
+
+    def test_an_alter_of_an_object_that_does_not_exist_yet_still_waits_and_says_why(self):
+        # Planned before the file that creates the tag, a waiting ALTER TAG file must not read as
+        # the agent's: whose its targets are is decided once the tag exists.
+        entry = self.one("ALTER TAG not_yet ADD_TO ( VIEWS () COLUMNS ( sales.theirs.a ) ) "
+                         "REMOVE_FROM ( VIEWS () COLUMNS () )")
+        self.assertEqual((entry["exists"], entry["needs_yes"]), (False, True))
+        self.assertIn("does not exist", entry["why"])
+        self.assertTrue(entry["conditions"])
+
+    def test_an_association_over_a_view_that_cannot_be_read_waits(self):
+        class Blind(FakeCatalog):
+            def lookup(self, ref):
+                from denodo_cli.catalog import Found
+                return Found(None) if ref.database == "other" else super().lookup(ref)
+        entry = self.one("CREATE OR REPLACE ASSOCIATION a_z ENDPOINT l other.their_view (0,*) "
+                         "ENDPOINT r mine PRINCIPAL (1) ADD MAPPING a = b",
+                         catalog=Blind(self.existing, self.used_by))
+        self.assertTrue(entry["needs_yes"], entry["why"])
+
+    def test_re_declaring_your_association_onto_their_views_waits(self):
+        entries = self.plan("CREATE OR REPLACE ASSOCIATION a_m ENDPOINT l sales.mine (0,*) "
+                            "ENDPOINT r mine_metrics PRINCIPAL (1) ADD MAPPING a = b",
+                            "CREATE OR REPLACE ASSOCIATION a_m ENDPOINT l theirs (0,*) "
+                            "ENDPOINT r mine PRINCIPAL (1) ADD MAPPING a = b")
+        self.assertEqual([e["needs_yes"] for e in entries], [False, True])
+
+    def test_an_identical_re_declaration_is_not_a_duplicate(self):
+        entries = self.plan("CREATE OR REPLACE FOLDER '/01 - connectivity'",
+                            "CREATE OR REPLACE VIEW fresh AS SELECT 1 AS a FROM Dual()",
+                            "CREATE OR REPLACE FOLDER  '/01 - connectivity'")
+        self.assertEqual([e.get("duplicate_of") for e in entries], [None, None, None])
+
+    def test_a_drop_or_rename_between_two_declarations_is_not_a_duplicate(self):
+        entries = self.plan("CREATE OR REPLACE VIEW fresh AS SELECT 1 AS a FROM Dual()",
+                            "DROP VIEW fresh",
+                            "CREATE OR REPLACE VIEW fresh AS SELECT 2 AS a FROM Dual()",
+                            "ALTER VIEW fresh RENAME fresh2",
+                            "CREATE OR REPLACE VIEW fresh AS SELECT 3 AS a FROM Dual()")
+        self.assertEqual([e.get("duplicate_of") for e in entries], [None] * 5)
+
     def test_identity_decides_not_the_name(self):
         catalog = FakeCatalog({**self.existing, ("view", "sales", "mine"): ("_other", "derived")})
         entry = self.one("ALTER VIEW mine CACHE FULL", catalog=catalog)

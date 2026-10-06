@@ -105,7 +105,10 @@ def _record(ledger, profile: Profile, transport, effects: list[list[tuple]], bef
                 ledger.record_created(server, ref, internal_id=internal_id, source=source,
                                       statement=statements[index], now=now)
                 report["recorded"].append(ref.label())
-            elif op == "drop" and ledger.find(server, ref):
+            elif op == "drop" and (ledger.find(server, ref) or (ref.type == "database" and any(
+                    o["status"] == "present" and (o.get("database") or "").lower() == ref.name.lower()
+                    for o in ledger.objects(server)))):
+                # a database the session did not create may still hold objects it did
                 ledger.record_dropped(server, ref, now=now)
                 report["dropped"].append(ref.label())
             elif op == "rename" and ledger.find(server, ref):

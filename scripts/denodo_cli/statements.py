@@ -44,6 +44,7 @@ class Statement:
     connect: str | None = None        # CONNECT DATABASE
     tags_assigned: list[str] = field(default_factory=list)
     tag_targets: list[tuple[str, str]] = field(default_factory=list)   # (database, view)
+    endpoints: list[tuple[str, str]] = field(default_factory=list)     # (database, view) of an association
     identifiers: list[str] = field(default_factory=list)  # names a security statement may touch
     procedure: str | None = None
     proc_args: list[str] = field(default_factory=list)
@@ -240,6 +241,18 @@ def _tag_assignment(toks: list[_Tok], database: str | None, st: Statement) -> No
                 k += 1
 
 
+def _endpoints(toks: list[_Tok], database: str | None) -> list[tuple[str, str]]:
+    """The two views of ``ENDPOINT <role> <view> [PRINCIPAL] (<multiplicity>)``."""
+    out: list[tuple[str, str]] = []
+    for i, tok in enumerate(toks):
+        if tok.up != "ENDPOINT" or i + 2 >= len(toks) or not toks[i + 1].is_name():
+            continue
+        parts, _ = _qname(toks, i + 2)
+        if parts:
+            out.append((parts[0] if len(parts) > 1 else database, parts[-1]))
+    return out
+
+
 def _column_tags(toks: list[_Tok]) -> list[str]:
     tags: list[str] = []
     for i, tok in enumerate(toks):
@@ -314,6 +327,8 @@ def parse_statement(text: str, database: str | None) -> Statement:
             _tag_assignment(toks, database, st)
             if st.tag_targets:
                 st.tags_assigned = [obj.name.lower()]
+        elif obj.type == "association":
+            st.endpoints = _endpoints(toks, obj.database)
         elif obj.type == "view":
             st.tags_assigned = _column_tags(toks)
             if st.tags_assigned:

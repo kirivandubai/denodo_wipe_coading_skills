@@ -95,6 +95,15 @@ class LedgerTest(unittest.TestCase):
         self.assertEqual(self.ledger.find(SERVER, VIEW)["internal_id"], "_b2")
         self.assertEqual(len(self.ledger.objects(SERVER)), 2)
 
+    def test_a_new_object_under_a_name_the_ledger_still_holds_replaces_the_stale_entry(self):
+        # The caller records only an object that did not exist before the statement: an entry
+        # still "present" under that name is one the ledger never saw go — dropped by someone
+        # else, or with a database or data source the session did not create.
+        self.ledger.record_created(SERVER, VIEW, internal_id="_a1", source=None, statement="", now=NOW)
+        self.ledger.record_created(SERVER, VIEW, internal_id="_b2", source=None, statement="", now=NOW)
+        self.assertEqual(self.ledger.find(SERVER, VIEW)["internal_id"], "_b2")
+        self.assertEqual([e["status"] for e in self.ledger.objects(SERVER)], ["dropped", "present"])
+
     def test_the_file_is_json(self):
         self.ledger.record_created(SERVER, VIEW, internal_id="_a1", source=None, statement="", now=NOW)
         doc = json.loads(self.ledger.path.read_text())

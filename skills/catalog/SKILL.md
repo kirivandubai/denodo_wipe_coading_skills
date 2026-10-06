@@ -93,8 +93,13 @@ CREATE OR REPLACE TAG finance_sensitive
   are what carry the database name, so a tag file needs no `CONNECT DATABASE`.
 - Several at once: `CREATE OR REPLACE TAGS ( a DESCRIPTION = '…' ADD_TO (…) REMOVE_FROM (…), b … );`
 
-The other way to attach a tag is `TAGS (pii)` inside `CREATE OR REPLACE VIEW` — that
-belongs to the view's file (`/denodo:views`).
+**A view with a file in the project carries its tags in that file**: `TAGS ( pii )` on the
+field in its `CREATE OR REPLACE VIEW` or `CREATE TABLE` (`/denodo:views`, `/denodo:security`).
+Re-applying the file without them removes every assignment, whichever statement made it — so
+`ADD_TO` is for views that have no file you apply. A view over a `UNION` refuses field
+properties (`The field properties can only be specified for derived fields`); its file gets an
+`ALTER TAG … ADD_TO` for its columns, right after the view — *verified: 9.5.1 (live,
+2026-10-06)*.
 
 **A tag that a global security policy names is not a label.** Put on a column, it masks or
 filters that column for the policy's audience; taken off — or lost when the view's file is
@@ -105,6 +110,47 @@ A row means the change is `/denodo:security`'s, and the human's yes comes first.
 
 The tag the Denodo MCP Server shows views by (`mcp` in its shipped configuration) — which
 views carry it, and why an agent does not see a view — is `/denodo:semantics`.
+
+### One tag on many columns
+
+"Every column that holds an email", across a database, is a list first (`/denodo:vql`, **Many
+objects at once**). Two reads give it whole — every field, and for every field of a derived view
+the base columns its value comes from:
+
+```sql
+-- verified: 9.5.1 (live, 2026-10-06)
+SELECT view_name, column_name, column_vdp_type
+  FROM GET_VIEW_COLUMNS() WHERE input_database_name = 'sales_analytics';
+
+SELECT e.name AS view_name, d.column_name, d.dependency_name, d.dependency_column_name
+  FROM GET_ELEMENTS() AS e
+       INNER JOIN COLUMN_DEPENDENCIES() AS d
+       ON (d.input_view_database_name = e.database_name AND d.input_view_name = e.name)
+ WHERE e.input_database_name = 'sales_analytics' AND e.input_type = 'views'
+   AND e.subtype = 'derived' AND d.dependency_column_name IS NOT NULL;
+```
+
+- A name pattern finds candidates, not the list. A field renamed on the way up
+  (`notify_to` over `email`) or one that carries several (`handle`, a union of emails and phone
+  numbers) is on the list by its lineage. A field that matches and holds something else — an
+  `email_verified` flag, an `email_bounce_count` — is a row with "none" and why: look at its
+  values. Whether a column falls inside what the human named is theirs to say — a question row.
+- Each row says where its assignment goes: into the view's file when the project applies one
+  (`TAGS`, or the `ALTER TAG` after a union view) — whoever created the view, or its next apply
+  takes the tag off — and into one `ALTER TAG … ADD_TO` file for the views that have none. Which
+  rows wait is the usual rule: a view you did not create in this session waits for the yes,
+  whichever file carries its tag (`/denodo:vql`) — one yes for the list, or one per batch when
+  the list is longer than one sitting reads. The tag itself first, in a file of its own: the
+  views' files name it.
+- One `CREATE OR REPLACE TAG … ADD_TO` over your own views' columns is the shortcut that loses
+  them: the next apply of any of those files takes its tags off, and nothing reports it.
+- An assignment belongs to one view: a tag on a base view's column does not appear in
+  `GET_VIEW_TAGS()` for the views that pass the column through — a report that reads the tags
+  view by view needs each of those columns on the list (a security policy masks through them
+  anyway: `/denodo:security`) — *verified: 9.5.1 (live, 2026-10-06)*.
+- **The check is the list against `GET_VIEW_TAGS()`**, row for row: `SELECT view_name,
+  column_name FROM GET_VIEW_TAGS() WHERE input_database_name = '<db>' AND tag_name = '<tag>'`
+  returns exactly the planned columns — a column the statement names wrongly is simply absent.
 
 ## What you need before filling the template
 

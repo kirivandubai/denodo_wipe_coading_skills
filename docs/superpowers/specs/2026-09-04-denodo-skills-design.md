@@ -433,6 +433,54 @@ Denodo не существует — `CREATE DATABASE IF NOT EXISTS` даёт
 числовым `id`, дубликат имени — `409`, а статус повторного `DELETE` у разных объектов
 разный (`500`, `200`, `404`), так что опираться можно только на предварительный поиск.
 
+### 6.5 Many objects at once (T41)
+
+A request that names a set — every table of a schema, every column that holds an email, every
+view of a database — is the most frequent ask the review of all skills found uncovered
+([review](2026-10-05-skills-review.md), recommendations). It gets no skill of its own: the core
+`vql` carries one pattern, and the domain skills apply it where their objects come in sets.
+
+**The pattern** (`vql`, *Many objects at once*): the list comes from the server, whole, in one
+read (`--max-rows`, and `truncated` checked — the tool keeps 100 rows by default); a plan file
+beside the statements, `<change>.plan.md`, with one row per candidate and the decision in the row
+— what it comes from, the action or why none, whose it is, the file that carries it, a status;
+the statements generated from the list into one file per yes — what is the agent's in the file it
+applies, what waits in a file of its own, and, when the human has to read every object (texts,
+tags on views of others), batches of tens of objects, a file and a yes each; the apply as always;
+a check of every object — a catalog read compared with the list row for row, and for rows a file
+of reads, one statement per view, run with `--continue-on-error` — whose result goes into the
+plan's status column. The message names the plan file, the counts per status and every row that
+is not done; the yes covers each file as it was shown.
+
+**Why a file, not the message.** The baselines of T41 (23 tables, 21 views, 26 views) kept the
+safety rules — the session ledger and `vql plan` of T39 told them whose each object was — and
+failed on the list instead: a tag on eleven of the agent's own views put on with one `ADD_TO`
+outside their files, gone at the next apply; inventories cut at the tool's row limit; one
+generator call per table; and no artifact that says, per object, what happened. The plan file is
+that artifact, and the human's one yes is to the files it names.
+
+**What the tool adds.** `vql plan` reports `actions` (statements counted by what they do) and
+`duplicates` — two statements of one input declaring one object, the later silently replacing the
+earlier, which is what a naming rule that maps two tables to one name produces in a generated
+file. `vql run --continue-on-error` gets its second sanctioned use, a file of reads that checks
+many objects. Nothing refuses: the plan still informs only (roadmap 2.1).
+
+**Where each domain applies it.**
+
+- `datasources` (`references/jdbc.md`, *Every table of a schema*): what already has a base view,
+  by the table it reads (`GET_ELEMENTS` joined with `GET_SOURCE_TABLE`, JDBC base views only — one
+  of another kind fails the whole query); every wrapper and base view in one query
+  (`GET_JDBC_DATASOURCE_TABLES` joined with `GENERATE_VQL_TO_CREATE_JDBC_BASE_VIEW`, the name an
+  expression, the wrapper renamed by `REPLACE`, constant inputs in `WHERE` — in `ON` they fail);
+  the generator's first row, `CREATE OR REPLACE FOLDER` without a description, left out — it
+  clears the folder's description, and over a folder older than the session it is a yes.
+- `catalog` (*One tag on many columns*) and `security`: the list by name and by lineage
+  (`GET_ELEMENTS` joined with `COLUMN_DEPENDENCIES`); a tag on a view with a file goes into the
+  file — a view over a `UNION` refuses field properties, so its file carries an `ALTER TAG` right
+  after the view; the check is `GET_VIEW_TAGS` against the list.
+- `semantics` (*A database of many views: batches*): every view still profiled, batches of what
+  the human reads, base views first because their field texts are inherited upward.
+
 ## 7. Слой исполнения `/denodo:execute`
 
 ### 7.1 Транспорт
