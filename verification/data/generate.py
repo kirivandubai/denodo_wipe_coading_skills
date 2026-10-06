@@ -17,7 +17,8 @@ their CHAR width, an empty field for NULL — so one set of wrappers reads eithe
   4 lines, the numbers the JSON reference states.
 
 Deterministic (a fixed seed, no clock): running it again rewrites the same bytes, and a unit test
-holds the committed files to that. Standard library only:
+holds the committed files to that. Only random() is drawn from — the one method whose sequence
+Python keeps the same across versions for a seed. Standard library only:
 
     python3 verification/data/generate.py
 """
@@ -106,22 +107,27 @@ def reason():
         yield reason_sk, _text(f"R{reason_sk:015d}", 16), _text(description, 100)
 
 
+def _int(rng: random.Random, low: int, high: int) -> int:
+    """An integer in [low, high] from random() alone."""
+    return low + int(rng.random() * (high - low + 1))
+
+
 def _maybe(rng: random.Random, value, share: float = 0.03):
     return None if rng.random() < share else value
 
 
 def _money(rng: random.Random, low: float, high: float) -> str:
-    return f"{rng.uniform(low, high):.2f}"
+    return f"{low + rng.random() * (high - low):.2f}"
 
 
 def store_returns(rng: random.Random, count: int = 2000):
     for ticket in range(1, count + 1):
         amount = float(_money(rng, 1, 2000))
         tax = round(amount * 0.08, 2)
-        yield (_maybe(rng, rng.randint(FIRST_DATE_KEY, LAST_DATE_KEY)), rng.randint(28800, 75600),
-               rng.randint(1, 18000), _maybe(rng, rng.randint(1, 100000)), rng.randint(1, 1920800),
-               rng.randint(1, 7200), rng.randint(1, 50000), rng.randint(1, 12),
-               _maybe(rng, rng.randint(1, len(REASONS))), ticket, rng.randint(1, 100),
+        yield (_maybe(rng, _int(rng, FIRST_DATE_KEY, LAST_DATE_KEY)), _int(rng, 28800, 75600),
+               _int(rng, 1, 18000), _maybe(rng, _int(rng, 1, 100000)), _int(rng, 1, 1920800),
+               _int(rng, 1, 7200), _int(rng, 1, 50000), _int(rng, 1, 12),
+               _maybe(rng, _int(rng, 1, len(REASONS))), ticket, _int(rng, 1, 100),
                f"{amount:.2f}", f"{tax:.2f}", f"{amount + tax:.2f}", _money(rng, 0.5, 100),
                _money(rng, 0, 1000), _money(rng, 0, amount), _money(rng, 0, 500),
                _money(rng, 0, 500), _money(rng, 0, 1500))
@@ -129,14 +135,14 @@ def store_returns(rng: random.Random, count: int = 2000):
 
 def web_returns(rng: random.Random, count: int = 1000):
     for order in range(1, count + 1):
-        customer, cdemo, hdemo, addr = (rng.randint(1, 100000), rng.randint(1, 1920800),
-                                        rng.randint(1, 7200), rng.randint(1, 50000))
+        customer, cdemo, hdemo, addr = (_int(rng, 1, 100000), _int(rng, 1, 1920800),
+                                        _int(rng, 1, 7200), _int(rng, 1, 50000))
         amount = float(_money(rng, 1, 3000))
         tax = round(amount * 0.08, 2)
-        yield (_maybe(rng, rng.randint(FIRST_DATE_KEY, LAST_DATE_KEY)), rng.randint(0, 86399),
-               rng.randint(1, 18000), customer, cdemo, hdemo, addr, customer, cdemo, hdemo, addr,
-               rng.randint(1, 60), _maybe(rng, rng.randint(1, len(REASONS))), order,
-               rng.randint(1, 100), f"{amount:.2f}", f"{tax:.2f}", f"{amount + tax:.2f}",
+        yield (_maybe(rng, _int(rng, FIRST_DATE_KEY, LAST_DATE_KEY)), _int(rng, 0, 86399),
+               _int(rng, 1, 18000), customer, cdemo, hdemo, addr, customer, cdemo, hdemo, addr,
+               _int(rng, 1, 60), _maybe(rng, _int(rng, 1, len(REASONS))), order,
+               _int(rng, 1, 100), f"{amount:.2f}", f"{tax:.2f}", f"{amount + tax:.2f}",
                _money(rng, 0.5, 100), _money(rng, 0, 1000), _money(rng, 0, amount),
                _money(rng, 0, 500), _money(rng, 0, 500), _money(rng, 0, 1500))
 
@@ -166,7 +172,7 @@ def customers(rng: random.Random, count: int = 40):
         country, city = PLACES[number * 3 % 10]
         email = "" if number % 9 == 0 else f"{first.lower()}.{last.lower()}{number}@example.com"
         created = f"20{21 + number % 5}-{1 + number % 12:02d}-{1 + number % 28:02d}"
-        yield f"C-{10000 + number}", first, last, email, country, city, created, rng.choice("ABC")
+        yield f"C-{10000 + number}", first, last, email, country, city, created, "ABC"[_int(rng, 0, 2)]
 
 
 ORDERS = [

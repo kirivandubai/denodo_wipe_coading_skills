@@ -16,6 +16,7 @@ what ``verify``'s ``_body()`` does before a step ever touches the network.
 
 from __future__ import annotations
 
+import re
 import unittest
 from pathlib import Path
 
@@ -261,7 +262,8 @@ class EveryMarkedBlockRunsOrSaysWhyTest(unittest.TestCase):
 
     def test_every_not_run_entry_is_a_marked_block_no_step_runs(self):
         marked = marked_blocks(REPO)
-        run = {self._where(step.address) for step in self.chain.steps if step.address}
+        run = {self._where(address) for step in self.chain.steps
+               for address in [step.address, *(spec["address"] for spec in step.files.values())] if address}
         for address, reason in self.chain.not_run.items():
             with self.subTest(address=address):
                 where = self._where(address)
@@ -285,3 +287,91 @@ class EveryMarkedBlockRunsOrSaysWhyTest(unittest.TestCase):
                 if value == DIALECT:
                     for product, table in self.chain.dialects.items():
                         self.assertIn(name, table, f"[dialects.{product}] lacks {name}")
+
+
+class ASkippedStepTakesItsDependantsWithItTest(unittest.TestCase):
+    """A step the server cannot run is skipped, and so must be every later step that uses what
+    it creates — through ``needs``, or by being gated by the same flag, feature and value.
+    Otherwise the dependant runs, fails on the missing object, and stops the whole chain on a
+    server the chain was meant to describe (T40 review).
+
+    Static, over the real manifest: what a step creates is read from its rendered text
+    (``CREATE … <name>``, and the base view ``CREATE_REMOTE_TABLE`` names); what it uses, from
+    the names in a later step's text and check.
+    """
+
+    CREATES = re.compile(
+        r"(?is)\bCREATE\s+(?:OR\s+REPLACE\s+)?(?:INTERFACE\s+VIEW|MATERIALIZED\s+TABLE|REMOTE\s+TABLE|"
+        r"SUMMARY\s+VIEW|VIEW|TABLE|TAG|ROLE|USER|GLOBAL_SECURITY_POLICY|ASSOCIATION|VQL\s+PROCEDURE|TYPE|"
+        r"DATASOURCE\s+\w+|WRAPPER\s+\w+)\s+([A-Za-z_]\w*)")
+    PROCEDURE_VIEW = re.compile(r"base_view_name\s*=\s*'([A-Za-z_]\w*)'")
+
+    def setUp(self):
+        self.chain = load_chain(MANIFEST)
+        self.values = {name: "0" if value in ("@server", "@dialect") else value
+                       for name, value in self.chain.values.items()}
+        self.markers = {name for name, value in self.chain.values.items() if value in ("@server", "@dialect")}
+
+    def _text(self, step) -> tuple[str, str]:
+        if step.kind == "fixture":
+            body = step.vql or ""
+        else:
+            body = render(load_block(REPO, step.address).body, step.substitute,
+                          {**self.values, **{name: "0" for name in step.capture}, **CAPTURED})
+        filled = PLACEHOLDER.sub(lambda m: self.values.get(m.group(1), m.group(0)), body)
+        check = PLACEHOLDER.sub(lambda m: self.values.get(m.group(1), m.group(0)), step.check or "")
+        return filled, check
+
+    def _gates(self, step, captured_before: set[str]) -> tuple[frozenset, frozenset, frozenset]:
+        from denodo_cli.commands.verify import _step_value_names
+        flags = {name for name in ("ai", "writes", "marketplace", "scheduler") if getattr(step, name)}
+        if step.channel == "denodotest":
+            flags.add("denodotest")
+        names = _step_value_names(step, REPO)
+        values = (names & self.markers) | {f"captured:{n}" for n in names & captured_before}
+        return frozenset(step.requires), frozenset(flags), frozenset(values)
+
+    def test_every_object_a_gated_step_creates_is_used_only_by_steps_gated_with_it(self):
+        creators: dict[str, list] = {}
+        gates: dict[str, tuple] = {}
+        needs: dict[str, set[str]] = {}
+        captured: set[str] = set()
+        problems = []
+        for step in self.chain.steps:
+            gates[step.id] = self._gates(step, captured)
+            needs[step.id] = set(step.needs)
+            for needed in step.needs:
+                needs[step.id] |= needs.get(needed, set())
+            body, check = self._text(step)
+            text = body + "\n" + check
+            made = set(self.CREATES.findall(body)) | set(self.PROCEDURE_VIEW.findall(body))
+            for name, makers in creators.items():
+                if name in made or not re.search(rf"\b{re.escape(name)}\b", text):
+                    continue
+                if (step.id, name) in NOT_A_USE:
+                    continue
+                if not any(self._covered(gates[maker], gates[step.id]) or maker in needs[step.id]
+                           for maker in makers):
+                    problems.append(f"{step.id} uses {name}, created only by {makers}, which may be skipped "
+                                    f"when {step.id} runs — add needs = [...] or the same gates")
+            for name in made:
+                creators.setdefault(name, []).append(step.id)
+            captured |= set(step.capture)
+        self.assertEqual(problems, [])
+
+    @staticmethod
+    def _covered(maker, user) -> bool:
+        """The maker runs whenever the user does: every gate of the maker is a gate of the user."""
+        return all(m <= u for m, u in zip(maker, user))
+
+
+# Captured values render as "0" for the static read above.
+CAPTURED = {"project_id": "0", "job_id": "0", "export_job_id": "0", "tag_id": "0", "category_id": "0",
+            "provider_type_id": "0", "tool_server_id": "0", "renamed_view_id": "0"}
+
+# A name in a later step's text that is not a use of the object, each with why.
+NOT_A_USE = {
+    ("semantics-audit", "verify_mcp"): "a filter on a tag's name: without the tag the audit lists no view, and runs",
+    ("materialize-drop-readers", "household_band_detail"): "DROP VIEW IF EXISTS: nothing to drop is not an error",
+    ("marketplace-tag", "verify_pii"): "a marketplace tag of the same name — another object on another server",
+}

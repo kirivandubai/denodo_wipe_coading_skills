@@ -318,6 +318,8 @@ vql = "SELECT 1 FROM DUAL()"
 
 
     VALUES_CHAIN = """
+local_values = ["fixture_base"]
+
 [values]
 database = "denodo_skills_test"
 fixture_base = "https://example.org/data"
@@ -360,6 +362,20 @@ vql = "SELECT '{fixture_base}' FROM DUAL()"
                                  "--values", str(Path(self.tmp.name) / "missing.toml"))
         self.assertEqual(code, 2)
         self.assertIn("missing.toml", doc["error"]["message"])
+
+    def test_the_values_file_may_not_move_the_test_database(self):
+        (Path(self.tmp.name) / "verify.toml").write_text('[dev]\ndatabase = "sales"\n', encoding="utf-8")
+        doc, code = self.run_cli("verify", "--env", "dev", "--chain", str(self.chain_file()))
+        self.assertEqual(code, 2)
+        self.assertIn("--database", doc["error"]["message"])
+        self.assertEqual(FakeVql.executed, [])
+
+    def test_without_names_a_feature(self):
+        doc, code = self.run_cli("verify", "--env", "dev", "--chain", str(self.chain_file()), "--without", "cache")
+        self.assertEqual(code, 0, doc)
+        self.assertEqual(doc["assumed_missing"], ["cache"])
+        doc, code = self.run_cli("verify", "--env", "dev", "--chain", str(self.chain_file()), "--without", "caches")
+        self.assertEqual(code, 2)
 
     def test_a_typo_in_the_values_file_is_a_usage_error(self):
         (Path(self.tmp.name) / "verify.toml").write_text('[dev]\nfixture_bas = "/srv"\n', encoding="utf-8")

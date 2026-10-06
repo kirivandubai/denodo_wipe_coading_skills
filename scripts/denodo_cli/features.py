@@ -52,10 +52,10 @@ FEATURE_REASONS: dict[str, str] = {
 def _rows(transport, statement: str) -> list[dict[str, Any]] | None:
     try:
         result = transport.execute(statement)
-    except Exception:  # noqa: BLE001 — a refusal is an unknown, not a failed probe
+        columns = result.columns or []
+        return [dict(zip(columns, row)) for row in (result.rows or [])]
+    except Exception:  # noqa: BLE001 — a refusal, or an answer of another shape, is an unknown
         return None
-    columns = result.columns or []
-    return [dict(zip(columns, row)) for row in (result.rows or [])]
 
 
 def _flag(value: Any) -> bool | None:
@@ -110,8 +110,10 @@ def read_features(transport) -> dict:
     params = _parameters(transport)
     llm = embedding = summary_rewrite = data_movement = None
     if params is not None:
-        llm = {"on": bool(_flag(params.get("llm_enabled")) and params.get("llm_model")),
-               "provider": params.get("llm_provider"), "model": params.get("llm_model")}
+        enabled = _flag(params.get("llm_enabled"))
+        # A model and an unset switch say nothing about whether it is on: unknown, not off.
+        on = (False if enabled is False or not params.get("llm_model") else True if enabled else None)
+        llm = {"on": on, "provider": params.get("llm_provider"), "model": params.get("llm_model")}
         embedding = {"on": bool(params.get("embedding_model")) and _flag(params.get("embedding_disabled")) is not True,
                      "provider": params.get("embedding_provider"), "model": params.get("embedding_model")}
         summary_rewrite = _flag(params.get("summary_rewrite"))
@@ -151,14 +153,16 @@ def scheduler_data_source(rest, user: str) -> tuple[str | None, list[dict]]:
     """
     try:
         result = rest.call("GET", "/public/api/dataSources", timeout=30)
+        if not result.ok:
+            return None, []
+        body = result.body
     except Exception:  # noqa: BLE001
         return None, []
-    if not result.ok:
-        return None, []
-    body = result.body
     if isinstance(body, dict):
         body = body.get("dataSources") or body.get("list") or []
-    sources = [s for s in body or [] if isinstance(s, dict) and str(s.get("type", "")).upper() == "VDP"]
+    if not isinstance(body, list):
+        return None, []
+    sources = [s for s in body if isinstance(s, dict) and str(s.get("type", "")).upper() == "VDP"]
     candidates = [{"id": s.get("id"), "projectName": s.get("projectName"), "login": s.get("login"),
                    "connectionURI": s.get("connectionURI")} for s in sources]
     mine = [c for c in candidates if c["login"] == user]

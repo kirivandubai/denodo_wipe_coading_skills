@@ -51,7 +51,10 @@ def _check_vdp(profile: Profile, vql_factory: Callable) -> tuple[dict, dict | No
         vdp = {"ok": True, "server_version": version,
                "admin": is_admin(transport, profile.user),
                "impersonation": can_impersonate(transport, profile.user)}
-        features = read_features(transport)
+        try:
+            features = read_features(transport)
+        except Exception:  # noqa: BLE001 — the features are a report, never a failed connection
+            features = {}
         features.update(admin=vdp["admin"], impersonation=vdp["impersonation"])
         return vdp, features
     except Exception as exc:  # noqa: BLE001

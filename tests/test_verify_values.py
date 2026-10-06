@@ -359,5 +359,185 @@ class RequiresTest(unittest.TestCase):
             load_chain(self.path)
 
 
+NEEDS = """
+[values]
+database = "d"
+embedding_model = "@server"
+
+[[step]]
+id = "vectors"
+kind = "fixture"
+channel = "vql"
+vql = "CREATE VIEW v AS SELECT EMBED_AI('x', '{embedding_model}') AS e FROM Dual();"
+
+[[step]]
+id = "search"
+kind = "fixture"
+channel = "vql"
+needs = ["vectors"]
+vql = "SELECT * FROM v;"
+
+[[step]]
+id = "search-again"
+kind = "fixture"
+channel = "vql"
+needs = ["search"]
+vql = "SELECT * FROM v WHERE 1 = 1;"
+
+[[step]]
+id = "unrelated"
+kind = "fixture"
+channel = "vql"
+vql = "SELECT 'unrelated';"
+"""
+
+CAPTURE = """
+[values]
+database = "d"
+
+[[step]]
+id = "make-job"
+kind = "template"
+channel = "http"
+scheduler = true
+address = "skills/marketplace/SKILL.md#Tag, with an assignment"
+capture = { job_id = "id" }
+
+[[step]]
+id = "use-job"
+kind = "fixture"
+channel = "vql"
+vql = "SELECT '{job_id}';"
+"""
+
+
+class SkipsTravelTest(unittest.TestCase):
+    """A skip must not turn into a failure further down (T40 review): a step that needs a
+    skipped step is skipped with its reason, transitively, and a value a skipped step would
+    have captured is unresolved for every later step that names it."""
+
+    def setUp(self):
+        reset_server()
+        self.dir = Path(tempfile.mkdtemp())
+        self.path = self.dir / "chain.toml"
+
+    def run_text(self, text, **kw):
+        self.path.write_text(text, encoding="utf-8")
+        return run_chain(profile(), load_chain(self.path), root=self.dir, vql_factory=Server, **kw)
+
+    def test_a_skip_takes_the_steps_that_need_it_transitively(self):
+        reset_server(settings=None)              # a non-administrator: the model stays unresolved
+        doc, code = self.run_text(NEEDS)
+        self.assertEqual(code, 0, doc)
+        steps = {s["id"]: s for s in doc["steps"]}
+        self.assertEqual(steps["vectors"]["cause"], "value")
+        self.assertEqual(steps["search"]["cause"], "needs")
+        self.assertIn("'vectors'", steps["search"]["reason"])
+        self.assertEqual(steps["search-again"]["cause"], "needs")
+        self.assertFalse(steps["unrelated"]["skipped"])
+        self.assertNotIn("SELECT * FROM v;", Server.sent)
+        self.assertEqual(doc["summary"]["skipped_because"], {"value": 1, "needs": 2})
+
+    def test_needs_must_name_an_earlier_step(self):
+        self.path.write_text(NEEDS.replace('needs = ["vectors"]', 'needs = ["search-again"]'), encoding="utf-8")
+        with self.assertRaisesRegex(ChainError, "not an earlier step"):
+            load_chain(self.path)
+
+    def test_what_a_skipped_step_would_capture_is_never_sent_as_a_placeholder(self):
+        root = self.dir
+        (root / "skills" / "marketplace").mkdir(parents=True)
+        (root / "skills" / "marketplace" / "SKILL.md").write_text(
+            "## Tag, with an assignment\n\n```bash\n# verified: 9.5.1 (live, 2026-09-10)\n"
+            "api post /public/api/tags --json '{\"name\":\"x\"}'\n```\n", encoding="utf-8")
+        doc, code = self.run_text(CAPTURE)           # no --with-scheduler: make-job is skipped
+        self.assertEqual(code, 0, doc)
+        use = doc["steps"][1]
+        self.assertTrue(use["skipped"])
+        self.assertIn("make-job", use["reason"])
+        self.assertFalse(any("{job_id}" in s for s in Server.sent))
+
+    def test_without_treats_the_server_as_lacking_a_feature(self):
+        self.path.write_text(REQUIRES, encoding="utf-8")
+        doc, code = run_chain(profile(), load_chain(self.path), root=self.dir, vql_factory=Server,
+                              assume_missing=("enterprise_plus",))
+        self.assertEqual(code, 0, doc)
+        self.assertEqual([s.get("cause") for s in doc["steps"]], ["server", None])
+        self.assertEqual(doc["assumed_missing"], ["enterprise_plus"])
+
+    def test_a_value_named_in_the_skill_block_itself_counts(self):
+        (self.dir / "skills" / "x").mkdir(parents=True)
+        (self.dir / "skills" / "x" / "SKILL.md").write_text(
+            "## Search\n\n```sql\n-- verified: 9.5.1 (live, 2026-10-02)\n"
+            "SELECT EMBED_AI('x', '{embedding_model}') FROM Dual();\n```\n", encoding="utf-8")
+        reset_server(settings=None)
+        doc, code = self.run_text('[values]\ndatabase = "d"\nembedding_model = "@server"\n'
+                                  '[[step]]\nid = "s"\nkind = "template"\nchannel = "vql"\n'
+                                  'address = "skills/x/SKILL.md#Search"\n')
+        self.assertEqual(doc["steps"][0]["cause"], "value")
+
+    def test_the_reason_names_the_default_values_file_when_there_is_none_yet(self):
+        import os
+        from unittest import mock
+        reset_server(settings=None)
+        profiles = self.dir / "conf" / "profiles.toml"
+        with mock.patch.dict(os.environ, {"DENODO_PROFILES": str(profiles)}):
+            doc, _ = self.run_text(NEEDS)
+        self.assertIn(str(self.dir / "conf" / "verify.toml"), doc["steps"][0]["reason"])
+
+
+class SettableValuesTest(unittest.TestCase):
+    MANIFEST = """
+local_values = ["fixture_base"]
+
+[values]
+database = "denodo_skills_test"
+tag_prefix = "verify_"
+fixture_base = "https://example.org/data"
+embedding_model = "@server"
+write_dialect = "@server"
+write_identity = "@dialect"
+jdbc_password = "@encrypt-throwaway"
+
+[dialects.sqlserver]
+write_identity = "INT IDENTITY(1001,1)"
+
+[[step]]
+id = "a"
+kind = "fixture"
+channel = "vql"
+vql = "SELECT 1;"
+"""
+
+    def setUp(self):
+        self.path = Path(tempfile.mkdtemp()) / "chain.toml"
+        self.path.write_text(self.MANIFEST, encoding="utf-8")
+        self.chain = load_chain(self.path)
+
+    def test_a_file_may_set_installation_values_only(self):
+        self.assertEqual(self.chain.settable_values(),
+                         {"fixture_base", "embedding_model", "write_dialect", "write_identity"})
+
+    def test_the_chain_s_own_values_are_refused_saying_why(self):
+        values = self.path.with_name("verify.toml")
+        own = self.chain.known_values() - self.chain.settable_values()
+        for key in ("database", "tag_prefix", "jdbc_password"):
+            values.write_text(f'[lab]\n{key} = "x"\n', encoding="utf-8")
+            with self.subTest(key=key), self.assertRaisesRegex(ChainError, "value of the chain itself"):
+                load_values_file(values, "lab", self.chain.settable_values(), own=own)
+
+    def test_local_values_must_be_values(self):
+        self.path.write_text(self.MANIFEST.replace('local_values = ["fixture_base"]', 'local_values = ["nope"]'),
+                             encoding="utf-8")
+        with self.assertRaisesRegex(ChainError, "local_values"):
+            load_chain(self.path)
+
+    def test_a_product_name_matches_its_dialect_table_in_any_case(self):
+        from denodo_cli.commands.verify import resolve_values
+        values, origin, _ = resolve_values(self.chain, database=None, file_values=None,
+                                           server={"write_dialect": "SQLServer"}, values_file=None,
+                                           profile_name="lab")
+        self.assertEqual(values["write_identity"], "INT IDENTITY(1001,1)")
+
+
 if __name__ == "__main__":
     unittest.main()

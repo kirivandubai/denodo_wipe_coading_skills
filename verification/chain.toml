@@ -50,6 +50,11 @@
 # database and views behind in a catalog everyone shares, as orphans (localElements in
 # .../changes), while reporting itself green.
 
+# The literal values an installation may replace in its values file: where the fixtures read
+# their files from. Every other literal value is the chain's own — the test database and the
+# prefix decide what the run creates and drops — and a values file setting one is refused.
+local_values = ["fixture_route", "fixture_base"]
+
 [values]
 database = "denodo_skills_test"
 tag_prefix = "verify_"
@@ -848,6 +853,7 @@ id = "cache-load"
 kind = "template"
 channel = "vql"
 requires = ["cache"]
+needs = ["cache-on"]
 address = "skills/cache/SKILL.md#Load it — a file of its own"
 substitute = { sales_analytics = "{database}" }
 database = "{database}"
@@ -993,6 +999,7 @@ id = "cache-off"
 kind = "template"
 channel = "vql"
 requires = ["cache"]
+needs = ["cache-on"]
 address = "skills/cache/SKILL.md#Clear it, switch it off"
 substitute = { sales_analytics = "{database}" }
 database = "{database}"
@@ -1188,12 +1195,11 @@ vql = "CREATE OR REPLACE USER {tag_prefix}reader EXTERNAL 'Verification chain: t
 id = "security-role"
 kind = "template"
 channel = "vql"
-requires = ["impersonation"]
 address = "skills/security/SKILL.md#A role that reads the marts, given to a user"
 substitute = { sales_analytics = "{database}", sales_analyst = "{tag_prefix}sales_analyst", mlee = "{tag_prefix}reader" }
-# The user reads the view through the role alone: EXECUTE on the view is enough, nothing below
-# it is granted.
-check = "SELECT COUNT(*) AS n FROM household_income HAVING COUNT(*) > 0 CONTEXT ('impersonate_user' = '{tag_prefix}reader')"
+# The grant on the view arrives through the role. That the user then reads the view through it
+# alone is checked as the user, by impersonation, in security-read-as-someone below.
+check = "SELECT username FROM CATALOG_PERMISSIONS() WHERE dbname = '{database}' AND username = '{tag_prefix}reader' AND userrolename = '{tag_prefix}sales_analyst' AND elementname = 'household_income'"
 database = "{database}"
 
 [[step]]
@@ -1250,6 +1256,9 @@ address = "skills/security/references/privileges.md#Checking as someone else"
 # The block's two forms, over the chain's interface view, as its person and as its role.
 substitute = { "SELECT … FROM <view>" = "SELECT COUNT(*) AS n FROM household_income", "'<user>'" = "'{tag_prefix}reader'", "'<role>[,<role>…]'" = "'{tag_prefix}sales_analyst'" }
 database = "{database}"
+# The security template's claim: the user reads the view through the role alone — EXECUTE on
+# the view is enough, nothing below it is granted.
+check = "SELECT COUNT(*) AS n FROM household_income HAVING COUNT(*) > 0 CONTEXT ('impersonate_user' = '{tag_prefix}reader')"
 
 [[step]]
 id = "security-reapply"
@@ -1446,6 +1455,20 @@ CREATE OR REPLACE VIEW product_review
     AS SELECT r_reason_sk AS review_id, TRIM(r_reason_desc) AS review_text
        FROM bv_retail_reason
        WHERE r_reason_sk <= 6;
+"""
+
+[[step]]
+id = "ai-vector-fixture"
+kind = "fixture"
+channel = "vql"
+ai = true
+requires = ["enterprise_plus", "embedding"]
+database = "{database}"
+# Apart from the reviews: it names the embedding model, which a server without one — or a
+# profile that may not read it — leaves unresolved, and only the vector steps need it.
+check = "SELECT name FROM GET_ELEMENTS() WHERE input_database_name = '{database}' AND name = 'product_review_vector'"
+vql = """
+CONNECT DATABASE {database};
 
 CREATE OR REPLACE VIEW product_review_vector
     FOLDER = '/02 - integration'
@@ -1460,6 +1483,7 @@ kind = "template"
 channel = "vql"
 requires = ["enterprise_plus", "llm"]
 ai = true
+needs = ["ai-fixture"]
 address = "skills/ai/SKILL.md#Does the server answer"
 database = "{database}"
 
@@ -1469,6 +1493,7 @@ kind = "template"
 channel = "vql"
 requires = ["enterprise_plus"]
 ai = true
+needs = ["ai-fixture"]
 address = "skills/ai/SKILL.md#Count before you run"
 substitute = { sales_analytics = "{database}" }
 database = "{database}"
@@ -1481,6 +1506,7 @@ kind = "template"
 channel = "vql"
 requires = ["enterprise_plus", "llm"]
 ai = true
+needs = ["ai-fixture"]
 address = "skills/ai/SKILL.md#Classify, score, extract — over rows"
 substitute = { sales_analytics = "{database}" }
 database = "{database}"
@@ -1489,8 +1515,9 @@ database = "{database}"
 id = "ai-view"
 kind = "template"
 channel = "vql"
-requires = ["enterprise_plus", "llm"]
+requires = ["enterprise_plus", "llm", "cache"]
 ai = true
+needs = ["ai-fixture"]
 address = "skills/ai/SKILL.md#A view that keeps the answers"
 substitute = { sales_analytics = "{database}" }
 database = "{database}"
@@ -1501,6 +1528,7 @@ kind = "template"
 channel = "vql"
 requires = ["enterprise_plus", "llm", "cache"]
 ai = true
+needs = ["ai-view"]
 address = "skills/ai/SKILL.md#A view that keeps the answers[1]"
 substitute = { sales_analytics = "{database}" }
 database = "{database}"
@@ -1514,6 +1542,7 @@ kind = "template"
 channel = "vql"
 requires = ["enterprise_plus", "embedding"]
 ai = true
+needs = ["ai-vector-fixture"]
 address = "skills/ai/SKILL.md#Semantic search over a stored vector column"
 substitute = { sales_analytics = "{database}" }
 database = "{database}"
@@ -1524,6 +1553,7 @@ kind = "template"
 channel = "vql"
 requires = ["enterprise_plus", "embedding"]
 ai = true
+needs = ["ai-vector-fixture"]
 address = "skills/ai/SKILL.md#A search view the application sends a sentence to"
 substitute = { sales_analytics = "{database}", "<embeddingmodel of review_vector>" = "{embedding_model}" }
 database = "{database}"
@@ -1574,6 +1604,7 @@ kind = "template"
 channel = "vql"
 ai = true
 requires = ["enterprise_plus", "embedding"]
+needs = ["ai-vector-fixture"]
 address = "skills/ai/references/vectors.md#Delegation"
 # Planned, not run, over the chain's vector view.
 substitute = { "SELECT id, VECTOR_DISTANCE(embedding," = "SELECT review_id, VECTOR_DISTANCE(review_vector,", "FROM <view>" = "FROM product_review_vector" }
@@ -1585,6 +1616,7 @@ kind = "template"
 channel = "vql"
 ai = true
 requires = ["enterprise_plus", "embedding"]
+needs = ["ai-vector-fixture"]
 address = "skills/ai/references/vectors.md#More like this"
 # The review the block starts from is the fixture's first one.
 substitute = { "1042" = "1" }
@@ -1710,6 +1742,7 @@ id = "dependencies-source-columns"
 kind = "template"
 channel = "vql"
 writes = true
+needs = ["writes-tables"]
 address = "skills/views/references/dependencies.md#Where a field comes from[1]"
 # The chain's JDBC base view over the table the fixture created.
 substitute = { "'<db>'" = "'{database}'", "'<jdbc base view>'" = "'bv_write_orders'" }
@@ -1721,6 +1754,7 @@ id = "dml-can-take"
 kind = "template"
 channel = "vql"
 writes = true
+needs = ["writes-tables"]
 address = "skills/dml/SKILL.md#Can this view take the write"
 substitute = { sales_analytics = "{database}", bv_orders_db_orders = "bv_write_orders" }
 database = "{database}"
@@ -1732,6 +1766,7 @@ id = "dml-preview"
 kind = "template"
 channel = "vql"
 writes = true
+needs = ["writes-tables"]
 address = "skills/dml/SKILL.md#Preview, and the before-image"
 substitute = { sales_analytics = "{database}", bv_orders_db_orders = "bv_write_orders" }
 database = "{database}"
@@ -1742,6 +1777,7 @@ id = "dml-update"
 kind = "template"
 channel = "vql"
 writes = true
+needs = ["writes-tables"]
 address = "skills/dml/SKILL.md#Update by key"
 substitute = { sales_analytics = "{database}", bv_orders_db_orders = "bv_write_orders" }
 database = "{database}"
@@ -1752,6 +1788,7 @@ id = "dml-insert"
 kind = "template"
 channel = "vql"
 writes = true
+needs = ["writes-tables"]
 address = "skills/dml/SKILL.md#Insert, and the key the database generated"
 substitute = { sales_analytics = "{database}", bv_orders_db_orders = "bv_write_orders" }
 database = "{database}"
@@ -1763,6 +1800,7 @@ id = "dml-delete"
 kind = "template"
 channel = "vql"
 writes = true
+needs = ["writes-tables"]
 address = "skills/dml/SKILL.md#Delete by key"
 substitute = { sales_analytics = "{database}", bv_orders_db_orders = "bv_write_orders" }
 database = "{database}"
@@ -1774,6 +1812,7 @@ id = "dml-writer-view"
 kind = "template"
 channel = "vql"
 writes = true
+needs = ["writes-tables"]
 address = "skills/dml/SKILL.md#A view an application writes through"
 substitute = { sales_analytics = "{database}", bv_orders_db_orders = "bv_write_orders" }
 database = "{database}"
@@ -1785,6 +1824,7 @@ id = "dml-from-view"
 kind = "template"
 channel = "vql"
 writes = true
+needs = ["writes-tables"]
 address = "skills/dml/SKILL.md#Rows from another view"
 substitute = { sales_analytics = "{database}", bv_orders_db_orders = "bv_write_orders", bv_orders_db_customer = "bv_write_customer" }
 database = "{database}"
@@ -1829,6 +1869,7 @@ id = "materialize-refresh"
 kind = "template"
 channel = "vql"
 writes = true
+needs = ["materialize-remote-table"]
 address = "skills/materialize/SKILL.md#Refresh it"
 substitute = { sales_analytics = "{database}" }
 database = "{database}"
@@ -1839,6 +1880,7 @@ id = "delegation-read-plan"
 kind = "template"
 channel = "vql"
 writes = true
+needs = ["materialize-remote-table"]
 address = "skills/views/references/delegation.md#Reading the plan"
 # The chain's view over one database: the remote table the steps above made.
 substitute = { "store_month_sales" = "bv_dwh_household_income" }
@@ -1849,6 +1891,7 @@ id = "delegation-not-the-check"
 kind = "template"
 channel = "vql"
 writes = true
+needs = ["materialize-remote-table"]
 address = "skills/views/references/delegation.md#`GET_DELEGATED_SQLSENTENCE` is not the check"
 substitute = { "store_month_sales" = "bv_dwh_household_income" }
 database = "{database}"
@@ -1858,6 +1901,7 @@ id = "testing-runs-in-the-database"
 kind = "template"
 channel = "denodotest"
 writes = true
+needs = ["materialize-remote-table"]
 address = "skills/testing/SKILL.md#A view over a database runs in the database"
 # The chain's only JDBC view is the remote table above, in the cache database. The block plans
 # the mart; the step plans an aggregate over that table instead, which must run there whole —
@@ -1885,6 +1929,7 @@ kind = "template"
 channel = "vql"
 requires = ["summary_rewrite"]
 writes = true
+needs = ["materialize-summary"]
 address = "skills/materialize/SKILL.md#A summary — created unloaded, proved by the plan, then loaded[1]"
 substitute = { sales_analytics = "{database}" }
 database = "{database}"
@@ -1897,6 +1942,7 @@ kind = "template"
 channel = "vql"
 requires = ["data_movement"]
 writes = true
+needs = ["materialize-remote-table"]
 address = "skills/materialize/SKILL.md#Data movement for a federated join"
 substitute = { "JDBC ds_dwh" = "JDBC {write_datasource_database}.{write_datasource_name}", sales_analytics = "{database}" }
 database = "{database}"
@@ -1907,6 +1953,7 @@ check = "SELECT 1 FROM GET_QUERY_EXECUTION_PLAN() WHERE input_query = 'SELECT bu
 id = "materialize-table"
 kind = "template"
 channel = "vql"
+requires = ["cache"]
 writes = true
 address = "skills/materialize/SKILL.md#A materialized table"
 substitute = { sales_analytics = "{database}" }
@@ -1932,6 +1979,7 @@ id = "materialize-drop"
 kind = "template"
 channel = "vql"
 writes = true
+needs = ["materialize-remote-table", "materialize-summary"]
 address = "skills/materialize/SKILL.md#Drop — on the human's yes"
 substitute = { sales_analytics = "{database}" }
 database = "{database}"

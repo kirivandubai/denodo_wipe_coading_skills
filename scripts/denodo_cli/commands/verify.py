@@ -76,6 +76,9 @@ class Step:
     # T40: the features of the server the step needs (features.FEATURE_NAMES); a step whose
     # feature the server is known to lack is skipped with the reason.
     requires: list[str] = field(default_factory=list)
+    # The earlier steps whose objects this one uses: when one of them was skipped, so is this
+    # one, with that step's reason (T40) — a skip must not turn into a failure further down.
+    needs: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -89,13 +92,26 @@ class Chain:
     # (``[dialects.sqlserver]``), and the marked blocks the chain does not run, with the reason.
     dialects: dict[str, dict[str, str]] = field(default_factory=dict)
     not_run: dict[str, str] = field(default_factory=dict)
+    # The literal values an installation may replace from its values file (where the fixture
+    # files are read from). Every other literal value is the chain's own.
+    local_values: list[str] = field(default_factory=list)
 
     def known_values(self) -> set[str]:
-        """The names a values file may set: ``[values]`` and every dialect table's keys."""
+        """Every value name the manifest declares: ``[values]`` and every dialect table's keys."""
         names = set(self.values)
         for table in self.dialects.values():
             names.update(table)
         return names
+
+    def settable_values(self) -> set[str]:
+        """The names a values file may set: what belongs to an installation — the ``@server`` and
+        ``@dialect`` values, every dialect key, and ``local_values``. Never the test database, the
+        prefix every server-wide object and every cleanup statement is named by, or a throwaway
+        password: a values file that moved those would move what the run drops."""
+        names = {name for name, value in self.values.items() if value in (SERVER, DIALECT)}
+        for table in self.dialects.values():
+            names.update(table)
+        return names | set(self.local_values)
 
 
 def load_chain(path: Path) -> Chain:
@@ -120,9 +136,17 @@ def load_chain(path: Path) -> Chain:
     cleanup_writes = cleanup_section.get("writes", [])
     if not isinstance(cleanup_writes, list) or not all(isinstance(s, str) for s in cleanup_writes):
         raise ChainError(f"[cleanup] writes in {path} must be a list of VQL statements, got {cleanup_writes!r}")
+    by_id = {step.id: index for index, step in enumerate(steps)}
+    for index, step in enumerate(steps):
+        for needed in step.needs:
+            if by_id.get(needed, index) >= index:
+                raise ChainError(f"step {step.id!r} needs {needed!r}, which is not an earlier step of {path}")
+    local_values = document.get("local_values", [])
+    if not isinstance(local_values, list) or not all(isinstance(name, str) and name in values for name in local_values):
+        raise ChainError(f"local_values in {path} must list names of [values], got {local_values!r}")
     return Chain(values=values, steps=steps, cleanup=cleanup, cleanup_http=cleanup_http,
                  cleanup_writes=list(cleanup_writes), dialects=_dialects(document.get("dialects"), path),
-                 not_run=_not_run(document.get("not_run"), path))
+                 not_run=_not_run(document.get("not_run"), path), local_values=list(local_values))
 
 
 def _dialects(raw: object, path: Path) -> dict[str, dict[str, str]]:
@@ -153,13 +177,16 @@ def default_values_path() -> Path:
     return profiles_path().parent / "verify.toml"
 
 
-def load_values_file(path: Path, profile_name: str, known: set[str]) -> dict[str, str]:
+def load_values_file(path: Path, profile_name: str, known: set[str],
+                     own: set[str] | None = None) -> dict[str, str]:
     """The values the profile's own table of the local values file sets — ``{}`` without one.
 
     The file holds one table per profile (``[dev]``) because the values belong to an
     installation, and a profile names one. A key the manifest does not declare is refused,
     naming the file, the table and the known keys: a typo would otherwise change nothing and
-    say nothing, and the run would go on with the value it was meant to replace.
+    say nothing, and the run would go on with the value it was meant to replace. A key in
+    ``own`` — a value of the chain itself, such as the test database — is refused too, saying
+    why: it decides what the run creates and drops, and only the command line may change it.
     """
     path = Path(path)
     if not path.is_file():
@@ -177,9 +204,14 @@ def load_values_file(path: Path, profile_name: str, known: set[str]) -> dict[str
     for key, value in table.items():
         if isinstance(value, (dict, list)):
             raise ChainError(f"{key} in [{profile_name}] of {path} must be a plain value, got {value!r}")
+        if key in (own or set()):
+            hint = " (--database names another test database)" if key == "database" else ""
+            raise ChainError(f"{key!r} in [{profile_name}] of {path} is a value of the chain itself: it decides "
+                             f"what the run creates and drops, so a values file may not change it{hint}; "
+                             f"the values a file may set are: {', '.join(sorted(known))}")
         if key not in known:
             raise ChainError(f"{key!r} in [{profile_name}] of {path} is not a value of the chain; "
-                             f"the chain's values are: {', '.join(sorted(known))}")
+                             f"the values a file may set are: {', '.join(sorted(known))}")
         values[str(key)] = str(value)
     return values
 
@@ -290,6 +322,9 @@ def _step(raw: dict) -> Step:
     if unknown:
         raise ChainError(f"step {step_id!r}: requires names {unknown}, which are not features; "
                          f"the features are {', '.join(FEATURE_NAMES)}")
+    needs = raw.get("needs", [])
+    if not isinstance(needs, list) or not all(isinstance(name, str) and name for name in needs):
+        raise ChainError(f"step {step_id!r}: needs must be a list of step ids, got {needs!r}")
     return Step(id=step_id, kind=kind, channel=channel, address=address, vql=vql,
                 scheduler=scheduler, files=files, poll=poll, capture_from=capture_from,
                 calls=_int_calls(raw.get("calls", []), step_id),
@@ -297,7 +332,7 @@ def _step(raw: dict) -> Step:
                 capture={str(k): str(v) for k, v in (raw.get("capture") or {}).items()},
                 expect_body={str(k): str(v) for k, v in expect_body.items()},
                 check=raw.get("check"), expect=expect, marketplace=marketplace, ai=ai, writes=writes,
-                database=database, requires=list(requires))
+                database=database, requires=list(requires), needs=list(needs))
 
 
 def _files(raw: object, step_id: str) -> dict[str, dict]:
@@ -540,6 +575,7 @@ def run_chain(
     testing_runner: Callable | None = None,
     file_values: dict[str, str] | None = None,
     values_file: Path | None = None,
+    assume_missing: tuple[str, ...] | list[str] = (),
 ) -> tuple[dict, int]:
     """Run every vql-channel step of ``chain`` in order and report what happened.
 
@@ -624,12 +660,24 @@ def run_chain(
     if profile.production and not allow_destructive:
         values = {**chain.values, **({"database": database} if database else {})}
         return _refused_on_production(profile, values), EXIT_USAGE
+    if not keep:
+        # Gated on the same condition _cleanup itself checks first: when --keep is set,
+        # cleanup never renders or runs, so an unresolved cleanup placeholder must not
+        # abort a run that has nothing to do with cleanup. Checked against the names the
+        # manifest declares, before the server is asked anything: a value the run then fails
+        # to fill in is a reason to hold its statement, not a broken manifest.
+        _check_cleanup_placeholders(chain, chain.known_values() | {"database"})
     # T40: the server is asked once, before anything is created, and only when the manifest
     # needs it — a value it fills in, or a step that requires a feature.
-    features = _probe(profile, vql_factory) if _needs_server(chain) else None
+    features = _probe(profile, vql_factory) if (_needs_server(chain) or assume_missing) else None
+    for name in assume_missing:
+        # --without: the server is treated as lacking the feature, whatever it said.
+        features[name] = {**(features.get(name) or {}), "on": False} if isinstance(features.get(name), dict) \
+            else False
     server = server_values(features) if features else {}
     scheduler_note = "the Scheduler tail did not run (--with-scheduler)"
-    if with_scheduler and chain.values.get("scheduler_data_source_id") == SERVER and rest_factory is not None:
+    if (with_scheduler and chain.values.get("scheduler_data_source_id") == SERVER and rest_factory is not None
+            and "scheduler_data_source_id" not in (file_values or {})):
         found, candidates = _scheduler_source(profile, rest_factory)
         if found:
             server["scheduler_data_source_id"] = found
@@ -639,11 +687,6 @@ def run_chain(
     values, values_from, unresolved = resolve_values(
         chain, database=database, file_values=file_values, server=server, values_file=values_file,
         profile_name=profile.name, scheduler_note=scheduler_note)
-    if not keep:
-        # Gated on the same condition _cleanup itself checks first: when --keep is set,
-        # cleanup never renders or runs, so an unresolved cleanup placeholder must not
-        # abort a run that has nothing to do with cleanup.
-        _check_cleanup_placeholders(chain, {**values, **{name: "" for name in unresolved}})
     # After the local checks above and before anything is created: a value the manifest
     # cannot hold literally (see _encrypt_throwaways) is filled in here, and a server that
     # cannot produce it stops the run while nothing has been written yet.
@@ -654,43 +697,24 @@ def run_chain(
     version = _server_version(profile, vql_factory) if update_marks else None
     day = today or dt.date.today()
     reports: list[dict] = []
+    skipped_why: dict[str, str] = {}
     stop = False
     try:
         for step in chain.steps:
             if stop:
-                reports.append(_skipped(step, "an earlier step failed"))
+                reports.append(_skipped(step, "an earlier step failed", cause="failure"))
                 continue
-            if step.marketplace and not with_marketplace:
-                reports.append(_skipped(step, "marketplace steps need --with-marketplace"))
-                continue
-            if step.scheduler and not with_scheduler:
-                reports.append(_skipped(
-                    step, "Scheduler steps create a project and jobs on the shared Scheduler and run "
-                          "them; they need --with-scheduler"))
-                continue
-            if step.ai and not with_ai:
-                reports.append(_skipped(
-                    step, "AI steps call the server's LLM, one paid request per row; they need --with-ai"))
-                continue
-            if step.writes and not with_writes:
-                reports.append(_skipped(
-                    step, "write steps create a table in a source database and change its rows; "
-                          "they need --with-writes"))
-                continue
-            if step.channel == "denodotest" and testing_tool is None:
-                reports.append(_skipped(
-                    step, "Testing Tool steps run a .denodotest file with the Denodo Testing Tool; "
-                          "they need --testing-tool <its install directory>"))
-                continue
-            lacking = [name for name in step.requires if feature_state(features or {}, name) is False]
-            if lacking:
-                reports.append(_skipped(step, "the server lacks " + "; ".join(
-                    f"{name}: {FEATURE_REASONS[name]}" for name in lacking)))
-                continue
-            named = sorted(_step_value_names(step) & set(unresolved))
-            if named:
-                reports.append(_skipped(step, "; ".join(
-                    f"value {{{name}}} is unresolved: {unresolved[name]}" for name in named)))
+            why, cause = _why_skip(step, features=features, unresolved=unresolved, skipped_why=skipped_why,
+                                   root=root, with_marketplace=with_marketplace, with_scheduler=with_scheduler,
+                                   with_ai=with_ai, with_writes=with_writes, testing_tool=testing_tool)
+            if why:
+                reports.append(_skipped(step, why, cause=cause))
+                skipped_why[step.id] = why
+                # What the step would have captured (an id of an object it creates) is now a value
+                # nobody will fill in: every later step naming it is skipped, not failed.
+                for name in step.capture:
+                    if name not in values:
+                        unresolved.setdefault(name, f"step {step.id!r}, which captures it, was skipped: {why}")
                 continue
             report = _run_step(profile, step, values=values, root=root, vql_factory=vql_factory,
                                rest_factory=rest_factory, allow_destructive=allow_destructive,
@@ -712,6 +736,8 @@ def run_chain(
         all(s["ok"] for s in cleanup_report["statements"]) and
         all(h["ok"] for h in cleanup_report["http"])))
     extra = {"features": features} if features is not None else {}
+    if assume_missing:
+        extra["assumed_missing"] = list(assume_missing)
     doc = envelope(ok, profile, "verify", database=values.get("database"), steps=reports,
                    summary=_summary(reports, not_run=len(chain.not_run)), cleanup=cleanup_report,
                    values=values, values_from=values_from, unresolved=unresolved,
@@ -755,7 +781,10 @@ def _probe(profile: Profile, vql_factory: Callable) -> dict:
     except Exception:  # noqa: BLE001
         return unknown
     finally:
-        transport.close()
+        try:
+            transport.close()
+        except Exception:  # noqa: BLE001
+            pass
 
 
 def _scheduler_source(profile: Profile, rest_factory: Callable) -> tuple[str | None, list[dict]]:
@@ -796,7 +825,7 @@ def resolve_values(chain: Chain, *, database: str | None, file_values: dict[str,
     for name, value in chain.values.items():
         if value != DIALECT or origin.get(name) == "file":
             continue
-        table = chain.dialects.get(dialect or "")
+        table = chain.dialects.get((dialect or "").lower())
         if table is not None and name in table:
             values[name], origin[name] = table[name], "dialect"
         elif dialect:
@@ -806,20 +835,58 @@ def resolve_values(chain: Chain, *, database: str | None, file_values: dict[str,
             why[name] = "the product of the write data source is unknown (write_dialect)"
     if database:
         values["database"], origin["database"] = database, "flag"
-    where = str(values_file) if values_file else "the values file"
+    where = str(values_file or default_values_path())
     unresolved = {name: f"{reason}; set {name} = \"…\" in [{profile_name}] of {where}"
                   for name, reason in why.items()}
     origin.update({name: "unresolved" for name in unresolved})
     return values, origin, unresolved
 
 
-def _step_value_names(step: Step) -> set[str]:
-    """The ``{value}`` names the manifest's texts for ``step`` use."""
+def _step_value_names(step: Step, root: Path | None = None) -> set[str]:
+    """The ``{value}`` names ``step`` sends: the manifest's texts for it, and the block of a skill
+    it runs (a block that does not resolve fails the step itself, with the reason)."""
     texts = [step.vql or "", step.check or "", step.database or "", *step.substitute.values(),
              *step.expect_body.values()]
     for spec in step.files.values():
         texts.extend(spec["substitute"].values())
+    if root is not None and step.address:
+        try:
+            texts.append(load_block(root, step.address).body)
+        except TemplateError:
+            pass
     return {match.group(1) for text in texts for match in PLACEHOLDER.finditer(text)}
+
+
+def _why_skip(step: Step, *, features: dict | None, unresolved: dict[str, str], skipped_why: dict[str, str],
+              root: Path, with_marketplace: bool, with_scheduler: bool, with_ai: bool, with_writes: bool,
+              testing_tool: Path | None) -> tuple[str | None, str | None]:
+    """Why ``step`` does not run, and the kind of reason: a flag not given (``flag``), a feature
+    the server lacks (``server``), a value nobody filled in (``value``), or an earlier step it
+    needs that did not run (``needs``). ``(None, None)`` when it runs."""
+    if step.marketplace and not with_marketplace:
+        return "marketplace steps need --with-marketplace", "flag"
+    if step.scheduler and not with_scheduler:
+        return ("Scheduler steps create a project and jobs on the shared Scheduler and run them; they need "
+                "--with-scheduler"), "flag"
+    if step.ai and not with_ai:
+        return "AI steps call the server's LLM, one paid request per row; they need --with-ai", "flag"
+    if step.writes and not with_writes:
+        return ("write steps create a table in a source database and change its rows; they need "
+                "--with-writes"), "flag"
+    if step.channel == "denodotest" and testing_tool is None:
+        return ("Testing Tool steps run a .denodotest file with the Denodo Testing Tool; they need "
+                "--testing-tool <its install directory>"), "flag"
+    lacking = [name for name in step.requires if feature_state(features or {}, name) is False]
+    if lacking:
+        return "the server lacks " + "; ".join(f"{name}: {FEATURE_REASONS[name]}" for name in lacking), "server"
+    named = sorted(_step_value_names(step, root) & set(unresolved))
+    if named:
+        return "; ".join(f"value {{{name}}} is unresolved: {unresolved[name]}" for name in named), "value"
+    missing = [needed for needed in step.needs if needed in skipped_why]
+    if missing:
+        return "; ".join(f"it needs step {needed!r}, which was skipped: {skipped_why[needed]}"
+                         for needed in missing), "needs"
+    return None, None
 
 
 def _encrypt_throwaways(profile: Profile, values: dict[str, str], *, vql_factory: Callable) -> dict | None:
@@ -887,7 +954,7 @@ def _refused_on_production(profile: Profile, values: dict[str, str]) -> dict:
                              "reason": "the run was refused before it created anything"})
 
 
-def _check_cleanup_placeholders(chain: Chain, values: dict[str, str]) -> None:
+def _check_cleanup_placeholders(chain: Chain, values: "dict[str, str] | set[str]") -> None:
     """Fail fast, before any network call, on an unresolved cleanup placeholder.
 
     ``_cleanup`` renders each statement with ``render(s, {}, values)`` — an empty
@@ -1054,9 +1121,10 @@ def _cleanup_http(profile: Profile, entries: list[dict], *, values: dict[str, st
     return reports
 
 
-def _skipped(step: Step, reason: str) -> dict:
+def _skipped(step: Step, reason: str, cause: str | None = None) -> dict:
     return {"id": step.id, "kind": step.kind, "channel": step.channel, "source": step.address,
-            "ok": True, "skipped": True, "reason": reason, "error": None, "check": None, "mark": None}
+            "ok": True, "skipped": True, "reason": reason, "cause": cause, "error": None, "check": None,
+            "mark": None}
 
 
 VERSION_NUMBER = re.compile(r"\d+(?:\.\d+)+")
@@ -1100,6 +1168,11 @@ def _summary(reports: list[dict], not_run: int = 0) -> dict:
         "verified": sum(1 for r in reports if r["kind"] == "template" and r["ok"] and not r["skipped"]),
         "failed": sum(1 for r in reports if not r["ok"]),
         "skipped": sum(1 for r in reports if r["skipped"]),
+        # why: a flag not given, a feature the server lacks, a value nobody filled in, a step
+        # needed that did not run, an earlier failure
+        "skipped_because": {cause: sum(1 for r in reports if r["skipped"] and r.get("cause") == cause)
+                            for cause in ("flag", "server", "value", "needs", "failure")
+                            if any(r["skipped"] and r.get("cause") == cause for r in reports)},
         # marked blocks of the skills the manifest lists under [not_run], with the reason
         "not_run": not_run,
     }

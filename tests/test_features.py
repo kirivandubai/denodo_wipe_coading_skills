@@ -92,6 +92,17 @@ class ReadFeaturesTest(unittest.TestCase):
         self.assertIs(features["embedding"]["on"], False)
         self.assertIsNone(features["summary_rewrite"])     # not set in the file: unknown
 
+    def test_an_unset_switch_with_a_model_is_unknown(self):
+        features = read_features(Scripted({**ALL_ON, "GET_PARAMETER": parameters(llm_model="gpt-5.1")}))
+        self.assertIsNone(features["llm"]["on"])
+
+    def test_an_answer_of_another_shape_is_unknown_not_an_error(self):
+        class Odd:
+            def execute(self, statement):
+                return object()          # no columns, no rows
+        features = read_features(Odd())
+        self.assertEqual({k: v for k, v in features.items() if v is not None}, {})
+
     def test_no_model_means_off(self):
         features = read_features(Scripted({**ALL_ON, "GET_PARAMETER": parameters(llm_enabled="true")}))
         self.assertIs(features["llm"]["on"], False)
@@ -184,6 +195,9 @@ class SchedulerDataSourceTest(unittest.TestCase):
 
     def test_none_when_the_scheduler_does_not_answer(self):
         self.assertEqual(scheduler_data_source(Rest(None, status=500), "admin"), (None, []))
+
+    def test_a_body_that_is_not_a_list_is_none(self):
+        self.assertEqual(scheduler_data_source(Rest(42), "admin"), (None, []))
 
     def test_a_wrapped_list_is_read_too(self):
         found, _ = scheduler_data_source(Rest({"dataSources": SOURCES}), "admin")
