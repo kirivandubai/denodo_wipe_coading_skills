@@ -12,7 +12,7 @@ dimension. A column declared `vector<float>` may hold vectors of different sizes
 rows: Denodo does not enforce the dimension (documentation).
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-02)
+-- verified: 9.5.1 (live, 2026-10-06)
 SELECT vector<float,3>[1,4,3] AS v,           -- [1.0, 4.0, 3.0]
        vector<double,2>[1.5,2.5] AS d          -- [1.5, 2.5]
 FROM Dual();
@@ -86,7 +86,7 @@ SQL Server 2025, Snowflake, Databricks, BigQuery (documentation) — which Denod
 ## Delegation
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-02)
+-- verified: 9.5.1 (live, 2026-10-06)
 SELECT execution_plan FROM GET_QUERY_EXECUTION_PLAN()
 WHERE input_query = 'SELECT id, VECTOR_DISTANCE(embedding, ''slow mobile data'') AS d FROM <view> ORDER BY d';
 ```
@@ -122,7 +122,7 @@ the exact search.
 A distance between two stored vectors costs nothing — no text is embedded:
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-02)
+-- verified: 9.5.1 (live, 2026-10-06)
 SELECT t.review_id, VECTOR_COSINE_DISTANCE(t.review_vector, s.review_vector) AS distance
 FROM product_review_vector t,
      (SELECT review_vector FROM product_review_vector WHERE review_id = 1042) s

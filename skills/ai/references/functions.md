@@ -27,7 +27,7 @@ run.
 `CLASSIFY_AI(<text>, <scale>[, <temperature>]) → text`
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-02)
+-- verified: 9.5.1 (live, 2026-10-06)
 SELECT CLASSIFY_AI('The screen cracked after two days',
                    { ROW('Product Quality', 'Broken or faulty'),
                      ROW('Delivery', 'Late or lost'),
@@ -61,7 +61,7 @@ FROM Dual();
 `EXTRACT_AI(<text>, <array of entity names>[, <temperature>]) → register`
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-02)
+-- verified: 9.5.1 (live, 2026-10-06)
 SELECT (x.facts).city AS city,
        (x.facts)."customer name" AS customer,
        NULLIF((x.facts)."contract end", '') AS contract_end
@@ -116,7 +116,7 @@ FROM (SELECT EXTRACT_AI('Hi, this is Maria Lopez. Since Tuesday my fibre in Vale
 `ENRICH_AI(<prompt>[, <temperature>]) → text`
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-02)
+-- verified: 9.5.1 (live, 2026-10-06)
 SELECT ENRICH_AI('Answer with one word, no punctuation. Which country is this city in: ' || 'Valencia', 0.0) AS country
 FROM Dual();
 -- Spain

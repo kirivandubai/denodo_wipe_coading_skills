@@ -89,7 +89,7 @@ It is the only way to look at a server-side file from VQL, and it works for any 
 format — CSV, JSON, XML:
 
 ```sql
--- verified: 9.5.1 (live, 2026-09-09)
+-- verified: 9.5.1 (live, 2026-10-06)
 CREATE OR REPLACE DATASOURCE DF ds_peek
     FOLDER = '/01 - connectivity'
     ROUTE LOCAL 'LocalConnection' '/data/exports/oms/orders.json'

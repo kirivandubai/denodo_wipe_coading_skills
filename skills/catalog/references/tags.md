@@ -75,7 +75,7 @@ DROP TAGS [ IF EXISTS ] ( <name> [, <name> ]* ) [ CASCADE ]
 ## Reading tags back
 
 ```sql
--- verified: 9.5.1 (live, 2026-09-09)
+-- verified: 9.5.1 (live, 2026-10-06)
 LIST TAGS;                                        -- name, all tags on the server
 DESC TAG <name>;                                  -- one cell: name='pii' description=…
 DESC VQL TAG <name>;                              -- CREATE OR REPLACE TAG … without assignments

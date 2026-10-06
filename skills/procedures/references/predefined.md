@@ -9,7 +9,7 @@ This page answers two questions: how to call any of them, and which family to lo
 ## Calling one
 
 ```sql
--- verified: 9.5.1 (live, 2026-09-12)
+-- verified: 9.5.1 (live, 2026-10-06)
 SELECT column_name, column_vdp_type, column_type
   FROM GET_PROCEDURE_COLUMNS()
  WHERE input_procedure_name = 'GENERATE_STATS';
@@ -27,7 +27,7 @@ SELECT column_name, column_vdp_type, column_type
 Two ways to read a signature, both on the server:
 
 ```sql
--- verified: 9.5.1 (live, 2026-09-12)
+-- verified: 9.5.1 (live, 2026-10-06)
 DESC PROCEDURE USED_BY;                               -- name, type, direction (IN/OUT)
 SELECT column_name, column_type, column_is_nullable   -- the same, filterable, plus nullable
   FROM GET_PROCEDURE_COLUMNS() WHERE input_procedure_name = 'USED_BY';

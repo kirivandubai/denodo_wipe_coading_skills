@@ -46,7 +46,7 @@ CREATE [ OR REPLACE ] TABLE [<database>.]<name> I18N <map>
 ## The minimum that works
 
 ```sql
--- verified: 9.5.1 (live, 2026-09-09)
+-- verified: 9.5.1 (live, 2026-10-06)
 CREATE OR REPLACE TABLE bv_crm_customers I18N us_pst (
         cust_id:text,
         created_dt:date

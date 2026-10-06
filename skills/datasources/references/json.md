@@ -48,7 +48,7 @@ CREATE [ OR REPLACE ] WRAPPER JSON <name>
 ### The shape that works
 
 ```sql
--- verified: 9.5.1 (live, 2026-09-09)
+-- verified: 9.5.1 (live, 2026-10-06)
 TUPLEROOT '/JSONFile/JSONArray'
 OUTPUTSCHEMA (jsonfile = 'JSONFile' : REGISTER OF (
     order_id = 'JSONFile.JSONArray.order_id' : 'java.lang.String',
@@ -77,7 +77,7 @@ OUTPUTSCHEMA (jsonfile = 'JSONFile' : REGISTER OF (
 as catalog objects first:
 
 ```sql
--- verified: 9.5.1 (live, 2026-09-09)
+-- verified: 9.5.1 (live, 2026-10-06)
 CREATE OR REPLACE TYPE oms_shipping AS REGISTER OF (country:text, city:text, zip:text);
 CREATE OR REPLACE TYPE oms_order_line AS REGISTER OF (line_no:int, sku:text, qty:int, price:double);
 CREATE OR REPLACE TYPE oms_order_line_array AS ARRAY OF oms_order_line;

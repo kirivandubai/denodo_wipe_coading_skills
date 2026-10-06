@@ -59,7 +59,7 @@ else entirely:
 *verified: 9.5.1 (live, 2026-09-10).* Read the ids once:
 
 ```bash
-# verified: 9.5.1 (live, 2026-09-10)
+# verified: 9.5.1 (live, 2026-10-06)
 api get --env dev /public/api/configuration/servers
 # → [{"id":<serverId>,"name":"<VDP server as registered>","url":"//<vdp-host>:9999/admin"}, …]
 ```

@@ -478,7 +478,7 @@ no shell. Three ways to get it, in order of preference:
    cheapest and the most accurate, because what comes back is already working on this
    server. Find the candidates:
    ```sql
-   -- verified: 9.5.1 (live, 2026-10-05)
+   -- verified: 9.5.1 (live, 2026-10-06)
    SELECT database_name, name FROM GET_ELEMENTS()
     WHERE type = 'view' AND subtype = 'base' AND name LIKE '%<word from the file name>%';
    ```
@@ -515,7 +515,7 @@ no shell. Three ways to get it, in order of preference:
    `TUPLEPATTERN` captures the whole line returns the raw text of the file — header
    included, and it works for JSON too:
    ```sql
-   -- verified: 9.5.1 (live, 2026-09-09)
+   -- verified: 9.5.1 (live, 2026-10-06)
    CREATE OR REPLACE DATASOURCE DF ds_crm
        FOLDER = '/01 - connectivity'
        ROUTE LOCAL 'LocalConnection' '/data/exports/crm/customers.csv'

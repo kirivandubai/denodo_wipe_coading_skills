@@ -50,7 +50,7 @@ ticking the previously imported tags for you; the API has no such default —
 deliberately not re-proven on every run, because it costs existing tags.* The safe form:
 
 ```bash
-# verified: 9.5.1 (live, 2026-09-10) — reading the list; the POST is the human's call
+# verified: 9.5.1 (live, 2026-10-06) — reading the list; the POST is the human's call
 api get --env dev /public/api/tags/vdp/local
 # → ["finance","hr_restricted", …]     ← send these back plus the new one
 ```
