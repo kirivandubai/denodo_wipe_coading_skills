@@ -330,7 +330,8 @@ chain runs VQL and REST alternately, and the whole block below carries one verif
 
 # 0. the views this element will link to must already be in the marketplace catalog
 #    (previous template) — otherwise step 4 fails and nothing is created
-# 0b. the element type the VQL half names ('DASHBOARD') must be listed, or created (below)
+# 0b. the element type the VQL half names ('DASHBOARD') must be listed; missing →
+#     POST /public/api/external-elements-types, body in references/external-elements.md
 
 # 1. provider type: the tool the metadata comes from. Multipart, but the icon is optional
 api post --env dev /public/api/external-providers-types \
@@ -382,11 +383,10 @@ as base64 and can be large** — read it into a file and project
 `{externalProviderTypeId, name, visualName}` rather than letting it into the conversation —
 *verified: 9.5.1 (live, 2026-09-10)*. Tableau and Power BI are the documented native tools: the
 `REPORT` element type, the `TABLEAU` and `POWERBI` providers. Every other type a marketplace
-lists (`DASHBOARD`, `ETL_JOB`, an `…_PROVIDER`) was created there, and another marketplace may
-lack it — the template's `DASHBOARD` included. A new type is a marketplace-wide object that
-everyone then sees. Step 1 of the chain above is skipped only when a listed provider type
-really is the asset's tool; an element type the listing lacks is created before step 4 with
-`POST /public/api/external-elements-types` — all six fields mandatory, `iconKey` a FontAwesome key.
+lists (`DASHBOARD`, `ETL_JOB`, an `…_PROVIDER`) is a custom type, created on that installation,
+and another marketplace may lack it — the template's `DASHBOARD` included (step 0b). A new type
+is a marketplace-wide object that everyone then sees. Step 1 of the chain above is skipped only
+when a listed provider type really is the asset's tool.
 
 The VQL half — the implementation behind the contract from step 3. **Its names are outside
 the naming convention of `/denodo:vql` on purpose:** the interface view's name is part of
@@ -519,7 +519,7 @@ other side where there is one. Every read-back below — *verified: 9.5.1 (live,
 | Did a renamed view keep its element | `view-details` on the new name → the `id` the old name had, with its tags, categories and endorsements. The `synchronize` response cannot tell you: a matched pair and an ignored one look the same there |
 | What a synchronisation would change | `GET /public/api/element-management/{DATABASES\|VIEWS}/changes` — **before**, not after |
 | Did the import create what you meant | the `synchronize` response names each element: `externalElementsAdded/Updated/Deleted` with `originalExternalElementId` |
-| Did the element import (read as you) | `GET /public/api/external-elements/{id}/details` — type, server, url, and its lineage. A consumer sees the element only with the Visualize permission of its element type — a new type adds its own column, which an administrator grants to roles (External element, in the Permissions tab of the marketplace's Server Set-Up) — plus `METADATA` on every view it links to and `CONNECT` on their databases: tell the human what a new type still needs |
+| Did the element import (read as you) | `GET /public/api/external-elements/{id}/details` — type, server, url, and its lineage. A consumer sees the element only with the Visualize permission of its element type, `METADATA` on every view it links to and `CONNECT` on their databases; a report over data outside Denodo also needs *Visualize external data*. A new type adds its own Visualize column, which an administrator grants to roles (External element, in the Permissions tab of the marketplace's Server Set-Up): tell the human what a new type still needs |
 | **Does the view show the element** | `GET /public/api/views/tree/external-elements/lineage?databaseName=…&viewName=…` — the question a human actually asked ("what consumes this?"), answered from the other end. The view node must resolve to `databaseName`/`viewName`, not stay a bare string |
 | Is it really gone | `GET` it: `404` is the answer you want. The tool reports that as `ok:false` and exit `1`, so a verification script must treat `404` as success here rather than stopping — *verified: 9.5.1 (live, 2026-09-10)* |
 | Which VDP tags are imported | `GET /public/api/tags/vdp/local` — a plain list of names. **Not** `inLocal` in `/tags/vdp/changes`: that flag means "a marketplace tag of this name exists", which is also true for an unrelated local tag — *verified: 9.5.1 (live, 2026-09-10)* |
