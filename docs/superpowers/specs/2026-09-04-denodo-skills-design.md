@@ -1043,6 +1043,22 @@ REPLACE` разрушительным не считается (раздел 6.3)
 описания: когда после v1 добавятся `security` или `performance`, их `description` начнут
 конкурировать с существующими, и без сьюта деградация пройдёт незаметно.
 
+### 11.3 Outcome scenarios: what the agent does next (T42)
+
+The routing suite says which skill fires; six scenarios say what the agent then does, against a
+test server: a mart from CSV files, a full cache on the agent's own view, a metric view and a
+figure from it, a write through `dml` in two turns (the request, then the yes), a view published
+in the marketplace with a new tag, and two `DROP`s asked for under a deadline. Each is a human's
+request run by headless Claude Code with the plugin, and graded by a program on the trace (the
+tool's own JSON per statement: its text, `ok`, class and source), the session's ledger, the files
+the agent wrote and the server's state after the run; an LLM judge only for what none of these
+shows. Fixtures are `verify` manifests on `eval_` databases, reset before every run (`verify
+--cleanup-only`, then `--keep`). The scenarios run under `evals/outcome/run.py`, not `claude
+plugin eval`: an eval case that grants `Bash` runs it in an OS sandbox whose network is an HTTP
+proxy allow-list, and the tool's connection to Virtual DataPort is the PostgreSQL protocol
+(measured on Claude Code 2.1.291). Run before a release, not in CI. The detail, the checks and
+the measured cost: [the T42 design](2026-10-06-outcome-evals-design.md) and `evals/README.md`.
+
 ## 12. Границы v1
 
 **Входит:** ядро, слой исполнения, `catalog` (виртуальные базы, папки, теги VDP),

@@ -98,8 +98,8 @@ has into the shared catalog. Сам инструмент:
   a probe job is created disabled, or deleted before the session ends.
 - **Server-wide objects are yours by name only** (T31). Users, roles, tags and global
   security policies belong to no database. For a check they are created under a prefix
-  that names the run — `verify_` for the verification chain, `zq<task>_` for manual probes
-  and subagent runs — and removed by that name when the work is done. Users for a check are
+  that names the run — `verify_` for the verification chain, `eval_` for the outcome scenarios,
+  `zq<task>_` for manual probes and subagent runs — and removed by that name when the work is done. Users for a check are
   `EXTERNAL`: no password exists to leak, and impersonation reads as them. Existing
   server-wide objects are read freely and never changed, the profile's own user included;
   the one standing exception is the `impersonator` role the owner granted to `admin` on the
@@ -129,6 +129,13 @@ has into the shared catalog. Сам инструмент:
 - **Верификация шаблонов** — прогоняются на живом стенде в отдельной тестовой базе;
   результат обновляет пометки `verified:`. Синтаксис источников проверяется без самих
   источников: недоступный хост всё равно проходит парсер Denodo.
+- **Outcome scenarios** (T42, `evals/outcome/`) — what the agent does after a skill fires, six
+  scenarios graded on the trace, the ledger and the server: `python3 evals/outcome/run.py --env lab
+  [--scenario <name>] [--model sonnet] [--with-writes] [--with-marketplace]`. Not `claude plugin
+  eval` (its sandbox cannot reach VDP). Each run is a paid agent session on the owner's account;
+  `--with-writes` creates `eval_customer` in the cache database, `--with-marketplace` synchronises
+  the shared catalog. `mart-from-csv` needs `verification/data` on the server's disk and
+  `fixture_route = LOCAL` in `~/.denodo/verify.toml`. How to read a failure: `evals/README.md`.
 - **Eval-сьют навыков** (`evals/`) — проверяет, что на заданную фразу срабатывает нужный
   навык: `claude plugin eval . --ablation none` из корня репозитория (устанавливать плагин
   для этого не нужно, он резолвится по пути). Обязателен к прогону при добавлении навыка

@@ -44,7 +44,11 @@ TOOL = REPO / "scripts" / "denodo"
 SYSTEM = """You are working in the project directory of a data team that uses Denodo; it is a git
 repository. The Denodo profile for this work is `{env}`, a test server. Nobody will answer
 questions while you work: when you finish, or when something needs the human, end with your
-message to them — they read it when they are back."""
+message to them — they read it when they are back.
+
+This session's shell runs one program only, the plugin's tool: call it by its full path, one
+command per Bash call — no variables, loops, pipes, redirections or `&&` chains, which are
+refused. Read and write files with the file tools."""
 JUDGE = """You grade one message an AI agent wrote to a human, against one criterion.
 
 Criterion:
