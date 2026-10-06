@@ -110,7 +110,40 @@ marketplace and the Scheduler. `env list` shows the profiles on the machine and 
 whether it may run a query as another user (`vdp.impersonation`, the `impersonator` role):
 security policies do not apply to administrators, so `/denodo:security` checks a policy by
 running the same query as each person it is for — without the role, that check is left to
-you.
+you. Under `features` it reports what the server has: the Enterprise Plus bundle (tags, global
+security policies and the AI functions need it), the cache database and its product, an LLM
+and an embedding model, summary rewriting and data movement.
+
+## Check the templates on your server
+
+The templates were run on one 9.5.1 server; yours may have another bundle, another cache
+database, no LLM. One command runs them on yours — ask Claude to run it, or run it yourself:
+
+```
+~/.claude/plugins/cache/denodo-skills/denodo/*/scripts/denodo verify --env dev
+```
+
+It creates its own database (`denodo_skills_test`), runs every verified template of the
+skills in dependency order, checks what each one claims, and removes everything it made — the
+database and the few server-wide objects it needs, all named `verify_…`. A step that needs
+something your server lacks is skipped and says what; the summary counts what was verified,
+failed and skipped. The tails that write outside that database or cost money are flags:
+`--with-writes` (tables in the cache database), `--with-marketplace`, `--with-scheduler`,
+`--with-ai` (about 50 paid requests to your LLM), `--testing-tool <dir>`. On a profile marked
+`production = true` it refuses to start.
+
+The values that belong to your installation are read from the server: the embedding model,
+the cache data source, the Scheduler's data source. The test data is a handful of small
+synthetic files the server reads over HTTP from this repository on GitHub. A server that
+cannot reach GitHub, or anything the server does not say (the skip names it), goes into
+`~/.denodo/verify.toml` beside the profiles, one table per profile:
+
+```toml
+[dev]
+fixture_route = "LOCAL 'LocalConnection'"
+fixture_base = "/srv/denodo/verify-data"      # verification/data, copied onto the server
+scheduler_data_source_id = "7"
+```
 
 ## Quick start
 
@@ -181,6 +214,8 @@ Every template carries its verification status in a comment on the line above it
 `verified: 9.5.1 (live, <date>)` when it has been run against a live 9.5.1 server, or
 `unverified: 9.5 documentation only` when it comes from the documentation alone. An
 unverified template is still given to you, marked, so the agent treats it with more care.
+Every block marked `verified` is re-run by `verify` (above), or listed at the end of
+`verification/chain.toml` with the reason it cannot be — grammar, a fragment, a line you type.
 
 ## Safety
 

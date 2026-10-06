@@ -35,12 +35,12 @@ class FixtureDataTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             generator.main(Path(tmp))
             for name in generator.FILES:
-                with self.subTest(file=name):
-                    self.assertEqual((Path(tmp) / f"{name}.csv").read_bytes(),
-                                     (DATA / f"{name}.csv").read_bytes())
+                file = f"{name}.json" if name == "orders" else f"{name}.csv"
+                with self.subTest(file=file):
+                    self.assertEqual((Path(tmp) / file).read_bytes(), (DATA / file).read_bytes())
 
     def test_headers_are_quoted_upper_case_as_the_wrappers_map_them(self):
-        for name in _generator().FILES:
+        for name in ("income_band", "household_demographics", "reason", "store_returns", "web_returns"):
             header = (DATA / f"{name}.csv").read_text(encoding="utf-8").splitlines()[0]
             with self.subTest(file=name):
                 for column in header.split(","):
@@ -68,6 +68,19 @@ class FixtureDataTest(unittest.TestCase):
                 self.assertGreater(sum(1 for row in rows if row[date] == ""), 0)
                 self.assertGreater(sum(1 for row in rows if row[reason] == ""), 0)
                 self.assertTrue(all(row[reason] == "" or 1 <= int(row[reason]) <= 35 for row in rows))
+
+    def test_the_order_export_has_three_orders_and_four_lines(self):
+        import json
+        orders = json.loads((DATA / "orders.json").read_text(encoding="utf-8"))
+        self.assertEqual(len(orders), 3)
+        self.assertEqual(sum(len(order["lines"]) for order in orders), 4)
+        self.assertTrue(any(line["qty"] >= 5 for order in orders for line in order["lines"]))
+
+    def test_the_crm_export_has_the_template_s_eight_columns_and_some_empty_emails(self):
+        rows = _rows("customers")
+        self.assertTrue(rows and all(len(row) == 8 for row in rows))
+        self.assertTrue(any(row[3] == "" for row in rows))
+        self.assertTrue(all(row[0].startswith("C-") for row in rows))
 
     def test_thirty_five_reasons(self):
         rows = _rows("reason")

@@ -39,7 +39,8 @@ denodo_skills/
 ├── scripts/
 │   ├── denodo               launcher — standard library only
 │   └── denodo_cli/          the implementation behind it
-├── verification/chain.toml  the chain of templates run against a live server
+├── verification/           the chain of templates run against a live server (chain.toml)
+│                            and the files its fixtures read (data/)
 ├── evals/                   phrase → expected skill
 ├── tests/                   unit tests and the lint of the skills, plus integration/ against a server
 └── docs/                    design documents and the task tracker
@@ -137,6 +138,13 @@ templates are still shipped — marked, so the agent proceeds more carefully and
 result harder. Do not promote a mark to `verified:` because the statement looks right;
 promote it because you ran it.
 
+**A block marked `verified:` is a step of the verification chain**, or a line of `[not_run]`
+at the end of `verification/chain.toml` saying why it cannot be one — grammar, a fragment that
+no substitution makes a statement, a line the human types. A unit test
+(`tests/test_chain_manifest.py`) holds both directions: a new marked block without a step or a
+line fails it, and so does a line for a block that has since become a step. A prose mark — a
+fact in a sentence or a table cell — is outside the chain and is re-dated by hand.
+
 Targeting **Denodo 9.5 only** is what keeps this workable — there are no version branches
 in the templates, and adding one is not a fix.
 
@@ -182,11 +190,22 @@ scripts/denodo verify --env dev
 ```
 
 `--with-marketplace` adds the REST tail (which writes to the shared marketplace catalog),
-`--with-ai` adds the steps that call the server's LLM and embedding model (about 40 paid
-requests; they need Enterprise Plus and a configured Denodo Assistant, and the embedding
-model named in `[values]`), `--keep` leaves the objects for inspection, and `--update-marks` rewrites the `verified:`
-line of every step that passed. Run this before blaming a skill's text for a failure — a
-broken template looks exactly like a badly worded skill.
+`--with-ai` adds the steps that call the server's LLM and embedding model (about 50 paid
+requests), `--with-writes` the tables in the cache database, `--with-scheduler` the Scheduler
+jobs, `--testing-tool <dir>` the `.denodotest` templates; `--keep` leaves the objects for
+inspection, and `--update-marks` rewrites the `verified:` line of every step that passed. Run
+this before blaming a skill's text for a failure — a broken template looks exactly like a badly
+worded skill.
+
+It runs on any 9.5 server. What belongs to an installation is read from the server before the
+first step — the embedding model, the cache data source with its catalog, schema and product,
+the Scheduler's data source — and `env check` shows it under `features`, with the bundle, the
+LLM, summary rewriting and data movement. A step that needs what the server lacks is skipped
+with the reason (`requires` in the manifest). The fixtures read `verification/data` over HTTP
+from the repository; a server without internet access reads a copy on its own disk. Both, and
+anything the server does not say, are set in `~/.denodo/verify.toml`, one table per profile
+(`--values <file>` for another). The data files are written by `verification/data/generate.py`
+and held to it by a unit test; change the generator, not the files.
 
 **Eval suite** — does the right skill fire for a given phrase? From the repository root,
 no installation needed:

@@ -511,7 +511,7 @@ channel = "vql"
 address = "skills/views/references/associations.md#`REFERENTIAL CONSTRAINT` and `PRINCIPAL`"
 database = "{database}"
 # The count the block reads before declaring REFERENTIAL CONSTRAINT: every household has a band.
-# (HAVING COUNT(*) = 0 over no rows answers no row on 9.5.1, hence the outer query.)
+# (With HAVING COUNT(*) = 0 this query answered no row at all on 9.5.1, hence the outer query.)
 check = "SELECT o.orphans FROM (SELECT COUNT(*) AS orphans FROM bv_household_demographics hd WHERE hd.hd_income_band_sk NOT IN ( SELECT ib_income_band_sk FROM bv_income_band )) o WHERE o.orphans = 0"
 
 [[step]]

@@ -32,13 +32,19 @@ Since T39 every `vql run` records what the session created in a ledger beside th
 agent apply it — a probe of yours, made in this session, is "own" to every subagent of the session:
 create a fixture that must look like a colleague's with `DENODO_SESSION=<other>` in front of the command.
 Прогон верификации шаблонов — `scripts/denodo verify --env lab`; the AI templates run only
-with `--with-ai` (about 40 paid requests to the stand's LLM), the write templates of `dml` and
+with `--with-ai` (about 50 paid requests to the stand's LLM), the write templates of `dml` and
 `materialize` only with `--with-writes` (`verify_` tables, a summary and a materialized table
 created in the server's cache database and dropped in cleanup), the `.denodotest` templates of `testing`
 only with `--testing-tool <dir>` (the Denodo Testing Tool installed there, Java on `PATH` or in
 `JAVA_HOME`), the Scheduler templates of `scheduler` only with `--with-scheduler` (a `verify_`
 project with two jobs, run and deleted; the export leaves its file in the Scheduler's export
-folder). Сам инструмент:
+folder). Since T40 the chain runs on any server: installation values are read from the server
+(`@server`) or set in `~/.denodo/verify.toml` (one table per profile — the `lab` table points the
+fixtures at a branch's own `verification/data` while its data is unmerged), a step whose
+`requires` the server lacks is skipped with the reason, and every `verified`-marked block of
+`skills/` is a step or a line of `[not_run]` (a unit test holds it). A new marked block needs one
+of the two. Drop probe databases before a `--with-marketplace` run: its sync puts whatever VDP
+has into the shared catalog. Сам инструмент:
 `scripts/denodo --help`.
 
 ## Рабочий процесс

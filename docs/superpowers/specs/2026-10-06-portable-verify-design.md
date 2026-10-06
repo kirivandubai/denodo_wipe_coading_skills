@@ -1,7 +1,7 @@
 # A verification chain any server can run (T40)
 
-**Status:** design for T40 ([TASKS.md](../../TASKS.md)); once implemented, the decisions are
-folded into the [design spec](2026-09-04-denodo-skills-design.md), section 11.1. This file keeps
+**Status:** implemented in T40 ([TASKS.md](../../TASKS.md)); the decisions are folded into the
+[design spec](2026-09-04-denodo-skills-design.md), section 11.1. This file keeps
 the detail: where each value comes from, what the server is asked, which data the fixtures read,
 which blocks run and which do not, and how the two configurations were run.
 
@@ -201,3 +201,23 @@ fixed in the skill, not worked around in the manifest.
   answer.
 - Prose marks; the marketplace's own Enterprise check (the tail already needs the marketplace to
   answer).
+
+## Results (2026-10-06)
+
+- **Coverage:** 156 marked blocks; 124 run as steps, 32 are listed under `[not_run]` (grammar,
+  fragments of a statement or a call, a sequence ending in an error, the server's own message,
+  a CLI line for the human, JDBC introspection without a real credential).
+- **Configuration 1**, the demo image, fixtures over HTTP from the branch: 119 templates
+  verified with every tail but AI, 88 with AI; nothing failed, cleanup left nothing.
+- **Configuration 2**, the same server with `serverCacheDataSource` on a PostgreSQL source
+  (schema `enterprise_data.zq40_cache`) after a restart, fixtures from a folder on the server:
+  the same 119 and 88. The write tables were created with the PostgreSQL dialect; nothing in
+  the templates assumed SQL Server any more — section A of the review was fixed in T37.
+- **What the new steps found in the skills:** `DECLARE VIEW INDEX` placed before `CACHE` is a
+  syntax error (the index follows the search method), and the condition of a global security
+  policy is written with tags, not columns — both in `references/`, both marked `verified`,
+  both fixed. Neither was visible to the chain while it ran only `SKILL.md` blocks.
+- **Side effect worth knowing:** switching the cache database marks the full-cached views of
+  other databases `INDIRECT_CHANGES` in the marketplace's `changes`; the next
+  `marketplace-sync` of a run absorbs it. Probe databases that exist while a
+  `--with-marketplace` run synchronises enter the shared catalog with it — drop them before.
