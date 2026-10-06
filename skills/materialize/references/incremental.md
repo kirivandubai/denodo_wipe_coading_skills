@@ -5,8 +5,9 @@ load becomes incremental: each run writes only the rows that are new or changed 
 one. In VQL that is one statement, an upsert through the table's base view
 (`/denodo:dml`, "Rows from another view"), and a Scheduler job runs it (`/denodo:scheduler`).
 
-The example keeps `bv_dwh_orders` — a remote table this session created as a copy of the ERP's
-`bv_erp_orders` (`order_id` the key, `updated_at` set on every change) — up to date.
+The example keeps `bv_dwh_shipments` — a remote table this session created as a copy of the
+transport system's `bv_tms_shipments` (`shipment_id` the key, `changed_at` set on every change) —
+up to date.
 
 ## Before the first run: what it will write
 
@@ -16,28 +17,28 @@ CONNECT DATABASE sales_analytics;
 
 -- 1. The watermark, and the source rows on each side of it.
 SELECT t.watermark,
-       SUM(CASE WHEN e.updated_at > t.watermark THEN 1 ELSE 0 END)  AS after_watermark,
-       SUM(CASE WHEN e.updated_at = t.watermark THEN 1 ELSE 0 END)  AS at_watermark,
-       SUM(CASE WHEN e.updated_at IS NULL THEN 1 ELSE 0 END)        AS without_updated_at
-FROM bv_erp_orders e
-     CROSS JOIN ( SELECT MAX(updated_at) AS watermark FROM bv_dwh_orders ) t
+       SUM(CASE WHEN e.changed_at > t.watermark THEN 1 ELSE 0 END)  AS after_watermark,
+       SUM(CASE WHEN e.changed_at = t.watermark THEN 1 ELSE 0 END)  AS at_watermark,
+       SUM(CASE WHEN e.changed_at IS NULL THEN 1 ELSE 0 END)        AS without_changed_at
+FROM bv_tms_shipments e
+     CROSS JOIN ( SELECT MAX(changed_at) AS watermark FROM bv_dwh_shipments ) t
 GROUP BY t.watermark;
 
 -- 2. Keys the copy has and the source no longer has: an upsert never removes them.
 SELECT COUNT(*) AS gone_from_source
-FROM bv_dwh_orders d
-     LEFT OUTER JOIN bv_erp_orders e ON e.order_id = d.order_id
-WHERE e.order_id IS NULL;
+FROM bv_dwh_shipments d
+     LEFT OUTER JOIN bv_tms_shipments e ON e.shipment_id = d.shipment_id
+WHERE e.shipment_id IS NULL;
 ```
 
 - **`at_watermark` is why the load reads `>=`, not `>`.** A row committed in the same second as the
   last one loaded, after that load read the source, has the watermark's own time: `>` never loads
   it. With an upsert, reading the last second again rewrites a few rows and harms nothing.
-- **`without_updated_at` rows are invisible to any watermark**, however the source is described.
-  The load reads them every run (`OR updated_at IS NULL`); say how many, and ask the source's
+- **`without_changed_at` rows are invisible to any watermark**, however the source is described.
+  The load reads them every run (`OR changed_at IS NULL`); say how many, and ask the source's
   owner.
 - **`gone_from_source`** is what a full reload removed and an incremental load never will: deleted
-  orders stay in the copy. Keeping them, a nightly delete of the keys gone, or a periodic full
+  shipments stay in the copy. Keeping them, a nightly delete of the keys gone, or a periodic full
   `REFRESH` is the human's choice; say it before the first run, not after.
 
 ## The load
@@ -46,24 +47,24 @@ WHERE e.order_id IS NULL;
 -- verified: 9.5.1 (live, 2026-10-06)
 CONNECT DATABASE sales_analytics;
 
-INSERT INTO bv_dwh_orders ON DUPLICATE KEY ( order_id ) UPDATE
-SELECT e.order_id     AS order_id,
-       e.customer_id  AS customer_id,
-       e.order_amount AS order_amount,
-       e.status       AS status,
-       e.updated_at   AS updated_at
-FROM bv_erp_orders e
-WHERE e.updated_at >= ( SELECT COALESCE(MAX(d.updated_at), TIMESTAMP '1900-01-01 00:00:00')
-                        FROM bv_dwh_orders d )
-   OR e.updated_at IS NULL;
+INSERT INTO bv_dwh_shipments ON DUPLICATE KEY ( shipment_id ) UPDATE
+SELECT e.shipment_id     AS shipment_id,
+       e.carrier_id      AS carrier_id,
+       e.weight_kg       AS weight_kg,
+       e.shipment_status AS shipment_status,
+       e.changed_at      AS changed_at
+FROM bv_tms_shipments e
+WHERE e.changed_at >= ( SELECT COALESCE(MAX(d.changed_at), TIMESTAMP '1900-01-01 00:00:00')
+                        FROM bv_dwh_shipments d )
+   OR e.changed_at IS NULL;
 ```
 
 - **An upsert, not an `INSERT`.** A changed row is a row whose key is already in the copy: a plain
-  `INSERT … WHERE updated_at > <watermark>` added the changed orders a second time — the copy then
+  `INSERT … WHERE changed_at > <watermark>` added the changed rows a second time — the copy then
   had more rows than keys, no error — and missed the rows at the watermark and without a date
   (measured). A table `CREATE_REMOTE_TABLE` made has no primary key in its database, so nothing
-  refuses the duplicate; `ON DUPLICATE KEY ( order_id )` names the key, declared or not.
-- **The watermark is the copy's own latest `updated_at`**, read in the same statement: a failed
+  refuses the duplicate; `ON DUPLICATE KEY ( shipment_id )` names the key, declared or not.
+- **The watermark is the copy's own latest `changed_at`**, read in the same statement: a failed
   run leaves it where it was, and the next one picks up from there. `COALESCE` makes the run over
   an empty copy a full load — `MAX` over no rows is `NULL`, and `>= NULL` loads nothing, without an
   error. Not `@LAST_REFRESH_DATE`: that is the cache's load time, not the data's — and in a
@@ -73,7 +74,7 @@ WHERE e.updated_at >= ( SELECT COALESCE(MAX(d.updated_at), TIMESTAMP '1900-01-01
   one SQL Server database.
 - One statement: a Scheduler job runs exactly one (`/denodo:scheduler`, "Run one statement on a
   schedule"); its data source connects to one database, so name every view with its database
-  there — `INSERT INTO sales_analytics.bv_dwh_orders …`.
+  there — `INSERT INTO sales_analytics.bv_dwh_shipments …`.
 - The copy's `DATA_LOAD_QUERY` stays the full load: `REFRESH` remains the way to rebuild it, and the
   undo of a bad incremental run.
 
@@ -84,15 +85,15 @@ WHERE e.updated_at >= ( SELECT COALESCE(MAX(d.updated_at), TIMESTAMP '1900-01-01
 CONNECT DATABASE sales_analytics;
 
 -- 1. One row per key: no rows.
-SELECT order_id, COUNT(*) AS copies FROM bv_dwh_orders GROUP BY order_id HAVING COUNT(*) > 1;
+SELECT shipment_id, COUNT(*) AS copies FROM bv_dwh_shipments GROUP BY shipment_id HAVING COUNT(*) > 1;
 
 -- 2. The copy against the source: keys missing from the copy, and rows that differ.
-SELECT SUM(CASE WHEN d.order_id IS NULL THEN 1 ELSE 0 END) AS missing_from_copy,
-       SUM(CASE WHEN d.order_id IS NOT NULL
-                 AND ( e.status <> d.status OR e.order_amount <> d.order_amount
-                       OR e.updated_at <> d.updated_at ) THEN 1 ELSE 0 END) AS differing
-FROM bv_erp_orders e
-     LEFT OUTER JOIN bv_dwh_orders d ON d.order_id = e.order_id;
+SELECT SUM(CASE WHEN d.shipment_id IS NULL THEN 1 ELSE 0 END) AS missing_from_copy,
+       SUM(CASE WHEN d.shipment_id IS NOT NULL
+                 AND ( e.shipment_status <> d.shipment_status OR e.weight_kg <> d.weight_kg
+                       OR e.changed_at <> d.changed_at ) THEN 1 ELSE 0 END) AS differing
+FROM bv_tms_shipments e
+     LEFT OUTER JOIN bv_dwh_shipments d ON d.shipment_id = e.shipment_id;
 ```
 
 Both `0` after a good run, and `gone_from_source` from the first block unchanged. A Scheduler job

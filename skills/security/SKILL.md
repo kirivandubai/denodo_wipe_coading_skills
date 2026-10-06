@@ -1,6 +1,6 @@
 ---
 name: security
-description: Use when deciding who may read what in Denodo 9.5 — masking or hiding columns (PII, contact details, salaries, bank accounts) from some users or roles, letting a role see only some rows (a country, a tenant), denying a view to a group, a global security policy (CREATE GLOBAL_SECURITY_POLICY) and the VDP tags it reads, giving a user a role or giving a role access to a database or views (CREATE ROLE … GRANT EXECUTE, ALTER USER … GRANT ROLE), checking what a given user really gets back, or a user who sees data a restriction should hide ("he still gets every row", "the masking stopped working"). Not for a tag as a label without a policy (/denodo:catalog) or for descriptions and the MCP visibility tag (/denodo:semantics).
+description: Use when deciding who may read what in Denodo 9.5 — masking or hiding columns (PII, contact details, salaries, bank accounts) from some users or roles, letting a role see only some rows (a country, a tenant) or each person only their own, taking someone's access away (ALTER USER … REVOKE), denying a view to a group, a global security policy (CREATE GLOBAL_SECURITY_POLICY) and the VDP tags it reads, giving a user a role or giving a role access to a database or views (CREATE ROLE … GRANT EXECUTE, ALTER USER … GRANT ROLE), checking what a given user really gets back, or a user who sees data a restriction should hide ("he still gets every row", "the masking stopped working"). Not for a tag as a label without a policy (/denodo:catalog) or for descriptions and the MCP visibility tag (/denodo:semantics).
 ---
 
 # Who may read what
@@ -20,8 +20,9 @@ being evaluated without anyone being told. Two facts shape every step below:
    (the profile's user has the `impersonator` role).
 
 This skill covers: a role with read access and giving it to a user; tagging the columns a
-policy should reach; a global security policy that masks columns, filters rows or denies a
-view; checking it as each person. A tag as a plain label is `/denodo:catalog` (its full
+policy should reach; a global security policy that masks columns, filters rows — by a value, or
+to each reader's own — or denies a view; taking someone's access away; checking it as each
+person. A tag as a plain label is `/denodo:catalog` (its full
 syntax lives there); descriptions and the MCP visibility tag are `/denodo:semantics`. User
 accounts and passwords, LDAP and identity-provider groups, per-role row and column
 restrictions, custom policies, session-attribute audiences and server properties are set
@@ -81,7 +82,7 @@ SELECT view_name, column_name, tag_name FROM GET_VIEW_TAGS() WHERE input_databas
 | What the statements touch | You apply yourself | Only after the human's yes |
 |---|---|---|
 | only objects you created in this session: a role no person holds yet, whose grants name only objects you created in this session, a policy limited by `VIEW_DATABASES` to a database you created in this session and whose audience is such a role, tags on views you created | create, change, check | — |
-| anything that existed before this session — a role, a user, a tag a policy names, a policy, someone else's view; any grant of a role or a privilege to a person; a new policy whose audience or views include existing ones; re-creating a role someone dropped | the reads, the impersonated checks, the files | every statement |
+| anything that existed before this session — a role, a user, a tag a policy names, a policy, someone else's view; any grant or revoke of a role or a privilege to a person; a new policy whose audience or views include existing ones; re-creating a role someone dropped | the reads, the impersonated checks, the files | every statement |
 
 `vql plan` on the file names, per statement, every existing object it touches that this
 session did not create (`touches`) — the first row needs that list empty (`/denodo:vql`).
@@ -121,6 +122,7 @@ are the "before" the human compares with.
 | "It is reversed with one `REMOVE_FROM` / `DROP`" | The readers already got the result; and `DROP TAG … CASCADE` deletes every policy that names the tag. |
 | "Only new objects — a pure `CREATE`" | A new policy restricts existing people; a re-created role revives an invalid policy; `CREATE OR REPLACE` of an existing role or user adds to it. Global objects are nobody's own by being new. |
 | "`GET_CATALOG_EFFECTIVE_PERMISSIONS` says the user is restricted" | Its `rowpermissions` says a restriction exists, not that it applies. It said "restricted" for a user who read every masked column in clear through a direct grant. |
+| "Revoking can only make it safer" | `ALTER ROLE … REVOKE` on a role others hold cuts them off too, and a data source or a Scheduler job that logs in as the person stops working tonight. The yes is to the revokes, shown with who keeps what. |
 | "I can't log in as them, so I'll create a test user" | A user with a password puts it in a file and in the transcript; a user with a role is a person with access. Impersonate the real people, or report the check as not done. |
 | "I'll give my profile the `impersonator` role to check" | That changes your account's privileges on a shared server — the administrator's decision. Ask for it; meanwhile the result is unverified. |
 
@@ -268,6 +270,117 @@ CONTEXT ('impersonate_roles' = 'sales_analyst');
   Whether someone may write is proven only by their own login; hand that check to the human
   (`/denodo:dml`).
 
+### Each person sees only their own rows
+
+The rows carry the login of the person they belong to; a tag on that column, and a filter that
+compares the tag with the login of whoever is asking:
+
+```sql
+-- verified: 9.5.1 (live, 2026-10-06)
+CONNECT DATABASE sales_analytics;
+
+CREATE OR REPLACE TAG row_owner
+    DESCRIPTION = 'The login of the person a row belongs to. Sales reps see only their own rows: policy own_opportunities_only.';
+
+CREATE OR REPLACE VIEW opportunities
+    FOLDER = '/03 - business entities'
+    DESCRIPTION = 'Open sales opportunities with the login of the rep who owns each. One row per opportunity. Reps see only their own: policy own_opportunities_only.'
+    PRIMARY KEY ( 'opportunity_id' )
+    ( sales_rep TAGS ( row_owner ) )
+    AS SELECT opportunity_id, account_name, amount, sales_rep
+       FROM iv_opportunities
+    CONTEXT ('formatted' = 'yes');
+
+CREATE OR REPLACE GLOBAL_SECURITY_POLICY own_opportunities_only
+    DESCRIPTION = 'Sales reps see only the rows whose column tagged row_owner holds their own login, case ignored, in sales_analytics and every view built on those columns.'
+    ENABLED = TRUE
+    AUDIENCE ( ANY ROLES ( sales_reps ) )
+    ELEMENTS ( VIEW_DATABASES ( sales_analytics ) COLUMNS TAGGED ANY ( row_owner ) )
+    RESTRICTION ( FILTER = 'UPPER(row_owner) = UPPER(GETSESSION(''user''))' REJECT );
+```
+
+- **`GETSESSION('user')` in the condition is the login of whoever runs the query** — under
+  `impersonate_user`, the person impersonated. The condition names the tag, not the column.
+- **`COLUMNS TAGGED`, not `VIEWS TAGGED`.** With the tag on a column, `VIEWS TAGGED ANY ( row_owner
+  )` is created, `GET_ELEMENTS()` says `OK`, and nobody's rows are filtered.
+- **Before the policy, compare the column with the people**: `SELECT sales_rep, COUNT(*)
+  FROM opportunities GROUP BY sales_rep` against `GET_USERS_WITH_ROLE()` of the
+  audience. A login is case-sensitive (impersonating `MLEE` is `The user 'MLEE' does not exist`),
+  so a value stored in another case matches nobody under `=`; a row with no owner is seen by
+  nobody in the audience, nor is a departed person's. Show the human the values that match no
+  login. `UPPER` on both sides is a choice — it would also let a future user `MLEE` see `mlee`'s
+  rows — and the exact `=` is the other.
+- The audience sees its own rows in this view and in every view built on it — an aggregate above
+  counts only theirs. Everyone outside the audience, a director through another role, and every
+  administrator sees all rows ("Choosing the audience").
+- The tag lives in the view's file, as above ("The tag in the view's own file"); on someone else's
+  view it goes on with `ALTER TAG` after the yes.
+
+```sql
+-- verified: 9.5.1 (live, 2026-10-06)
+CONNECT DATABASE sales_analytics;
+
+-- 1. What each person should see, as the administrator: rows per owner.
+SELECT UPPER(sales_rep) AS owner, COUNT(*) AS rows_owned
+FROM opportunities
+GROUP BY UPPER(sales_rep);
+
+-- 2. As each person of the audience: their count, and 0 rows of anyone else.
+SELECT COUNT(*) AS rows_seen,
+       SUM(CASE WHEN sales_rep IS NULL OR UPPER(sales_rep) <> UPPER('mlee') THEN 1 ELSE 0 END) AS not_theirs
+FROM opportunities
+CONTEXT ('impersonate_user' = 'mlee');
+```
+
+**Check a per-person filter only with `impersonate_user`**, one query per person: under
+`impersonate_roles` the session's user is `__roles_impersonator_user__`, so the filter returns no
+rows — it looks like the restriction works and proves nothing (*verified: 9.5.1 (live,
+2026-10-06)*). `rows_seen` equals that person's `rows_owned`, and `not_theirs` is `0`.
+
+### Take someone's access away
+
+```sql
+-- verified: 9.5.1 (live, 2026-10-06)
+-- 1. Every path into the database: the rows with userrolename empty are granted to the person,
+--    the others come with a role.
+SELECT username, userrolename, elementname, dbconnect, dbexecute, elementexecute, dbadmin
+FROM CATALOG_PERMISSIONS()
+WHERE dbname = 'sales_analytics' AND username = 'kchen';
+
+-- 2. Who else holds each role the first query names: revoking from the role cuts them off too.
+SELECT name FROM GET_USERS_WITH_ROLE() WHERE role = 'sales_analyst' AND include_indirect_roles = true;
+```
+
+The file, one statement per path of query 1 — it waits for the yes (Who applies what):
+
+```sql
+-- verified: 9.5.1 (live, 2026-10-06)
+ALTER USER kchen REVOKE ROLE sales_analyst;
+ALTER USER kchen REVOKE EXECUTE ON sales_analytics.household_income;
+ALTER USER kchen REVOKE CONNECT ON sales_analytics;
+```
+
+- **From the person, never from a role others hold**: `ALTER ROLE … REVOKE` takes it from every
+  member of query 2.
+- **Every row of query 1 is a way in, and each one alone reads data**: a direct `EXECUTE` on a view
+  kept working after the person's own `CONNECT` was revoked, because a role still granted
+  `CONNECT`; a role with `EXECUTE` on the whole database reads every view.
+- **`REVOKE` of a role or a privilege the person does not have answers `ok`** — a misspelled role
+  too. Query 1 again, after, is the answer: no row.
+- **The check as the person runs from another database**, naming the view with its database:
+  `SELECT COUNT(*) FROM sales_analytics.household_income CONTEXT ('impersonate_user' = 'kchen')`
+  answers `The user does not have CONNECT privileges on the database 'sales_analytics'`. Run in
+  `sales_analytics` itself, an impersonated query does not check `CONNECT`: a person with nothing
+  left but an `EXECUTE` on one view still read it there — *verified: 9.5.1 (live, 2026-10-06)*.
+- **What a revoke does not reach**: `dbadmin = true` in query 1 — a local administrator — and a
+  global administrator (`LIST USERS`, column `admin`) read everything; a role that comes from an
+  LDAP or identity-provider group comes back at the next login — the administrator's, in Design
+  Studio or the identity provider; copies the person already exported.
+- **What stops working with it**: a VDP data source or a Scheduler job that logs in as the person
+  (`api --server scheduler get /public/api/dataSources` → `login`). Name them in the message.
+- The message is the shape above — readers today, the file, who reads what after, what is not
+  covered.
+
 ## Choosing the audience
 
 **An audience restricts only the grant path it names; every other path that grants
@@ -331,7 +444,8 @@ with a yes.
 
 ## Silent failures
 
-Each runs without an error — *verified: 9.5.1 (live, 2026-10-01)*.
+Each runs without an error — *verified: 9.5.1 (live, 2026-10-01)*; rows 13–16 —
+*verified: 9.5.1 (live, 2026-10-06)*.
 
 | You did | What happens | Instead |
 |---|---|---|
@@ -347,6 +461,10 @@ Each runs without an error — *verified: 9.5.1 (live, 2026-10-01)*.
 | 10. masked a column people group, filter or join on | groups collapse into `********`, filters find nothing | say it in the message |
 | 11. `ALTER DATABASE … GRANT … TO ROLE` with a misspelled role | `ok`, nothing granted | read query 1 back |
 | 12. trusted `GET_CATALOG_EFFECTIVE_PERMISSIONS` | `rowpermissions = true` for a user who reads in clear | impersonate |
+| 13. a row filter with `VIEWS TAGGED` while the tag is on a column | created, `OK`, filters nothing | `COLUMNS TAGGED` |
+| 14. a per-person filter checked with `impersonate_roles` | no rows — the session's user is `__roles_impersonator_user__` | `impersonate_user`, per person |
+| 15. checked a revoke as the person inside the database itself | `CONNECT` is not checked there: a person with one `EXECUTE` left still read | the impersonated query from another database, `<db>.<view>` |
+| 16. `ALTER USER … REVOKE` of a role or privilege the person does not have | `ok` | `CATALOG_PERMISSIONS()` for the person, after |
 
 ## Common mistakes
 

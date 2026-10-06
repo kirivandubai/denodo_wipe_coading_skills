@@ -128,10 +128,10 @@ writes = [
   "SELECT remote_table, base_view, status FROM CREATE_REMOTE_TABLE() WHERE remote_table_name = '{tag_prefix}customer' AND replace_remote_table_if_exist = true AND query = 'SELECT 1 AS x FROM Dual()' AND datasource_database_name = '{write_datasource_database}' AND datasource_name = '{write_datasource_name}' AND datasource_catalog = '{write_catalog}' AND datasource_schema = '{write_schema}' AND base_view_database_name = '{database}' AND base_view_name = '{tag_prefix}customer_drop' AND replace_base_view_if_exist = true",
   "SELECT * FROM DROP_REMOTE_TABLE() WHERE base_view_database_name = '{database}' AND base_view_name = '{tag_prefix}customer_drop' AND drop_base_view_on_cascade = true",
   # the incremental-load steps' source and copy
-  "SELECT remote_table, base_view, status FROM CREATE_REMOTE_TABLE() WHERE remote_table_name = '{tag_prefix}erp_orders' AND replace_remote_table_if_exist = true AND query = 'SELECT 1 AS x FROM Dual()' AND datasource_database_name = '{write_datasource_database}' AND datasource_name = '{write_datasource_name}' AND datasource_catalog = '{write_catalog}' AND datasource_schema = '{write_schema}' AND base_view_database_name = '{database}' AND base_view_name = '{tag_prefix}erp_orders_drop' AND replace_base_view_if_exist = true",
-  "SELECT * FROM DROP_REMOTE_TABLE() WHERE base_view_database_name = '{database}' AND base_view_name = '{tag_prefix}erp_orders_drop' AND drop_base_view_on_cascade = true",
-  "SELECT remote_table, base_view, status FROM CREATE_REMOTE_TABLE() WHERE remote_table_name = '{tag_prefix}dwh_orders' AND replace_remote_table_if_exist = true AND query = 'SELECT 1 AS x FROM Dual()' AND datasource_database_name = '{write_datasource_database}' AND datasource_name = '{write_datasource_name}' AND datasource_catalog = '{write_catalog}' AND datasource_schema = '{write_schema}' AND base_view_database_name = '{database}' AND base_view_name = '{tag_prefix}dwh_orders_drop' AND replace_base_view_if_exist = true",
-  "SELECT * FROM DROP_REMOTE_TABLE() WHERE base_view_database_name = '{database}' AND base_view_name = '{tag_prefix}dwh_orders_drop' AND drop_base_view_on_cascade = true",
+  "SELECT remote_table, base_view, status FROM CREATE_REMOTE_TABLE() WHERE remote_table_name = '{tag_prefix}tms_shipments' AND replace_remote_table_if_exist = true AND query = 'SELECT 1 AS x FROM Dual()' AND datasource_database_name = '{write_datasource_database}' AND datasource_name = '{write_datasource_name}' AND datasource_catalog = '{write_catalog}' AND datasource_schema = '{write_schema}' AND base_view_database_name = '{database}' AND base_view_name = '{tag_prefix}tms_shipments_drop' AND replace_base_view_if_exist = true",
+  "SELECT * FROM DROP_REMOTE_TABLE() WHERE base_view_database_name = '{database}' AND base_view_name = '{tag_prefix}tms_shipments_drop' AND drop_base_view_on_cascade = true",
+  "SELECT remote_table, base_view, status FROM CREATE_REMOTE_TABLE() WHERE remote_table_name = '{tag_prefix}dwh_shipments' AND replace_remote_table_if_exist = true AND query = 'SELECT 1 AS x FROM Dual()' AND datasource_database_name = '{write_datasource_database}' AND datasource_name = '{write_datasource_name}' AND datasource_catalog = '{write_catalog}' AND datasource_schema = '{write_schema}' AND base_view_database_name = '{database}' AND base_view_name = '{tag_prefix}dwh_shipments_drop' AND replace_base_view_if_exist = true",
+  "SELECT * FROM DROP_REMOTE_TABLE() WHERE base_view_database_name = '{database}' AND base_view_name = '{tag_prefix}dwh_shipments_drop' AND drop_base_view_on_cascade = true",
   # the one-row-in-database step's copy of the store history
   "SELECT remote_table, base_view, status FROM CREATE_REMOTE_TABLE() WHERE remote_table_name = '{tag_prefix}store' AND replace_remote_table_if_exist = true AND query = 'SELECT 1 AS x FROM Dual()' AND datasource_database_name = '{write_datasource_database}' AND datasource_name = '{write_datasource_name}' AND datasource_catalog = '{write_catalog}' AND datasource_schema = '{write_schema}' AND base_view_database_name = '{database}' AND base_view_name = '{tag_prefix}store_drop' AND replace_base_view_if_exist = true",
   "SELECT * FROM DROP_REMOTE_TABLE() WHERE base_view_database_name = '{database}' AND base_view_name = '{tag_prefix}store_drop' AND drop_base_view_on_cascade = true",
@@ -148,12 +148,14 @@ vql = [
   "DROP GLOBAL_SECURITY_POLICY IF EXISTS {tag_prefix}masking_ref",
   "DROP GLOBAL_SECURITY_POLICY IF EXISTS {tag_prefix}filter_emea",
   "DROP GLOBAL_SECURITY_POLICY IF EXISTS {tag_prefix}deny_all",
+  "DROP GLOBAL_SECURITY_POLICY IF EXISTS {tag_prefix}own_opportunities_only",
   "DROP DATABASE IF EXISTS {database} CASCADE",
   "DROP TAG IF EXISTS {tag_prefix}pii",
   "DROP TAG IF EXISTS {tag_prefix}finance_sensitive",
   "DROP TAG IF EXISTS {tag_prefix}mcp",
   "DROP TAG IF EXISTS {tag_prefix}personal_data",
   "DROP TAG IF EXISTS {tag_prefix}sales_territory",
+  "DROP TAG IF EXISTS {tag_prefix}row_owner",
   "DROP ROLE IF EXISTS {tag_prefix}sales_analyst",
   "DROP USER IF EXISTS {tag_prefix}reader",
 ]
@@ -1683,6 +1685,100 @@ address = "skills/security/references/privileges.md#Database grants from the dat
 substitute = { "<db>" = "{database}", "<role>" = "{tag_prefix}sales_analyst" }
 database = "{database}"
 
+# --- Each person sees only their own rows, and taking access away (security) ------------------
+# The CRM fixture's customers become opportunities whose sales_rep is the chain's reader for
+# segment A, the same login in upper case for segment B, and nobody for the rest: the reader must
+# see A and B (the policy compares case-insensitively) and nothing else.
+
+[[step]]
+id = "security-own-rows-fixture"
+kind = "fixture"
+channel = "vql"
+requires = ["enterprise_plus"]
+database = "{database}"
+check = "SELECT COUNT(*) FROM iv_opportunities HAVING COUNT(*) = 40"
+vql = """
+CONNECT DATABASE {database};
+
+CREATE OR REPLACE VIEW iv_opportunities
+    FOLDER = '/02 - integration'
+    AS SELECT cust_id AS opportunity_id,
+              CONCAT(first_name, ' ', last_name) AS account_name,
+              CAST(1000 AS decimal(12,2)) AS amount,
+              CASE WHEN segment_cd = 'A' THEN '{tag_prefix}reader'
+                   WHEN segment_cd = 'B' THEN UPPER('{tag_prefix}reader')
+                   ELSE CAST(NULL AS varchar) END AS sales_rep
+       FROM bv_crm_customers
+    CONTEXT ('formatted' = 'yes');
+"""
+
+[[step]]
+id = "security-own-rows"
+kind = "template"
+channel = "vql"
+requires = ["enterprise_plus"]
+needs = ["security-own-rows-fixture"]
+address = "skills/security/SKILL.md#Each person sees only their own rows"
+substitute = { sales_analytics = "{database}", row_owner = "{tag_prefix}row_owner", own_opportunities_only = "{tag_prefix}own_opportunities_only", "ANY ROLES ( sales_reps )" = "ANY ROLES ( {tag_prefix}sales_analyst )" }
+database = "{database}"
+check = "SELECT name FROM GET_ELEMENTS() WHERE type = 'globalSecurityPolicy' AND name = '{tag_prefix}own_opportunities_only' AND element_status = 'OK'"
+
+[[step]]
+id = "security-own-rows-grant"
+kind = "fixture"
+channel = "vql"
+requires = ["enterprise_plus"]
+needs = ["security-own-rows"]
+# security-user-grants ran the privileges template, which takes the role from the reader again:
+# give it back, and let the role read the new view.
+vql = """
+ALTER USER {tag_prefix}reader GRANT ROLE {tag_prefix}sales_analyst;
+ALTER ROLE {tag_prefix}sales_analyst GRANT EXECUTE ON {database}.opportunities;
+"""
+
+[[step]]
+id = "security-own-rows-check"
+kind = "template"
+channel = "vql"
+requires = ["enterprise_plus", "impersonation"]
+needs = ["security-own-rows-grant"]
+address = "skills/security/SKILL.md#Each person sees only their own rows[1]"
+substitute = { sales_analytics = "{database}", mlee = "{tag_prefix}reader" }
+database = "{database}"
+# As the reader: some rows, and none of anyone else's.
+check = "SELECT COUNT(*) AS seen FROM opportunities HAVING COUNT(*) > 0 AND SUM(CASE WHEN sales_rep IS NULL OR UPPER(sales_rep) <> UPPER('{tag_prefix}reader') THEN 1 ELSE 0 END) = 0 CONTEXT ('impersonate_user' = '{tag_prefix}reader')"
+
+[[step]]
+id = "security-revoke-paths"
+kind = "template"
+channel = "vql"
+address = "skills/security/SKILL.md#Take someone's access away"
+substitute = { sales_analytics = "{database}", kchen = "{tag_prefix}reader", sales_analyst = "{tag_prefix}sales_analyst" }
+database = "{database}"
+check = "SELECT username FROM CATALOG_PERMISSIONS() WHERE dbname = '{database}' AND username = '{tag_prefix}reader'"
+
+[[step]]
+id = "security-revoke-direct-grants"
+kind = "fixture"
+channel = "vql"
+# Two paths of the reader's own beside the role's, so the revoke file closes three.
+vql = """
+ALTER USER {tag_prefix}reader GRANT CONNECT ON {database};
+ALTER USER {tag_prefix}reader GRANT EXECUTE ON {database}.household_income;
+"""
+
+[[step]]
+id = "security-revoke"
+kind = "template"
+channel = "vql"
+needs = ["security-revoke-direct-grants"]
+address = "skills/security/SKILL.md#Take someone's access away[1]"
+substitute = { sales_analytics = "{database}", kchen = "{tag_prefix}reader", sales_analyst = "{tag_prefix}sales_analyst" }
+database = "{database}"
+# Nothing left: no row of the reader's in the database.
+check = "SELECT username FROM CATALOG_PERMISSIONS() WHERE dbname = '{database}' AND username = '{tag_prefix}reader'"
+expect = "no rows"
+
 [[step]]
 id = "external-element-vql"
 kind = "template"
@@ -2273,11 +2369,11 @@ database = "{database}"
 check = "SELECT 1 FROM GET_QUERY_EXECUTION_PLAN() p, (SELECT COUNT(*) AS n FROM iv_dwh_store_latest w INNER JOIN iv_store_latest f ON w.store_id = f.store_id AND w.store_sk = f.store_sk) m WHERE p.input_query = 'SELECT * FROM iv_dwh_store_latest' AND p.execution_plan LIKE '%row_number() OVER%' AND m.n = 12"
 
 # --- Incremental loads: skills/materialize/references/incremental.md --------------------------
-# A source "ERP" table and its copy, both made in the cache database by CREATE_REMOTE_TABLE from
-# the fixture's income bands: twenty orders, then the source changes as an ERP's does — two new
-# orders, one without updated_at, two changed, one deleted. The template's upsert must leave the
-# copy with every source order once (22 keys: the 21 in the source and the deleted one, which an
-# upsert never removes) and the two changes applied.
+# A source table of a transport system and its copy, both made in the cache database by
+# CREATE_REMOTE_TABLE from the fixture's income bands: twenty shipments, then the source changes as
+# such a system's does — two new shipments, one without changed_at, two changed, one deleted. The
+# template's upsert must leave the copy with every source shipment once (22 keys: the 21 in the
+# source and the deleted one, which an upsert never removes) and the two changes applied.
 
 [[step]]
 id = "writes-incremental-tables"
@@ -2285,48 +2381,48 @@ kind = "fixture"
 channel = "vql"
 writes = true
 database = "{database}"
-check = "SELECT 1 FROM (SELECT COUNT(*) AS n FROM bv_erp_orders) e, (SELECT COUNT(*) AS n FROM bv_dwh_orders) d WHERE e.n = 21 AND d.n = 20"
+check = "SELECT 1 FROM (SELECT COUNT(*) AS n FROM bv_tms_shipments) e, (SELECT COUNT(*) AS n FROM bv_dwh_shipments) d WHERE e.n = 21 AND d.n = 20"
 vql = """
 CONNECT DATABASE {database};
 
 SELECT phase, status, error, inserted_rows
 FROM CREATE_REMOTE_TABLE()
-WHERE remote_table_name = '{tag_prefix}erp_orders'
+WHERE remote_table_name = '{tag_prefix}tms_shipments'
   AND replace_remote_table_if_exist = false
-  AND query = 'SELECT ib_income_band_sk AS order_id, CONCAT(''C-'', ib_income_band_sk) AS customer_id, CAST(ib_upper_bound AS decimal(12,2)) AS order_amount, ''open'' AS status, ADDDAY(TIMESTAMP ''2026-09-01 10:00:00'', ib_income_band_sk) AS updated_at FROM bv_income_band'
+  AND query = 'SELECT ib_income_band_sk AS shipment_id, CONCAT(''C-'', ib_income_band_sk) AS carrier_id, CAST(ib_upper_bound AS decimal(12,2)) AS weight_kg, ''booked'' AS shipment_status, ADDDAY(TIMESTAMP ''2026-09-01 10:00:00'', ib_income_band_sk) AS changed_at FROM bv_income_band'
   AND datasource_database_name = '{write_datasource_database}'
   AND datasource_name = '{write_datasource_name}'
   AND datasource_catalog = '{write_catalog}'
   AND datasource_schema = '{write_schema}'
   AND base_view_database_name = '{database}'
-  AND base_view_name = 'bv_erp_orders'
+  AND base_view_name = 'bv_tms_shipments'
   AND base_view_folder = '/01 - connectivity'
   AND replace_base_view_if_exist = false;
 
 SELECT phase, status, error, inserted_rows
 FROM CREATE_REMOTE_TABLE()
-WHERE remote_table_name = '{tag_prefix}dwh_orders'
+WHERE remote_table_name = '{tag_prefix}dwh_shipments'
   AND replace_remote_table_if_exist = false
-  AND query = 'SELECT order_id, customer_id, order_amount, status, updated_at FROM bv_erp_orders'
+  AND query = 'SELECT shipment_id, carrier_id, weight_kg, shipment_status, changed_at FROM bv_tms_shipments'
   AND datasource_database_name = '{write_datasource_database}'
   AND datasource_name = '{write_datasource_name}'
   AND datasource_catalog = '{write_catalog}'
   AND datasource_schema = '{write_schema}'
   AND base_view_database_name = '{database}'
-  AND base_view_name = 'bv_dwh_orders'
+  AND base_view_name = 'bv_dwh_shipments'
   AND base_view_folder = '/01 - connectivity'
   AND replace_base_view_if_exist = false;
 
-INSERT INTO bv_erp_orders
-SELECT ib_income_band_sk + 20 AS order_id, CONCAT('C-', ib_income_band_sk + 20) AS customer_id,
-       CAST(ib_lower_bound AS decimal(12,2)) AS order_amount, 'open' AS status,
-       CASE WHEN ib_income_band_sk = 3 THEN CAST(NULL AS timestamp) ELSE TIMESTAMP '2026-10-05 09:00:00' END AS updated_at
+INSERT INTO bv_tms_shipments
+SELECT ib_income_band_sk + 20 AS shipment_id, CONCAT('C-', ib_income_band_sk + 20) AS carrier_id,
+       CAST(ib_lower_bound AS decimal(12,2)) AS weight_kg, 'booked' AS shipment_status,
+       CASE WHEN ib_income_band_sk = 3 THEN CAST(NULL AS timestamp) ELSE TIMESTAMP '2026-10-05 09:00:00' END AS changed_at
 FROM bv_income_band
 WHERE ib_income_band_sk <= 3 AND ib_income_band_sk >= 2;
 
-UPDATE bv_erp_orders SET status = 'paid', updated_at = TIMESTAMP '2026-10-05 10:00:00' WHERE order_id = 5 OR order_id = 6;
+UPDATE bv_tms_shipments SET shipment_status = 'delivered', changed_at = TIMESTAMP '2026-10-05 10:00:00' WHERE shipment_id = 5 OR shipment_id = 6;
 
-DELETE FROM bv_erp_orders WHERE order_id = 1;
+DELETE FROM bv_tms_shipments WHERE shipment_id = 1;
 """
 
 [[step]]
@@ -2338,8 +2434,8 @@ needs = ["writes-incremental-tables"]
 address = "skills/materialize/references/incremental.md#Before the first run: what it will write"
 substitute = { sales_analytics = "{database}" }
 database = "{database}"
-# The deleted order is the one key the copy has and the source no longer has.
-check = "SELECT d.order_id FROM bv_dwh_orders d LEFT OUTER JOIN bv_erp_orders e ON e.order_id = d.order_id WHERE e.order_id IS NULL AND d.order_id = 1"
+# The deleted shipment is the one key the copy has and the source no longer has.
+check = "SELECT d.shipment_id FROM bv_dwh_shipments d LEFT OUTER JOIN bv_tms_shipments e ON e.shipment_id = d.shipment_id WHERE e.shipment_id IS NULL AND d.shipment_id = 1"
 
 [[step]]
 id = "incremental-load"
@@ -2350,8 +2446,8 @@ needs = ["writes-incremental-tables"]
 address = "skills/materialize/references/incremental.md#The load"
 substitute = { sales_analytics = "{database}" }
 database = "{database}"
-# Every order once — the new, the undated and the deleted one included — and the changes applied.
-check = "SELECT 1 FROM (SELECT COUNT(*) AS n, COUNT(DISTINCT order_id) AS k FROM bv_dwh_orders) c, (SELECT COUNT(*) AS paid FROM bv_dwh_orders WHERE status = 'paid') p WHERE c.n = 22 AND c.k = 22 AND p.paid = 2"
+# Every shipment once — the new, the undated and the deleted one included — and the changes applied.
+check = "SELECT 1 FROM (SELECT COUNT(*) AS n, COUNT(DISTINCT shipment_id) AS k FROM bv_dwh_shipments) c, (SELECT COUNT(*) AS paid FROM bv_dwh_shipments WHERE shipment_status = 'delivered') p WHERE c.n = 22 AND c.k = 22 AND p.paid = 2"
 
 [[step]]
 id = "incremental-after"
@@ -2362,7 +2458,7 @@ needs = ["incremental-load"]
 address = "skills/materialize/references/incremental.md#After a run"
 substitute = { sales_analytics = "{database}" }
 database = "{database}"
-check = "SELECT 1 FROM (SELECT SUM(CASE WHEN d.order_id IS NULL THEN 1 ELSE 0 END) AS m, SUM(CASE WHEN d.order_id IS NOT NULL AND (e.status <> d.status OR e.order_amount <> d.order_amount OR e.updated_at <> d.updated_at) THEN 1 ELSE 0 END) AS x FROM bv_erp_orders e LEFT OUTER JOIN bv_dwh_orders d ON d.order_id = e.order_id) r WHERE r.m = 0 AND r.x = 0"
+check = "SELECT 1 FROM (SELECT SUM(CASE WHEN d.shipment_id IS NULL THEN 1 ELSE 0 END) AS m, SUM(CASE WHEN d.shipment_id IS NOT NULL AND (e.shipment_status <> d.shipment_status OR e.weight_kg <> d.weight_kg OR e.changed_at <> d.changed_at) THEN 1 ELSE 0 END) AS x FROM bv_tms_shipments e LEFT OUTER JOIN bv_dwh_shipments d ON d.shipment_id = e.shipment_id) r WHERE r.m = 0 AND r.x = 0"
 
 [[step]]
 id = "materialize-summary"
