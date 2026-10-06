@@ -161,15 +161,16 @@ i18n the same way (Sunday or Monday). `EXTRACT(WEEK …)` and `GETWEEK` are ISO 
 `EXTRACT(YEAR …)` is the calendar year: `2024-12-30` is week `1` of year `2024`.
 
 **Time zones.** `timestamp` and `localdate` carry none; `timestamptz` and the deprecated
-`date` do. **Casting a `timestamptz` to `timestamp` or formatting it uses the time zone of the
-session's i18n**, or of a `CONTEXT('i18n' = …)` — not the server's i18n the documentation
-names — so the day can change with the database you are connected to: `2024-03-15 23:30
-+00:00` casts to `16:30` under `us_pst` and to `00:30` the next day under `es_euro`, and
-`FORMATDATE('yyyy-MM-dd HH:mm', …)` writes the same. `LOCALTIMESTAMP` and `NOW()` are the
-current time in that zone; `CURRENT_DATE` ignored a `CONTEXT` i18n — under `jp` it was the day
-before `LOCALTIMESTAMP`'s (*verified: 9.5.1 (live, 2026-10-06)*). Written to a source column, a
-zoned value is converted in the server process's zone instead (`/denodo:dml`). A monthly label
-over a `timestamptz` moves the last hours of a month into the next one.
+`date` do. **Casting a `timestamptz` to `timestamp` or formatting it follows the i18n in effect
+for the query** — the session's, or a `CONTEXT('i18n' = …)`, which changes it although the
+documentation names the server's i18n — so the day can change with the database you are
+connected to: `2024-03-15 23:30 +00:00` casts to `16:30` under `us_pst` and to `00:30` the next
+day under `es_euro`, and `FORMATDATE('yyyy-MM-dd HH:mm', …)` writes the same. `LOCALTIMESTAMP`
+and `NOW()` are the current time in that zone; `CURRENT_DATE` ignored a `CONTEXT` i18n — under
+`jp` it was the day before `LOCALTIMESTAMP`'s (*verified: 9.5.1 (live, 2026-10-06)*). Written to
+a source column, a zoned value is converted in the server process's zone instead
+(`/denodo:dml`). A monthly label over a `timestamptz` moves the last hours of a month into the
+next one.
 
 ## `NULL`, ordering and the shape of a query
 
