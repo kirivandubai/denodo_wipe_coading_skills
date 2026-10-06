@@ -129,14 +129,16 @@ database and the few server-wide objects it needs, all named `verify_…`. A ste
 something your server lacks is skipped and says what; the summary counts what was verified,
 failed and skipped. The tails that write outside that database or cost money are flags:
 `--with-writes` (tables in the cache database), `--with-marketplace`, `--with-scheduler`,
-`--with-ai` (about 50 paid requests to your LLM), `--testing-tool <dir>`. On a profile marked
-`production = true` it refuses to start.
+`--with-ai` (about 50 paid requests to your LLM), `--testing-tool <dir>`; `--without <feature>`
+skips what needs a feature even when the server has it. On a profile marked `production = true`
+it refuses to start.
 
 The values that belong to your installation are read from the server: the embedding model,
 the cache data source, the Scheduler's data source. The test data is a handful of small
 synthetic files the server reads over HTTP from this repository on GitHub. A server that
 cannot reach GitHub, or anything the server does not say (the skip names it), goes into
-`~/.denodo/verify.toml` beside the profiles, one table per profile:
+`~/.denodo/verify.toml` beside the profiles, one table per profile — values of your installation
+only; the test database and the names it drops stay the chain's:
 
 ```toml
 [dev]

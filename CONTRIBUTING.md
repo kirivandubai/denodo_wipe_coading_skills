@@ -204,7 +204,11 @@ LLM, summary rewriting and data movement. A step that needs what the server lack
 with the reason (`requires` in the manifest). The fixtures read `verification/data` over HTTP
 from the repository; a server without internet access reads a copy on its own disk. Both, and
 anything the server does not say, are set in `~/.denodo/verify.toml`, one table per profile
-(`--values <file>` for another). The data files are written by `verification/data/generate.py`
+(`--values <file>` for another) — installation values only: the test database and the prefix stay
+the chain's. `--without <feature>` rehearses a server that lacks one. A step that uses what an
+earlier step creates declares it in `needs = [...]` unless both are gated alike; a unit test reads
+the manifest and fails when a step that may be skipped would leave a later one to fail on its
+missing object. The data files are written by `verification/data/generate.py`
 and held to it by a unit test; change the generator, not the files.
 
 **Eval suite** — does the right skill fire for a given phrase? From the repository root,

@@ -904,13 +904,17 @@ what belongs to the chain, and a value of one installation is a marker the run f
 its first step — `@server` from read-only calls (`VALIDATE_MPP_LICENSE`, `GET_CACHE_CONFIGURATION`,
 an allowlist of `GET_PARAMETER` properties, the Scheduler's `dataSources`; `denodo_cli/features.py`),
 `@dialect` from `[dialects.<product of the write data source>]`. The values file beside the
-profiles (`verify.toml`, one table per profile; `--values` names another) overrides any of
-them, `--database` overrides that; a key the manifest does not declare is a usage error. A value
-nobody filled in skips every step and `[cleanup] writes` statement naming it, with the line to
-add — a text with a placeholder is never sent. `env check` reports the same probe as
+profiles (`verify.toml`, one table per profile; `--values` names another) overrides them and the
+manifest's `local_values` (where the fixtures are read from) — never the test database, the
+prefix or a throwaway password, which decide what the run drops; `--database` overrides the file.
+A value nobody filled in skips every step and `[cleanup] writes` statement naming it, with the
+line to add — a text with a placeholder is never sent. `env check` reports the same probe as
 `features`, and a step's `requires` (`enterprise_plus`, `llm`, `embedding`, `cache`,
 `summary_rewrite`, `data_movement`, `impersonation`) skips it, with the reason, when the server
-is known to lack one; unknown runs. The fixtures read synthetic files under the TPC-DS names
+is known to lack one; unknown runs; `--without <feature>` rehearses a server without it. A skip
+travels: a step names the earlier steps whose objects it uses in `needs`, and is skipped with
+them; a value a skipped step would have captured is unresolved for the steps after it. A unit
+test holds the manifest to that statically. The fixtures read synthetic files under the TPC-DS names
 (`verification/data`, written by its `generate.py`; the two the TPC-DS definitions fix are
 byte-identical to the demo image's) over HTTP from the public repository, or from a copy on the
 server's disk. **Every block of `skills/` marked `verified:` is a step, or a key of `[not_run]`

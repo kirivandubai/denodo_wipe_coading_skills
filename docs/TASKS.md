@@ -441,6 +441,17 @@ the bottlenecks in trust on another server, in rules kept as prose, and in bulk 
   `summary_rewrite`, `data_movement`, `admin`, `impersonation`; a non-administrator reads the
   settings as unknown. A step's `requires` skips it, with the reason, when a feature is known to be
   missing; unknown runs. 29 steps of the old chain carry it (tags and policies, AI, cache, summaries).
+  `--without <feature>` rehearses a server without one.
+
+  **A skip travels** (from the code review). `needs = [step ids]`: a step whose prerequisite was
+  skipped is skipped too, with its reason, transitively; a value a skipped step would have captured
+  is unresolved for every later step naming it. Before that, a skip turned into a failure further
+  down — on an administrator without the `impersonator` role the default run failed at the
+  security reads. A static test over the real manifest holds that every object a step that may be
+  skipped creates is used only by steps gated with it or needing it (it catches the review's
+  cases when the fixes are undone). The values file sets installation values only: the test
+  database, the prefix and a throwaway password are refused — a file could otherwise move what
+  the run drops.
 
   **Fixtures.** `verification/data`: synthetic rows under the TPC-DS names, written by `generate.py`
   (deterministic, standard library); `income_band` and `household_demographics` follow the TPC-DS
@@ -450,9 +461,9 @@ the bottlenecks in trust on another server, in rules kept as prose, and in bulk 
   'http.ApacheHttpClientConnection,120000' GET …`, measured), or from a copy on its disk.
 
   **Coverage.** Every block of `skills/` marked `verified:` is a step or a key of `[not_run]` with the
-  reason; `tests/test_chain_manifest.py` holds both directions. 156 marked blocks: 124 run (73 before
-  T40), 32 listed — grammar, fragments, the server's own messages, a line for the human, JDBC
-  introspection. Fragments become statements by substitution where that is honest: a policy's
+  reason; `tests/test_chain_manifest.py` holds both directions. 154 marked blocks: 122 run (75 of
+  `SKILL.md`, 47 of `references/`; 73 before T40), 32 listed — grammar, fragments, the server's own
+  messages, a line for the human, JDBC introspection. Fragments become statements by substitution where that is honest: a policy's
   `RESTRICTION` gets the head of the security template, created disabled; the partitioned union's
   `AS SELECT` its `CREATE VIEW`.
 
@@ -466,7 +477,12 @@ the bottlenecks in trust on another server, in rules kept as prose, and in bulk 
   section A). Reverted: the setting back, restart, schema and probe databases dropped, the copied
   folder removed. AI: about 165 of the 200 paid requests the owner allowed. After the last run both
   `changes` of the marketplace are empty, the Scheduler holds only `default`, no `verify_`/`zq40`
-  object is left; the export file was removed by hand.
+  object is left; the export file was removed by hand. After the review fixes: rehearsals with
+  `--without` — impersonation (4 steps skipped), Enterprise Plus (17), the cache with the write
+  and Scheduler tails (10), the AI tail without an LLM and an embedding model (12, no paid
+  request) — and a values file naming a cache product without a dialect (`oracle`: the write
+  fixture and its 8 dependants skipped), each green to the end; the full run without AI again
+  119 verified, 0 failed.
 
   **What the new steps found.** `DECLARE VIEW INDEX` before `CACHE` is a syntax error — the index
   goes after the search method (`datasources/references/base-view.md`, marked `verified` since T37);

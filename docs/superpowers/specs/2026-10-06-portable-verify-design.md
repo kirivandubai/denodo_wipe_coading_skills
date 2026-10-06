@@ -48,11 +48,14 @@ fixture_route = "LOCAL 'LocalConnection'"
 fixture_base = "/srv/denodo/verify-data"
 ```
 
-`--values <file>` reads another file. Precedence: values file, then server, then the manifest.
-A key the manifest does not declare (in `[values]` or a dialect table) is a usage error naming
-the file and the known keys: a typo would otherwise change nothing and say nothing. The values
-file holds no secret and needs none — a password never reaches the chain (the throwaway is made
-on the server).
+`--values <file>` reads another file. Precedence: `--database`, then the values file, then server
+or dialect, then the manifest. The file sets **installation values only** — the `@server` and
+`@dialect` ones and those the manifest lists in `local_values` (where the fixtures are read
+from). A key the manifest does not declare is a usage error naming the file and the keys it may
+set: a typo would otherwise change nothing and say nothing. The chain's own values — the test
+database, the prefix, the throwaway password — are refused saying why: they decide what the run
+creates and drops, and a values file that moved them would move the cleanup (review finding).
+The values file holds no secret and needs none.
 
 **A value nobody filled in** — the server did not say (a profile that is not an administrator
 cannot read server settings), the file did not set it — is *unresolved*. A step whose texts name
@@ -103,6 +106,18 @@ not known to be off.
 
 The vocabulary is closed (`enterprise_plus`, `llm`, `embedding`, `cache`, `summary_rewrite`,
 `data_movement`, `impersonation`); an unknown name in `requires` is a manifest error.
+`--without <feature>` treats the server as lacking one — to rehearse a smaller server, or to keep
+a run off the cache — and the reason then says so.
+
+**A skip travels.** A step that uses what an earlier step creates names it in `needs = [...]`;
+when that step was skipped, so is this one, with its reason, transitively. A value an earlier
+step would have captured (the id of an object it creates) is unresolved for every later step
+naming it once that step is skipped. Without this a skip turned into a failure further down and
+stopped the chain — on the commonest smaller server, an administrator without the `impersonator`
+role, the default run failed at the security reads (review finding). A unit test over the real
+manifest holds it statically: every object a step that may be skipped creates is used only by
+steps gated with it — the same flags, features and values — or needing it. Each skip carries a
+cause (`flag`, `server`, `value`, `needs`, `failure`), counted in `summary.skipped_because`.
 
 ## Fixture data: synthetic files under the TPC-DS names
 
@@ -204,7 +219,8 @@ fixed in the skill, not worked around in the manifest.
 
 ## Results (2026-10-06)
 
-- **Coverage:** 156 marked blocks; 124 run as steps, 32 are listed under `[not_run]` (grammar,
+- **Coverage:** 154 marked blocks; 122 run as steps (75 of `SKILL.md`, 47 of `references/`;
+  73 ran before T40), 32 are listed under `[not_run]` (grammar,
   fragments of a statement or a call, a sequence ending in an error, the server's own message,
   a CLI line for the human, JDBC introspection without a real credential).
 - **Configuration 1**, the demo image, fixtures over HTTP from the branch: 119 templates
@@ -217,6 +233,12 @@ fixed in the skill, not worked around in the manifest.
   syntax error (the index follows the search method), and the condition of a global security
   policy is written with tags, not columns — both in `references/`, both marked `verified`,
   both fixed. Neither was visible to the chain while it ran only `SKILL.md` blocks.
+- **Smaller servers, rehearsed with `--without`:** without impersonation 4 steps skipped,
+  without Enterprise Plus 17, without the cache 10 (with the writes and Scheduler tails), the AI
+  tail without an LLM or embedding model 12, and a cache database of a product without a dialect
+  table (`write_dialect = "oracle"` in a values file) skipped the write fixture and its 8
+  dependants — each run green to the end, cleanup complete. After the review fixes, the full run
+  without AI: 119 verified, 0 failed.
 - **Side effect worth knowing:** switching the cache database marks the full-cached views of
   other databases `INDIRECT_CHANGES` in the marketplace's `changes`; the next
   `marketplace-sync` of a run absorbs it. Probe databases that exist while a

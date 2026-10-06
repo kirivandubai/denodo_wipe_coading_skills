@@ -463,6 +463,7 @@ class SkipsTravelTest(unittest.TestCase):
         self.assertEqual(code, 0, doc)
         self.assertEqual([s.get("cause") for s in doc["steps"]], ["server", None])
         self.assertEqual(doc["assumed_missing"], ["enterprise_plus"])
+        self.assertIn("--without enterprise_plus", doc["steps"][0]["reason"])
 
     def test_a_value_named_in_the_skill_block_itself_counts(self):
         (self.dir / "skills" / "x").mkdir(parents=True)

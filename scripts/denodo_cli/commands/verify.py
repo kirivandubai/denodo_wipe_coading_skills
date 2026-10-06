@@ -706,7 +706,8 @@ def run_chain(
                 continue
             why, cause = _why_skip(step, features=features, unresolved=unresolved, skipped_why=skipped_why,
                                    root=root, with_marketplace=with_marketplace, with_scheduler=with_scheduler,
-                                   with_ai=with_ai, with_writes=with_writes, testing_tool=testing_tool)
+                                   with_ai=with_ai, with_writes=with_writes, testing_tool=testing_tool,
+                                   assumed=assume_missing)
             if why:
                 reports.append(_skipped(step, why, cause=cause))
                 skipped_why[step.id] = why
@@ -859,7 +860,7 @@ def _step_value_names(step: Step, root: Path | None = None) -> set[str]:
 
 def _why_skip(step: Step, *, features: dict | None, unresolved: dict[str, str], skipped_why: dict[str, str],
               root: Path, with_marketplace: bool, with_scheduler: bool, with_ai: bool, with_writes: bool,
-              testing_tool: Path | None) -> tuple[str | None, str | None]:
+              testing_tool: Path | None, assumed: tuple[str, ...] | list[str] = ()) -> tuple[str | None, str | None]:
     """Why ``step`` does not run, and the kind of reason: a flag not given (``flag``), a feature
     the server lacks (``server``), a value nobody filled in (``value``), or an earlier step it
     needs that did not run (``needs``). ``(None, None)`` when it runs."""
@@ -878,7 +879,9 @@ def _why_skip(step: Step, *, features: dict | None, unresolved: dict[str, str], 
                 "--testing-tool <its install directory>"), "flag"
     lacking = [name for name in step.requires if feature_state(features or {}, name) is False]
     if lacking:
-        return "the server lacks " + "; ".join(f"{name}: {FEATURE_REASONS[name]}" for name in lacking), "server"
+        return "the server lacks " + "; ".join(
+            f"{name}: treated as missing (--without {name})" if name in assumed else f"{name}: {FEATURE_REASONS[name]}"
+            for name in lacking), "server"
     named = sorted(_step_value_names(step, root) & set(unresolved))
     if named:
         return "; ".join(f"value {{{name}}} is unresolved: {unresolved[name]}" for name in named), "value"
