@@ -271,7 +271,9 @@ objects it created — those that did not exist before the statement — with th
 `internal_id` (`CREATE OR REPLACE` and `RENAME` keep it, `DROP` + `CREATE` changes it: measured on
 9.5.1), and follows their drops and renames. `vql plan <file>` reads the file against that ledger and
 the live catalog and says per statement `exists`, `own`, `needs_yes`, `why` (the row of the table)
-and `conditions` (what the row needs that no catalog shows); `api … --plan` does the same for a REST
+and `conditions` (what the row needs that no catalog shows) — and, when anything waits, `yes`: what
+the yes is, a yes to the shown statements, never the request that asked for them (T42: an outcome
+scenario's agent took the request for it); `api … --plan` does the same for a REST
 call without sending it, and for a catalog `synchronize` checks both `changes` against the ledger.
 "Your project's own file declares it" is read from git: the tree of the last commit made before the
 session started — a file the session wrote or committed vouches for nothing. **The plan informs and

@@ -176,6 +176,16 @@ class PlanCommandTest(LedgerCase):
         self.assertEqual(doc["executed"], 0)
         self.assertEqual(doc["session"]["id"], "s1")
         self.assertFalse(any(s.startswith(("CREATE", "DROP")) for s in server.executed))
+        # What the yes is, where the agent decides (T42: an agent read "waits for the human's yes" and
+        # took the request that asked for the DROP as that yes).
+        self.assertIn("not that yes", doc["yes"])
+
+    def test_a_plan_that_waits_for_nothing_says_nothing_about_the_yes(self):
+        doc, _ = plan_input(profile(), ["CREATE OR REPLACE VIEW fresh AS SELECT 1 AS a FROM Dual()"],
+                            transport_factory=LiveLikeServer(), database="sales", source=None, ledger=self.ledger,
+                            session_source="CLAUDE_CODE_SESSION_ID")
+        self.assertEqual(doc["needs_yes"], [])
+        self.assertNotIn("yes", doc)
 
     def test_a_long_input_is_summarised_and_its_duplicates_listed(self):
         server = LiveLikeServer(elements={"sales": {("view", "theirs"): "_t1"}})
@@ -266,11 +276,13 @@ class ApiPlanTest(LedgerCase):
         self.assertTrue(doc["radius"]["own"])
         self.assertEqual([c[0] for c in rest.calls], ["GET", "GET"])
         self.assertTrue(doc["conditions"])
+        self.assertNotIn("yes", doc)
 
     def test_one_entry_you_did_not_create(self):
         changes = {"VIEWS": {"serverElements": [{"databaseName": "teamdb", "elementName": "wip"}]}}
         doc, _, _ = self.plan(changes)
         self.assertTrue(doc["needs_yes"])
+        self.assertIn("not that yes", doc["yes"])
         self.assertEqual(doc["radius"]["not_own"], [{"half": "VIEWS", "list": "serverElements",
                                                      "databaseName": "teamdb", "elementName": "wip"}])
 

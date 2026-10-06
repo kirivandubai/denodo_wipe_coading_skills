@@ -25,7 +25,7 @@ tool reads host, user and password from `~/.denodo/profiles.toml` itself.
 | Apply inline VQL | `vql run --env dev -e "SELECT COUNT(*) FROM bv_orders"` — reads only: every `CREATE`, `ALTER` and `DROP` goes through a file (`/denodo:vql`) |
 | Read stdin | `vql run --env dev -` |
 | Another database | add `--database <db>` (or put `CONNECT DATABASE <db>;` first in the file) |
-| What a file would do, before applying it | `vql plan --env dev model/sales/views.vql` (also `-e`, `-`, `--database`) — reads the server and the session's ledger, executes nothing; per statement `action`, `object`, `exists`, `own`, `needs_yes`, `why`, `conditions`. The rule it applies is `/denodo:vql`'s safety table |
+| What a file would do, before applying it | `vql plan --env dev model/sales/views.vql` (also `-e`, `-`, `--database`) — reads the server and the session's ledger, executes nothing; per statement `action`, `object`, `exists`, `own`, `needs_yes`, `why`, `conditions`, and `yes` — what the yes is — when anything waits. The rule it applies is `/denodo:vql`'s safety table |
 | What this session created | `vql ledger --env dev` — every object a `vql run` of this session created on the profile's server, each with its `state`, re-checked against the server: `present`, `missing` (gone without a `DROP` this session ran), `replaced` (the name now has another object), `dropped`; `states` counts them |
 | Schema of an object | `vql desc --env dev bv_orders` (`--type view` is the default and covers base views too — there is no `DESC TABLE`) |
 | Server-generated VQL | `vql desc --env dev bv_orders --vql` — read it, do not apply it: it opens with `DROP … CASCADE` and rebuilds the object **together with what it depends on** in its own database — dependencies in another database are left out, except under a metric view of another database: the metric view is left out and its source views come back unqualified, as if they were in yours — never with what depends on it. Which object you ask therefore decides what you get: a base view returns source, wrapper and `CREATE TABLE` in one answer; the source alone returns only itself, without the column list. A name can be qualified — `vql desc --env dev "other_db.bv_orders" --vql` reads another database without switching yours — *verified: 9.5.1 (live, 2026-09-12)*. The object alone, without the data source its dependencies bring (and that source's encrypted password): `vql run --env dev -e "DESC VQL VIEW bv_orders ('includeDependencies' = 'no', 'dropElements' = 'no')"` — *verified: 9.5.1 (live, 2026-10-02)* |
@@ -180,8 +180,10 @@ human's yes and the flag.
 **Not refused is not allowed.** The tool refuses only on a profile marked `production`; on
 every other profile it runs whatever it is given. Whether a flagged statement may run is
 `/denodo:vql`'s safety table, on every profile — the few that are yours are named there, and a
-`DROP` is never one of them, whatever it hits. When the human cannot answer — away, a deadline —
-the statements go into a file and into your message, not into `vql run`.
+`DROP` is never one of them, whatever it hits. The yes answers the statements after you have
+shown them; the request that asked for them is not it, however plainly it names them. When the
+human cannot answer — away, a deadline — the statements go into a file and into your message,
+not into `vql run`.
 
 `DROP`, `ALTER`, `DELETE`, `TRUNCATE`; `INSERT` and `UPDATE` (a write through a view lands in
 the source behind it — `INSERT … ON DUPLICATE KEY UPDATE` included, VQL has no `MERGE`); the
@@ -236,6 +238,7 @@ When refused:
 | "The object doesn't even exist, the drop is a no-op" | Your read of the catalog is a snapshot. The refusal is on the statement, not on its effect. |
 | "It's only a test database on the production server" | The profile says `production`. Database names are not the rule. |
 | "I'll disclose it afterwards" | Disclosure after the fact is not consent. |
+| "The plan says it waits for the human's yes — their request is that yes" | The request names the outcome. The yes answers the statements you showed, in this conversation; with nobody to answer, the file and the message are the result. |
 | "The profile is not production and nothing depends on it" | Not production only means the tool will not stop you. A `DROP` waits for the yes on every profile, and an object nothing reads is still someone's. |
 
 **Red flags — stop and ask the human:** you are typing `--allow-destructive`; the
