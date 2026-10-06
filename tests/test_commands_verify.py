@@ -420,7 +420,7 @@ vql = "SELECT 1 FROM DUAL()"
         self.assertFalse(doc["steps"][0]["ok"])
         self.assertIn("Syntax error", doc["steps"][0]["error"]["message"])
         self.assertTrue(doc["steps"][1]["skipped"])
-        self.assertEqual(doc["summary"], {"verified": 0, "failed": 1, "skipped": 1, "skipped_because": {"failure": 1}, "not_run": 0})
+        self.assertEqual(doc["summary"], {"verified": 0, "failed": 1, "skipped": 1, "skipped_because": {"failure": 1}, "not_run": 0, "cleanup_failed": 0})
 
     def test_fixture_steps_do_not_count_as_verified(self):
         chain = self.chain("""
@@ -1606,9 +1606,11 @@ vql = "CONNECT DATABASE {database};"
         self.chain = load_chain(self.manifest)
 
     def test_the_body_reaches_the_transport(self):
+        # --cleanup-only: the manifest has no marketplace step, and only a tail that ran (or one an
+        # earlier --keep run left) gives a catalog synchronisation something to take back out.
         doc, code = run_chain(profile(marketplace_url="http://x/y"), self.chain, root=self.root,
                               vql_factory=FakeVql, rest_factory=CleanupHttpBodyTest.FakeRest,
-                              with_marketplace=True)
+                              with_marketplace=True, cleanup_only=True)
         self.assertEqual(code, 0, doc)
         method, path, params, json_body = CleanupHttpBodyTest.FakeRest.calls[0]
         self.assertEqual(method, "POST")   # api_call normalises the manifest's "post"
@@ -1626,7 +1628,8 @@ vql = "CONNECT DATABASE {database};"
             'json = { databaseName = "{database}" }'), encoding="utf-8")
         doc, code = run_chain(profile(marketplace_url="http://x/y"), load_chain(self.manifest),
                               root=self.root, vql_factory=FakeVql,
-                              rest_factory=CleanupHttpBodyTest.FakeRest, with_marketplace=True)
+                              rest_factory=CleanupHttpBodyTest.FakeRest, with_marketplace=True,
+                              cleanup_only=True)
         self.assertEqual(code, 0, doc)
         self.assertEqual(CleanupHttpBodyTest.FakeRest.calls[0][3], {"databaseName": "denodo_skills_test"})
 
@@ -2408,6 +2411,9 @@ class CatalogGuardTest(unittest.TestCase):
     def sync_cleanup(self, doc):
         return [h for h in doc["cleanup"]["http"] if h["path"].endswith("/synchronize")]
 
+    def changes_reads(self):
+        return [path for method, path in CatalogGuardTest.FakeRest.calls if path.endswith("/changes")]
+
     def test_a_catalog_with_nothing_pending_runs_the_tail_and_the_cleanup_pair(self):
         doc, code = self.run_chain()
         self.assertEqual(code, 0, json.dumps(doc, indent=1)[:3000])
@@ -2450,11 +2456,27 @@ class CatalogGuardTest(unittest.TestCase):
         self.assertEqual(doc["summary"]["skipped_because"], {"catalog": 2})
         self.assertEqual(self.synchronizations(), [])                       # nothing synchronised
         self.assertNotIn(("POST", "/public/api/tags"), CatalogGuardTest.FakeRest.calls)
+        # The tail put nothing into the catalog, so cleanup has nothing to take out: the pair is
+        # not sent, the catalog is not read again, and nothing is called an orphan.
+        self.assertEqual(len(self.changes_reads()), 2)
         for entry in self.sync_cleanup(doc):
             self.assertTrue(entry["skipped"] and entry["ok"], entry)
-            self.assertIn("finance.v_new_ledger", entry["reason"])
+            self.assertIn("the catalog holds nothing of this run's", entry["reason"])
+            self.assertNotIn("orphans", entry["reason"])
+        self.assertEqual(doc["summary"]["cleanup_failed"], 0)
 
-    def test_pending_that_appears_during_the_run_keeps_the_cleanup_pair_back(self):
+    def test_a_tail_that_never_started_leaves_the_pair_unsent_and_the_catalog_unread(self):
+        # The usual case of a failed run: a step before the tail failed, so no marketplace step ran.
+        self.manifest.write_text(CATALOG_MANIFEST.replace("CREATE OR REPLACE DATABASE {database} 'x';", "BOOM;"),
+                                 encoding="utf-8")
+        doc, code = self.run_chain()
+        self.assertEqual(code, 1)
+        self.assertEqual(CatalogGuardTest.FakeRest.calls, [])
+        for entry in self.sync_cleanup(doc):
+            self.assertTrue(entry["skipped"] and entry["ok"], entry)
+            self.assertIn("the catalog holds nothing of this run's", entry["reason"])
+
+    def test_pending_that_appears_during_the_run_keeps_the_cleanup_pair_back_and_fails_the_run(self):
         CatalogGuardTest.FakeRest.reads = [
             {},
             {},   # the template's own two reads of changes, in the tail
@@ -2462,18 +2484,23 @@ class CatalogGuardTest(unittest.TestCase):
              "VIEWS": {"localElements": [self.OWN, self.FOREIGN]}},
         ]
         doc, code = self.run_chain()
-        self.assertEqual(code, 0, json.dumps(doc, indent=1)[:3000])
-        self.assertFalse(any(s["skipped"] for s in doc["steps"]))
+        # Every step passed, but the run's entries stay in a shared catalog: not a green run.
+        self.assertEqual(code, 1, json.dumps(doc, indent=1)[:3000])
+        self.assertFalse(doc["ok"])
+        self.assertTrue(all(s["ok"] and not s["skipped"] for s in doc["steps"]))
         self.assertEqual(len(self.synchronizations()), 2)          # the tail's two, not cleanup's
         pair = self.sync_cleanup(doc)
         self.assertEqual(len(pair), 2)
         for entry in pair:
-            self.assertTrue(entry["skipped"] and entry["ok"], entry)
+            self.assertTrue(entry["skipped"], entry)
+            self.assertFalse(entry["ok"], entry)
+            self.assertEqual(entry["error"]["kind"], "catalog")
             self.assertIn("finance.v_new_ledger", entry["reason"])
-            self.assertIn("orphans", entry["reason"])
+            self.assertIn("denodo_skills_test and its views stay in the catalog as orphans", entry["reason"])
+            self.assertIn("--cleanup-only --with-marketplace", entry["reason"])
+        self.assertEqual(doc["summary"]["cleanup_failed"], 2)
         # read once more after DROP DATABASE, before the pair: the guard, the template, cleanup
-        reads = [path for method, path in CatalogGuardTest.FakeRest.calls if path.endswith("/changes")]
-        self.assertEqual(len(reads), 6)
+        self.assertEqual(len(self.changes_reads()), 6)
 
     def test_a_catalog_that_cannot_be_read_fails_the_tail_before_it_synchronises(self):
         CatalogGuardTest.FakeRest.reads = [{"VIEWS": 503}]
@@ -2485,22 +2512,44 @@ class CatalogGuardTest(unittest.TestCase):
         self.assertIn("VIEWS/changes", steps["mp-sync"]["error"]["message"])
         self.assertTrue(steps["mp-tag"]["skipped"])
         self.assertEqual(self.synchronizations(), [])
-        for entry in self.sync_cleanup(doc):                       # cleanup could not read it either
+        for entry in self.sync_cleanup(doc):                       # nothing synchronised, nothing to undo
+            self.assertTrue(entry["skipped"] and entry["ok"], entry)
+            self.assertIn("the catalog holds nothing of this run's", entry["reason"])
+
+    def test_a_catalog_that_cannot_be_read_in_cleanup_fails_the_pair(self):
+        CatalogGuardTest.FakeRest.reads = [{}, {}, {"DATABASES": 503}]
+        doc, code = self.run_chain()
+        self.assertEqual(code, 1)
+        self.assertEqual(len(self.synchronizations()), 2)
+        for entry in self.sync_cleanup(doc):
             self.assertTrue(entry["skipped"])
             self.assertFalse(entry["ok"])
+            self.assertEqual(entry["error"]["kind"], "catalog")
+        self.assertEqual(doc["summary"]["cleanup_failed"], 2)
 
     def test_without_the_flag_the_catalog_is_not_read(self):
         doc, code = self.run_chain(with_marketplace=False)
         self.assertEqual(code, 0, json.dumps(doc, indent=1)[:3000])
         self.assertEqual(CatalogGuardTest.FakeRest.calls, [])
 
-    def test_cleanup_only_reads_the_catalog_before_the_pair_too(self):
+    def test_cleanup_only_reads_the_catalog_and_hedges_what_it_left(self):
+        # No step ran in this run, but an earlier --keep run may have synchronised: the pair is
+        # guarded by a read, and what it says about orphans is a "may".
         CatalogGuardTest.FakeRest.reads = [{"DATABASES": {"localElements": [{"databaseName": "finance"}]}}]
         doc, code = self.run_chain(cleanup_only=True)
-        self.assertEqual(code, 0, json.dumps(doc, indent=1)[:3000])
+        self.assertEqual(code, 1, json.dumps(doc, indent=1)[:3000])
         self.assertEqual(self.synchronizations(), [])
-        self.assertTrue(all(entry["skipped"] for entry in self.sync_cleanup(doc)))
-        self.assertIn("finance", self.sync_cleanup(doc)[0]["reason"])
+        self.assertEqual(len(self.changes_reads()), 2)
+        for entry in self.sync_cleanup(doc):
+            self.assertTrue(entry["skipped"])
+            self.assertFalse(entry["ok"])
+            self.assertIn("finance", entry["reason"])
+            self.assertIn("may stay in the catalog as orphans", entry["reason"])
+
+    def test_cleanup_only_with_nothing_pending_sends_the_pair(self):
+        doc, code = self.run_chain(cleanup_only=True)
+        self.assertEqual(code, 0, json.dumps(doc, indent=1)[:3000])
+        self.assertEqual(len(self.synchronizations()), 2)
 
     def test_catalog_pending_lists_what_a_synchronisation_would_take_along(self):
         CatalogGuardTest.FakeRest.reads = [

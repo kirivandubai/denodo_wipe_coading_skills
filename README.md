@@ -148,8 +148,8 @@ human has confirmed.
 `--with-marketplace` synchronises the whole marketplace catalog with VDP, at the start of its
 tail and again in cleanup, and whatever other people left pending would be published or removed
 with it. So the run reads the catalog's pending changes first: anything besides its own database
-skips the tail, and in cleanup leaves the run's own entries in the catalog as orphans — the
-report says which. Two runs against one server must not overlap: `--database` gives a run its
+skips the tail; if something appears while it runs, cleanup does not send its pair and the run's
+own entries stay in the catalog as orphans — the report says which. Two runs against one server must not overlap: `--database` gives a run its
 own database, but the few server-wide `verify_…` objects are shared by name, and each run's
 cleanup drops them.
 

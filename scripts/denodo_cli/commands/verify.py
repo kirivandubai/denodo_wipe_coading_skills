@@ -636,8 +636,9 @@ def run_chain(
     the tail synchronises the whole catalog with VDP, and no call narrows that to the test
     database. Anything pending besides the run's own database skips every marketplace step,
     with the entries in the reason (cause ``catalog``); a catalog that cannot be read fails the
-    first of them, before it sends anything. ``_cleanup_http`` reads it again before its own
-    synchronisations.
+    first of them, before it sends anything. Cleanup's own synchronisations are sent only when a
+    marketplace step ran (or under ``cleanup_only``), and ``_cleanup_http`` reads the catalog
+    again before them.
 
     ``with_ai`` gates the steps marked ``ai = true`` the same way ``with_marketplace`` gates
     the marketplace tail, for a different reason: they write nothing outside the test
@@ -725,6 +726,7 @@ def run_chain(
     lost: dict[str, str] = {}
     # What the marketplace catalog had pending before the tail's first step: (entries, error).
     catalog: tuple[list[str], str | None] | None = None
+    marketplace_ran = False
     stop = False
     try:
         for step in chain.steps:
@@ -762,6 +764,9 @@ def run_chain(
                     if name not in values:
                         lost.setdefault(name, f"step {step.id!r}, which captures it, was skipped: {why}")
                 continue
+            # Only a tail that ran can have put the run's database into the catalog for cleanup's
+            # synchronisations to take back out.
+            marketplace_ran = marketplace_ran or step.marketplace
             report = _run_step(profile, step, values=values, root=root, vql_factory=vql_factory,
                                rest_factory=rest_factory, allow_destructive=allow_destructive,
                                update_marks=update_marks, version=version, day=day,
@@ -776,7 +781,8 @@ def run_chain(
         cleanup_report = _cleanup(profile, chain, values=values, vql_factory=vql_factory,
                                   rest_factory=rest_factory, allow_destructive=allow_destructive,
                                   keep=keep, with_marketplace=with_marketplace, with_writes=with_writes,
-                                  with_scheduler=with_scheduler, unresolved=unresolved)
+                                  with_scheduler=with_scheduler, unresolved=unresolved,
+                                  marketplace_ran=marketplace_ran, cleanup_only=cleanup_only)
     ok = all(r["ok"] for r in reports if not r["skipped"])
     ok = ok and (cleanup_report["ran"] is False or (
         all(s["ok"] for s in cleanup_report["statements"]) and
@@ -785,7 +791,8 @@ def run_chain(
     if assume_missing:
         extra["assumed_missing"] = list(assume_missing)
     doc = envelope(ok, profile, "verify", database=values.get("database"), steps=reports,
-                   summary=_summary(reports, not_run=len(chain.not_run)), cleanup=cleanup_report,
+                   summary=_summary(reports, not_run=len(chain.not_run), cleanup=cleanup_report),
+                   cleanup=cleanup_report,
                    values=values, values_from=values_from, unresolved=unresolved,
                    values_file=str(values_file) if values_file else None, **extra)
     return doc, EXIT_OK if ok else EXIT_EXECUTION
@@ -876,6 +883,27 @@ def catalog_pending(profile: Profile, rest_factory: Callable | None, *,
 def _listing(pending: list[str], limit: int = 8) -> str:
     more = f"; and {len(pending) - limit} more" if len(pending) > limit else ""
     return "; ".join(pending[:limit]) + more
+
+
+def _held_sync(catalog: tuple[list[str], str | None], *, database: str | None,
+               cleanup_only: bool) -> dict | None:
+    """Why cleanup holds a catalog synchronisation back — ``reason`` and ``error`` of its failed
+    entry — or ``None`` when it may go. After a run whose tail ran, the run's own entries are in
+    the catalog for certain; under ``--cleanup-only`` only an earlier run may have put them there."""
+    pending, error = catalog
+    if not error and not pending:
+        return None
+    left = (f"whatever an earlier run of {database} put into the catalog may stay in the catalog as orphans"
+            if cleanup_only else f"this run's database {database} and its views stay in the catalog as orphans")
+    retry = "once nothing else is pending, `verify --cleanup-only --with-marketplace` takes them out"
+    if error:
+        return {"reason": f"the catalog could not be read, so this synchronisation was not sent: {left}; {retry}",
+                "error": {"kind": "catalog", "message": error}}
+    return {"reason": (f"the marketplace catalog has changes pending that this run did not make, which this "
+                       f"synchronisation would publish or remove with its own: {_listing(pending)}; it was not "
+                       f"sent, so {left}; {retry}"),
+            "error": {"kind": "catalog", "message": f"changes pending that this run did not make: "
+                                                    f"{_listing(pending)}"}}
 
 
 def _catalog_unread(step: Step, error: str) -> dict:
@@ -1077,7 +1105,8 @@ def _check_cleanup_placeholders(chain: Chain, values: "dict[str, str] | set[str]
 def _cleanup(profile: Profile, chain: Chain, *, values: dict[str, str], vql_factory: Callable,
              rest_factory: Callable | None, allow_destructive: bool, keep: bool,
              with_marketplace: bool = False, with_writes: bool = False, with_scheduler: bool = False,
-             unresolved: dict[str, str] | None = None) -> dict:
+             unresolved: dict[str, str] | None = None, marketplace_ran: bool = False,
+             cleanup_only: bool = False) -> dict:
     """Always runs, including after a failure: a run that did not clean up must say so.
 
     Cleanup statements are destructive by definition (``DROP ...``, ``DELETE``, and the
@@ -1151,7 +1180,8 @@ def _cleanup(profile: Profile, chain: Chain, *, values: dict[str, str], vql_fact
                           for s in doc["statements"]]
     http_report = _cleanup_http(profile, chain.cleanup_http, values=values, rest_factory=rest_factory,
                                 allow_destructive=allow_destructive, with_marketplace=with_marketplace,
-                                with_scheduler=with_scheduler)
+                                with_scheduler=with_scheduler, marketplace_ran=marketplace_ran,
+                                cleanup_only=cleanup_only)
     return {"ran": True, "reason": None, "statements": vql_report, "http": http_report}
 
 
@@ -1177,7 +1207,8 @@ def _unresolved(value: object) -> bool:
 
 def _cleanup_http(profile: Profile, entries: list[dict], *, values: dict[str, str],
                   rest_factory: Callable | None, allow_destructive: bool,
-                  with_marketplace: bool, with_scheduler: bool = False) -> list[dict]:
+                  with_marketplace: bool, with_scheduler: bool = False, marketplace_ran: bool = False,
+                  cleanup_only: bool = False) -> list[dict]:
     """Run each ``[cleanup] http`` entry, skipping the ones nothing was ever captured for.
 
     Unlike ``chain.cleanup`` (vql), whose placeholders are all known before the run even
@@ -1196,11 +1227,14 @@ def _cleanup_http(profile: Profile, entries: list[dict], *, values: dict[str, st
     catalog re-sync it is the body, not the path, that says which conflict mode the run
     used, and cleanup is part of the report rather than a line in a log.
 
-    A catalog re-sync goes only while nothing but the run's own database is pending: the
-    catalog is read again first (``catalog_pending``), because the pair takes along whatever
-    became pending since the tail read it. When something else is, the pair is not sent and the
-    run's entries stay in the catalog as orphans — reported, not hidden; when the catalog
-    cannot be read, the entries fail.
+    A catalog re-sync has something to take back out only when a marketplace step ran in this
+    run (``marketplace_ran``), or, with ``cleanup_only``, when an earlier ``--keep`` run may have
+    synchronised; otherwise it is skipped without a word to the marketplace. When it has, it goes
+    only while nothing but the run's own database is pending: the catalog is read again first
+    (``catalog_pending``), because the pair takes along whatever became pending since the tail
+    read it. When something else is pending, or the catalog cannot be read, the pair is not
+    sent and its entries fail (``_held_sync``): the run's entries stay in the shared catalog as
+    orphans, and a run that leaves them must not report itself green.
     """
     reports: list[dict] = []
     catalog: tuple[list[str], str | None] | None = None
@@ -1218,21 +1252,16 @@ def _cleanup_http(profile: Profile, entries: list[dict], *, values: dict[str, st
         elif _unresolved(path) or _unresolved(params) or _unresolved(body):
             skipped = "nothing was captured for a placeholder of this entry"
         elif server == "marketplace" and CATALOG_SYNC.match(path.split("?")[0].rstrip("/")):
-            if catalog is None:
-                catalog = catalog_pending(profile, rest_factory, ignore=values.get("database"))
-            pending, error = catalog
-            if error:
-                reports.append({**described, "ok": False, "skipped": True, "status": None,
-                                "reason": ("the catalog could not be read, so this synchronisation was not sent; "
-                                           "what the run put into the catalog may stay there as orphans"),
-                                "error": {"kind": "catalog", "message": error}})
-                continue
-            if pending:
-                skipped = (f"the marketplace catalog has changes pending that this run did not make, which this "
-                           f"synchronisation would publish or remove with its own: {_listing(pending)}; it was "
-                           f"not sent, so whatever the run put into the catalog (its database "
-                           f"{values.get('database')} and its views) stays there as orphans until a "
-                           f"synchronisation of the whole catalog is agreed")
+            if not marketplace_ran and not cleanup_only:
+                skipped = ("no marketplace step ran in this run, so the catalog holds nothing of this run's to "
+                           "take back out; the synchronisation was not sent")
+            else:
+                if catalog is None:
+                    catalog = catalog_pending(profile, rest_factory, ignore=values.get("database"))
+                held = _held_sync(catalog, database=values.get("database"), cleanup_only=cleanup_only)
+                if held:
+                    reports.append({**described, "ok": False, "skipped": True, "status": None, **held})
+                    continue
         if skipped:
             reports.append({**described, "ok": True, "skipped": True, "reason": skipped,
                             "status": None, "error": None})
@@ -1287,7 +1316,8 @@ def _server_version(profile: Profile, vql_factory: Callable) -> str | None:
     return match.group(0) if match else None
 
 
-def _summary(reports: list[dict], not_run: int = 0) -> dict:
+def _summary(reports: list[dict], not_run: int = 0, cleanup: dict | None = None) -> dict:
+    cleanup_entries = (cleanup or {}).get("statements", []) + (cleanup or {}).get("http", [])
     return {
         "verified": sum(1 for r in reports if r["kind"] == "template" and r["ok"] and not r["skipped"]),
         "failed": sum(1 for r in reports if not r["ok"]),
@@ -1300,6 +1330,8 @@ def _summary(reports: list[dict], not_run: int = 0) -> dict:
                             if any(r["skipped"] and r.get("cause") == cause for r in reports)},
         # marked blocks of the skills the manifest lists under [not_run], with the reason
         "not_run": not_run,
+        # cleanup entries that failed or were held back — what the run left on the server
+        "cleanup_failed": sum(1 for entry in cleanup_entries if entry.get("ok") is False),
     }
 
 
