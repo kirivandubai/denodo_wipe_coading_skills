@@ -75,7 +75,7 @@ lines on a real database — so save it to a file and search it for the view's n
 ## Where a field comes from
 
 ```sql
--- verified: 9.5.1 (live, 2026-09-30)
+-- verified: 9.5.1 (live, 2026-10-06)
 SELECT column_name, dependency_database_name, dependency_name, dependency_column_name,
        dependency_type, expression, depth
   FROM COLUMN_DEPENDENCIES()
@@ -107,7 +107,7 @@ The last hop is a `Base View` row: its `dependency_name` is the base view, its
 behind a JDBC base view:
 
 ```sql
--- verified: 9.5.1 (live, 2026-09-30)
+-- verified: 9.5.1 (live, 2026-10-06)
 SELECT column_name, source_catalog_name, source_schema_name, source_table_name, source_column_name
   FROM GET_SOURCE_COLUMNS()
  WHERE input_database_name = '<db>' AND input_view_name = '<jdbc base view>';

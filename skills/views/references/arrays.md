@@ -49,7 +49,7 @@ for counting parents.
 ### One row per parent, every parent kept
 
 ```sql
--- verified: 9.5.1 (live, 2026-09-30)
+-- verified: 9.5.1 (live, 2026-10-06)
 CREATE OR REPLACE VIEW order_line_summary
     FOLDER = '/03 - business entities'
     DESCRIPTION = 'One row per order, every order included. line_count and line_value are 0 for an order without lines; bulk_lines (lines of 5 or more units) is NULL when there is none.'

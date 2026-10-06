@@ -801,7 +801,8 @@ Marketplace с последующей уборкой созданного. По�
 **Шагов два вида, и отчёт их различает.** `template` — тело из навыка, он и есть предмет
 проверки. `fixture` — тело в манифесте: цепочка шаблонов не смыкается сама, навык `views`
 опирается на базовые представления, которых не создаёт ни один шаблон, и фикстура готовит
-их над демо-данными стенда. Фикстура ничего не верифицирует и пометок не двигает.
+их над демо-данными стенда. Фикстура ничего не верифицирует и пометок не двигает. (Since T40
+the fixtures read the chain's own synthetic files, `verification/data`, not the demo image's.)
 
 **Шаг называет базу, в которой выполняется** — тем же полем `database`, что уже используют
 проверки состояния; у первого шага (создание базы) этого поля нет, потому что базы ещё не
@@ -815,6 +816,8 @@ rows"` — для проверок вида «сломанного нет», н�
 базовое представление над несуществующим файлом создаются без единой ошибки, и только
 `SELECT` отвечает `Error executing query` (проверено на 9.5.1). У шагов, чей файл на
 стенде отсутствует, `check` не ставится сознательно — их предмет синтаксис, а не данные.
+(Since T40 only the JDBC templates point at a source that is not there: the DF and JSON
+templates read the chain's CRM and order exports, and their checks count the rows.)
 
 **Шаблон, который несёт креденшел, прогон шифрует сам.** Источник JDBC требует
 `USERPASSWORD … ENCRYPTED`, и сервер проверяет шифр в момент создания: любую другую строку
@@ -841,15 +844,15 @@ projects is a paid request to the provider the server is configured with, and a 
 that configuration or without the Enterprise Plus bundle fails it. A default run stays free and
 portable, so these steps are skipped unless asked for, with the reason in the report; `ai` is
 refused on an http step, which makes no such call. The embedding model the search-view
-template names comes from `[values] embedding_model`, the same way a fork points the chain at
-its own server.
+template names is read from the server (`@server`, T40) or set in the values file.
 
 **The write steps — behind `--with-writes`, off by default (T33).** The templates of `dml`
 change rows of a real table, and the only database every server has room for is its cache
 database. A step with `writes = true` runs only with the flag: the `writes-tables` fixture
 creates two tables there with `CREATE REMOTE TABLE` through the data source `[values]` names
-(the server's cache data source by default, with an identity-keyed table in SQL Server DDL that
-a fork on another product rewrites), and base views over them carrying the source's type
+(the server's cache data source, read from `GET_CACHE_CONFIGURATION()`; the identity key and
+the timestamp of the DDL come from the manifest's dialect table of its product, T40), and base
+views over them carrying the source's type
 metadata, which `RETURNING` and `GET_VIEW_COLUMNS` need. `[cleanup] writes` — VQL run only under
 the same flag, and **before** the rest of cleanup — drops both tables: `DROP_REMOTE_TABLE` drops
 only a table `CREATE_REMOTE_TABLE` made, so each is first taken over by that procedure with
@@ -890,9 +893,37 @@ its body from a file (`--json-file`), which the step maps to a json block of the
 step (`capture_from`) and a value a step captures may be named by its own later calls; `poll`
 repeats the step's last call until a field has a value — a started job runs on its own, and its
 report exists only when the run ends — and `capture` and `expect_body` take nested fields
-(`a.b.0.c`). The VDP data source the jobs run through is `[values] scheduler_data_source_id`:
-creating one needs a password. The export leaves one file in the Scheduler's default export
+(`a.b.0.c`). The VDP data source the jobs run through is `[values] scheduler_data_source_id`,
+the one whose login is the profile's user, read from the Scheduler (T40): creating one needs a
+password. The export leaves one file in the Scheduler's default export
 folder, overwritten by every run; no API call removes it.
+
+**Any server runs it (T40).** The chain used to need the Denodo demo image: its CSV folder,
+SQL Server DDL, one embedding model, one Scheduler data source id. Now `[values]` keeps only
+what belongs to the chain, and a value of one installation is a marker the run fills in before
+its first step — `@server` from read-only calls (`VALIDATE_MPP_LICENSE`, `GET_CACHE_CONFIGURATION`,
+an allowlist of `GET_PARAMETER` properties, the Scheduler's `dataSources`; `denodo_cli/features.py`),
+`@dialect` from `[dialects.<product of the write data source>]`. The values file beside the
+profiles (`verify.toml`, one table per profile; `--values` names another) overrides them and the
+manifest's `local_values` (where the fixtures are read from) — never the test database, the
+prefix or a throwaway password, which decide what the run drops; `--database` overrides the file.
+A value nobody filled in skips every step and `[cleanup] writes` statement naming it, with the
+line to add — a text with a placeholder is never sent. `env check` reports the same probe as
+`features`, and a step's `requires` (`enterprise_plus`, `llm`, `embedding`, `cache`,
+`summary_rewrite`, `data_movement`, `impersonation`) skips it, with the reason, when the server
+is known to lack one; unknown runs; `--without <feature>` rehearses a server without it. A skip
+travels: a step names the earlier steps whose objects it uses in `needs`, and is skipped with
+them; a value a skipped step would have captured is unresolved for the steps after it. A unit
+test holds the manifest to that statically. The fixtures read synthetic files under the TPC-DS names
+(`verification/data`, written by its `generate.py`; the two the TPC-DS definitions fix are
+byte-identical to the demo image's) over HTTP from the public repository, or from a copy on the
+server's disk. **Every block of `skills/` marked `verified:` is a step, or a key of `[not_run]`
+with the reason** — grammar, a fragment, the server's own message, a line for the human;
+`tests/test_chain_manifest.py` holds both directions. The report adds `values_from`,
+`unresolved`, `features` and `summary.not_run`. Measured on 9.5.1, every tail: the demo image
+(SQL Server cache, fixtures over HTTP) and the same server with its cache database switched to
+PostgreSQL (fixtures from a local folder). Detail:
+[2026-10-06-portable-verify-design.md](2026-10-06-portable-verify-design.md).
 
 **Маркетплейс — по флагу `--with-marketplace`, по умолчанию выключенному.** Его объекты
 серверные, а не пообъектные по базам, и цепочке предшествует синхронизация общего

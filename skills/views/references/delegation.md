@@ -18,7 +18,7 @@ table: the view that answers in a second over test data takes minutes over produ
 ## Reading the plan
 
 ```sql
--- verified: 9.5.1 (live, 2026-09-30)
+-- verified: 9.5.1 (live, 2026-10-06)
 SELECT execution_plan
   FROM GET_QUERY_EXECUTION_PLAN()
  WHERE input_query = 'SELECT * FROM store_month_sales';
@@ -84,7 +84,7 @@ and only a query that reads the median pays for it (*live, 2026-09-30*). So:
 ## `GET_DELEGATED_SQLSENTENCE` is not the check
 
 ```sql
--- verified: 9.5.1 (live, 2026-09-30)
+-- verified: 9.5.1 (live, 2026-10-06)
 SELECT delegated_query
   FROM GET_DELEGATED_SQLSENTENCE()
  WHERE vdp_query = 'SELECT * FROM store_month_sales';

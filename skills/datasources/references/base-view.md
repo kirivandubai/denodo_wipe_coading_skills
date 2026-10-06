@@ -46,7 +46,7 @@ CREATE [ OR REPLACE ] TABLE [<database>.]<name> I18N <map>
 ## The minimum that works
 
 ```sql
--- verified: 9.5.1 (live, 2026-09-09)
+-- verified: 9.5.1 (live, 2026-10-06)
 CREATE OR REPLACE TABLE bv_crm_customers I18N us_pst (
         cust_id:text,
         created_dt:date
@@ -99,11 +99,20 @@ plus every user-defined type (`CREATE TYPE … AS REGISTER OF (…)` / `ARRAY OF
 ## Primary keys, tags, indexes
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06) — in this order, between the field list and CACHE
-CONSTRAINT 'pk_customer' PRIMARY KEY ( 'cust_id' )
-TAGS ( pii )
-DECLARE VIEW INDEX idx_customer_country ON ( country ASC )
+-- verified: 9.5.1 (live, 2026-10-06) — the key and the tags after the field list, the index after the search method
+    CONSTRAINT 'pk_customer' PRIMARY KEY ( 'cust_id' )
+    TAGS ( pii )
+    CACHE OFF
+    TIMETOLIVEINCACHE DEFAULT
+    ADD SEARCHMETHOD wr_crm_customers (
+        OUTPUTLIST ( cust_id, country )
+        WRAPPER (df wr_crm_customers)
+    )
+    DECLARE VIEW INDEX idx_customer_country ON ( country ASC );
 ```
+
+`DECLARE VIEW INDEX` before `CACHE` is `Syntax error … near 'DECLARE'`: an index is declared
+after the search methods, where `DESC VQL` writes it too.
 
 - The primary key changes execution plans (it tells the optimizer rows are unique) — declare
   it when the source really guarantees it, not because it looks tidy.

@@ -36,7 +36,7 @@ CREATE [ OR REPLACE ] GLOBAL_SECURITY_POLICY <name>
 ### Masking
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-01)
+-- verified: 9.5.1 (live, 2026-10-06)
 RESTRICTION ( FILTER = '' MASKING ANY ( personal_data )
               WITH ( HIDE ) ( texts WITH REDACT_ASTERISK, numbers WITH HIDE, datetimes WITH HIDE ) )
 ```
@@ -78,11 +78,14 @@ and `CUSTOM = <expression>` with the special tag name `any_tag` standing for the
 ### Row filter and deny
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-01)
+-- verified: 9.5.1 (live, 2026-10-06)
 RESTRICTION ( FILTER = 'sales_territory = ''EMEA''' REJECT )
 RESTRICTION ( DENY )
 ```
 
+- The condition names **tags**, not columns: `sales_territory` is a tag on the column the rows
+  are filtered by, and a name that is not a tag is refused at creation with `The following tags
+  do not exist: '<name>'`.
 - The filter applies whether or not the query projects the tagged column, and on every view
   built over the tagged one: a `COUNT(*)` grouped two views up counted only the rows the
   filter kept. (A per-role row restriction with a column list and without `ANY` behaves
@@ -92,7 +95,7 @@ RESTRICTION ( DENY )
 ## ALTER GLOBAL_SECURITY_POLICIES — enable, disable
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-01)
+-- verified: 9.5.1 (live, 2026-10-06)
 ALTER GLOBAL_SECURITY_POLICIES ( mask_personal_data ENABLED = FALSE, filter_emea ENABLED = TRUE );
 ```
 
@@ -131,7 +134,7 @@ gives the union of the roles, the same as a user holding both.
 named in `userrolename` (`rolename` is empty there):
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-01)
+-- verified: 9.5.1 (live, 2026-10-06)
 SELECT username, userrolename, elementname, dbconnect, dbexecute, elementexecute, dbadmin
 FROM CATALOG_PERMISSIONS()
 WHERE dbname = 'sales_analytics';
@@ -166,14 +169,14 @@ audiences kept the values — *verified: 9.5.1 (live, 2026-10-01)*.
 Policy status, every policy of the server:
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-01)
+-- verified: 9.5.1 (live, 2026-10-06)
 SELECT name, element_status, description FROM GET_ELEMENTS() WHERE type = 'globalSecurityPolicy';
 ```
 
 ## Reading
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-01)
+-- verified: 9.5.1 (live, 2026-10-06)
 LIST GLOBAL_SECURITY_POLICIES;                         -- names
 DESC VQL GLOBAL_SECURITY_POLICY <name>;                -- the definition (read it, do not apply it)
 SELECT global_security_policy_name, tag_name

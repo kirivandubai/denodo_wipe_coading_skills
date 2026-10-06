@@ -13,13 +13,13 @@ from typing import Callable
 
 from . import EXIT_EXECUTION, EXIT_OK, EXIT_USAGE
 from ..errors import normalize_error
+from ..features import can_impersonate, is_admin, read_features
 from ..output import envelope
 from ..profiles import (
     DEFAULT_DATABASE, DEFAULT_PORT, DEFAULT_TRANSPORT, Profile, ProfileError, list_profiles, write_profile,
 )
 
 _VERSION = re.compile(r"Denodo Platform ([0-9]+(?:\.[0-9]+)*)")
-_PLAIN_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
 
 def list_environments(path: Path) -> tuple[dict, int]:
@@ -31,11 +31,12 @@ def list_environments(path: Path) -> tuple[dict, int]:
     return envelope(True, None, "env list", path=str(path), profiles=profiles), EXIT_OK
 
 
-def _check_vdp(profile: Profile, vql_factory: Callable) -> dict:
+def _check_vdp(profile: Profile, vql_factory: Callable) -> tuple[dict, dict | None]:
+    """The connection check, and the server's features read over the same session (T40)."""
     try:
         transport = vql_factory(profile)
     except Exception as exc:  # noqa: BLE001
-        return {"ok": False, "error": normalize_error(exc)}
+        return {"ok": False, "error": normalize_error(exc)}, None
     try:
         transport.execute("SELECT 1 AS alive FROM DUAL()")
         version = None
@@ -47,44 +48,19 @@ def _check_vdp(profile: Profile, vql_factory: Callable) -> dict:
                 version = match.group(1) if match else None
         except Exception:  # noqa: BLE001 — version is a nicety, not a check
             version = None
-        return {"ok": True, "server_version": version,
-                "admin": _is_admin(transport, profile.user),
-                "impersonation": _can_impersonate(transport, profile.user)}
+        vdp = {"ok": True, "server_version": version,
+               "admin": is_admin(transport, profile.user),
+               "impersonation": can_impersonate(transport, profile.user)}
+        try:
+            features = read_features(transport)
+        except Exception:  # noqa: BLE001 — the features are a report, never a failed connection
+            features = {}
+        features.update(admin=vdp["admin"], impersonation=vdp["impersonation"])
+        return vdp, features
     except Exception as exc:  # noqa: BLE001
-        return {"ok": False, "error": normalize_error(exc)}
+        return {"ok": False, "error": normalize_error(exc)}, None
     finally:
         transport.close()
-
-
-def _identifier(name: str) -> str:
-    return name if _PLAIN_NAME.fullmatch(name) else '"' + name.replace('"', '""') + '"'
-
-
-def _is_admin(transport, user: str) -> bool | None:
-    """Whether the profile's user is a global administrator: ``adminglobal`` of ``DESC USER``,
-    which any user may run on themselves. Global security policies and restrictions do not
-    apply to an administrator, so their own queries prove nothing about them (T31). ``None``
-    when the server does not say — a user known only to LDAP or an identity provider."""
-    try:
-        result = transport.execute(f"DESC USER {_identifier(user)}")
-        flags = dict(zip(result.columns or [], (result.rows or [[]])[0]))
-        return str(flags["adminglobal"]).lower() == "true" if "adminglobal" in flags else None
-    except Exception:  # noqa: BLE001 — an unknown answer, not a failed check
-        return None
-
-
-def _can_impersonate(transport, user: str) -> bool | None:
-    """Whether a query of this profile may run as someone else
-    (``CONTEXT('impersonate_user' = …)``), the only way an administrator sees what a policy
-    leaves to another user (T31). Asked by impersonating oneself over ``Dual()``: the server
-    refuses users without the ``impersonator`` role with a message of its own. ``None`` for
-    any other refusal, which says nothing about the role."""
-    literal = user.replace("'", "''")
-    try:
-        transport.execute(f"SELECT 1 AS probe FROM Dual() CONTEXT ('impersonate_user' = '{literal}')")
-        return True
-    except Exception as exc:  # noqa: BLE001
-        return False if "cannot impersonate" in str(exc) else None
 
 
 def _check_marketplace(profile: Profile, rest_factory: Callable) -> dict:
@@ -117,7 +93,7 @@ def _check_scheduler(profile: Profile, rest_factory: Callable) -> dict:
 
 
 def check_environment(profile: Profile, *, vql_factory: Callable, rest_factory: Callable) -> tuple[dict, int]:
-    vdp = _check_vdp(profile, vql_factory)
+    vdp, features = _check_vdp(profile, vql_factory)
     marketplace = _check_marketplace(profile, rest_factory) if profile.marketplace_url else None
     # The Scheduler is probed where the profile names a web container (its own address or the
     # marketplace's). An installation without one is normal, so it never fails the check.
@@ -125,7 +101,7 @@ def check_environment(profile: Profile, *, vql_factory: Callable, rest_factory: 
                  if profile.scheduler_url or profile.marketplace_url else None)
     ok = vdp["ok"] and (marketplace is None or marketplace["ok"])
     doc = envelope(ok, profile, "env check", vdp=vdp, marketplace=marketplace, scheduler=scheduler,
-                   connection=profile.public())
+                   features=features, connection=profile.public())
     return doc, EXIT_OK if ok else EXIT_EXECUTION
 
 

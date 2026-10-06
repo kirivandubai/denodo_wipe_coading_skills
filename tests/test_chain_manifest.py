@@ -16,6 +16,7 @@ what ``verify``'s ``_body()`` does before a step ever touches the network.
 
 from __future__ import annotations
 
+import re
 import unittest
 from pathlib import Path
 
@@ -44,7 +45,10 @@ class ChainManifestMatchesSkillsTest(unittest.TestCase):
         has captured *yet* fails here rather than halfway through a live run, with
         marketplace objects already created.
         """
-        available = dict(self.chain.values)
+        # A value the run fills in (``@server``, ``@dialect``, T40) renders here as "0": an id in a
+        # JSON body has to stay parseable, and no text check below depends on what it is.
+        available = {name: "0" if value in ("@server", "@dialect") else value
+                     for name, value in self.chain.values.items()}
         per_step: dict[str, dict[str, str]] = {}
         for step in self.chain.steps:
             # A step may name what it captures itself: the read-back after a create names the
@@ -200,3 +204,174 @@ class ChainManifestMatchesSkillsTest(unittest.TestCase):
                     "serverId", entry["params"],
                     f"[cleanup] http {entry['method']} {entry['path']} names the server "
                     f"itself, so the profile's marketplace_server_id is never used")
+
+
+def marked_blocks(root: Path) -> dict[tuple[str, int], str]:
+    """Every block of ``skills/`` carrying a ``verified:`` mark, by (file, first body line).
+
+    The lint's rule decides what a block's mark is (``tests/skills_lint.py``): one inside the
+    block, or, for a block without one, a mark in the paragraph right above or below it. A
+    block marked ``unverified`` inside is documentation, not a claim a run could confirm.
+    """
+    import re
+
+    from tests.skills_lint import Block, Paragraph, _parse
+
+    any_mark = re.compile(r"(?<![\w`])(?:un)?verified:")
+    verified = re.compile(r"(?<![\w`])verified:")
+    found: dict[tuple[str, int], str] = {}
+    for path in sorted((root / "skills").rglob("*.md")):
+        elements = _parse(path.read_text(encoding="utf-8").splitlines())
+        for index, element in enumerate(elements):
+            if not isinstance(element, Block):
+                continue
+            inner = [line for line in element.lines if any_mark.search(line)]
+            if inner:
+                marked = any(verified.search(line) for line in inner)
+            else:
+                marked = any(isinstance(elements[i], Paragraph) and not elements[i].heading
+                             and verified.search(elements[i].prose())
+                             for i in (index - 1, index + 1) if 0 <= i < len(elements))
+            if marked:
+                first = next((line.strip() for line in element.lines if line.strip()), "")
+                found[(path.relative_to(root).as_posix(), element.start + 1)] = first[:70]
+    return found
+
+
+class EveryMarkedBlockRunsOrSaysWhyTest(unittest.TestCase):
+    """A block marked ``verified`` was run once on a live server; the chain runs it again, or
+    ``[not_run]`` says why not (T40). Both directions, so neither list can drift."""
+
+    def setUp(self):
+        self.chain = load_chain(MANIFEST)
+
+    def _where(self, address: str) -> tuple[str, int]:
+        block = load_block(REPO, address)
+        return block.path.relative_to(REPO).as_posix(), block.line
+
+    def test_every_marked_block_is_a_step_or_listed_as_not_run(self):
+        run = set()
+        for step in self.chain.steps:
+            for address in [step.address, *(spec["address"] for spec in step.files.values())]:
+                if address:
+                    run.add(self._where(address))
+        listed = {self._where(address) for address in self.chain.not_run}
+        missing = {key: first for key, first in marked_blocks(REPO).items() if key not in run | listed}
+        self.assertEqual(missing, {}, "marked blocks no step runs and [not_run] does not list — add a step to "
+                                      "verification/chain.toml, or the block's address and the reason to [not_run]")
+
+    def test_every_not_run_entry_is_a_marked_block_no_step_runs(self):
+        marked = marked_blocks(REPO)
+        run = {self._where(address) for step in self.chain.steps
+               for address in [step.address, *(spec["address"] for spec in step.files.values())] if address}
+        for address, reason in self.chain.not_run.items():
+            with self.subTest(address=address):
+                where = self._where(address)
+                self.assertIn(where, marked, f"{address} is not a block with a verified mark")
+                self.assertNotIn(where, run, f"{address} is run by a step; remove it from [not_run]")
+                self.assertTrue(reason.strip())
+
+    def test_requires_names_only_features(self):
+        from denodo_cli.features import FEATURE_NAMES
+        for step in self.chain.steps:
+            for name in step.requires:
+                self.assertIn(name, FEATURE_NAMES, step.id)
+
+    def test_every_marker_value_can_be_filled(self):
+        from denodo_cli.commands.verify import DIALECT, SERVER, SERVER_SOURCES
+        for name, value in self.chain.values.items():
+            with self.subTest(value=name):
+                if value == SERVER:
+                    self.assertTrue(name in SERVER_SOURCES or name == "scheduler_data_source_id",
+                                    f"nothing on the server fills {name}")
+                if value == DIALECT:
+                    for product, table in self.chain.dialects.items():
+                        self.assertIn(name, table, f"[dialects.{product}] lacks {name}")
+
+
+class ASkippedStepTakesItsDependantsWithItTest(unittest.TestCase):
+    """A step the server cannot run is skipped, and so must be every later step that uses what
+    it creates — through ``needs``, or by being gated by the same flag, feature and value.
+    Otherwise the dependant runs, fails on the missing object, and stops the whole chain on a
+    server the chain was meant to describe (T40 review).
+
+    Static, over the real manifest: what a step creates is read from its rendered text
+    (``CREATE … <name>``, and the base view ``CREATE_REMOTE_TABLE`` names); what it uses, from
+    the names in a later step's text and check.
+    """
+
+    CREATES = re.compile(
+        r"(?is)\bCREATE\s+(?:OR\s+REPLACE\s+)?(?:INTERFACE\s+VIEW|MATERIALIZED\s+TABLE|REMOTE\s+TABLE|"
+        r"SUMMARY\s+VIEW|VIEW|TABLE|TAG|ROLE|USER|GLOBAL_SECURITY_POLICY|ASSOCIATION|VQL\s+PROCEDURE|TYPE|"
+        r"DATASOURCE\s+\w+|WRAPPER\s+\w+)\s+([A-Za-z_]\w*)")
+    PROCEDURE_VIEW = re.compile(r"base_view_name\s*=\s*'([A-Za-z_]\w*)'")
+
+    def setUp(self):
+        self.chain = load_chain(MANIFEST)
+        self.values = {name: "0" if value in ("@server", "@dialect") else value
+                       for name, value in self.chain.values.items()}
+        self.markers = {name for name, value in self.chain.values.items() if value in ("@server", "@dialect")}
+
+    def _text(self, step) -> tuple[str, str]:
+        if step.kind == "fixture":
+            body = step.vql or ""
+        else:
+            body = render(load_block(REPO, step.address).body, step.substitute,
+                          {**self.values, **{name: "0" for name in step.capture}, **CAPTURED})
+        filled = PLACEHOLDER.sub(lambda m: self.values.get(m.group(1), m.group(0)), body)
+        check = PLACEHOLDER.sub(lambda m: self.values.get(m.group(1), m.group(0)), step.check or "")
+        return filled, check
+
+    def _gates(self, step, captured_before: set[str]) -> tuple[frozenset, frozenset, frozenset]:
+        from denodo_cli.commands.verify import _step_value_names
+        flags = {name for name in ("ai", "writes", "marketplace", "scheduler") if getattr(step, name)}
+        if step.channel == "denodotest":
+            flags.add("denodotest")
+        names = _step_value_names(step, REPO)
+        values = (names & self.markers) | {f"captured:{n}" for n in names & captured_before}
+        return frozenset(step.requires), frozenset(flags), frozenset(values)
+
+    def test_every_object_a_gated_step_creates_is_used_only_by_steps_gated_with_it(self):
+        creators: dict[str, list] = {}
+        gates: dict[str, tuple] = {}
+        needs: dict[str, set[str]] = {}
+        captured: set[str] = set()
+        problems = []
+        for step in self.chain.steps:
+            gates[step.id] = self._gates(step, captured)
+            needs[step.id] = set(step.needs)
+            for needed in step.needs:
+                needs[step.id] |= needs.get(needed, set())
+            body, check = self._text(step)
+            text = body + "\n" + check
+            made = set(self.CREATES.findall(body)) | set(self.PROCEDURE_VIEW.findall(body))
+            for name, makers in creators.items():
+                if name in made or not re.search(rf"\b{re.escape(name)}\b", text):
+                    continue
+                if (step.id, name) in NOT_A_USE:
+                    continue
+                if not any((self._covered(gates[maker], gates[step.id]) and needs[maker] <= needs[step.id])
+                           or maker in needs[step.id] for maker in makers):
+                    problems.append(f"{step.id} uses {name}, created only by {makers}, which may be skipped "
+                                    f"when {step.id} runs — add needs = [...] or the same gates")
+            for name in made:
+                creators.setdefault(name, []).append(step.id)
+            captured |= set(step.capture)
+        self.assertEqual(problems, [])
+
+    @staticmethod
+    def _covered(maker, user) -> bool:
+        """The maker runs whenever the user does: every gate of the maker is a gate of the user."""
+        return all(m <= u for m, u in zip(maker, user))
+
+
+# Captured values render as "0" for the static read above.
+CAPTURED = {"project_id": "0", "job_id": "0", "export_job_id": "0", "tag_id": "0", "category_id": "0",
+            "provider_type_id": "0", "tool_server_id": "0", "renamed_view_id": "0"}
+
+# A name in a later step's text that is not a use of the object, each with why.
+NOT_A_USE = {
+    ("semantics-audit", "verify_mcp"): "a filter on a tag's name: without the tag the audit lists no view, and runs",
+    ("materialize-drop-readers", "household_band_detail"): "DROP VIEW IF EXISTS: nothing to drop is not an error",
+    ("marketplace-tag", "verify_pii"): "a marketplace tag of the same name — another object on another server",
+}

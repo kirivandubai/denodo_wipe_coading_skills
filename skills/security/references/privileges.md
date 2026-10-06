@@ -35,7 +35,7 @@ ALTER ROLE <name> [ '<description>' ]
 ## Users
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-01)
+-- verified: 9.5.1 (live, 2026-10-06)
 ALTER USER <name> GRANT ROLE <role> [, <role> ]*;
 ALTER USER <name> REVOKE ROLE <role>;
 ALTER USER <name> GRANT CONNECT, EXECUTE ON <db>;          -- a privilege of the user's own
@@ -62,7 +62,7 @@ ALTER USER <name> REVOKE EXECUTE ON <db>.<view>;            -- a grant on one vi
 ## Database grants from the database side
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-01)
+-- verified: 9.5.1 (live, 2026-10-06)
 ALTER DATABASE <db> GRANT CONNECT, EXECUTE TO ROLE <role>;
 ALTER DATABASE <db> REVOKE EXECUTE TO ROLE <role>;
 ```
@@ -88,7 +88,7 @@ nothing — read the grant back with `CATALOG_PERMISSIONS()`.
 ## Who reads a database, and through what
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-01)
+-- verified: 9.5.1 (live, 2026-10-06)
 SELECT username, userrolename, elementname, dbconnect, dbexecute, elementexecute, dbadmin
 FROM CATALOG_PERMISSIONS()
 WHERE dbname = 'sales_analytics';
@@ -132,7 +132,7 @@ and last modifier; `DESC VQL VIEW <view> ('includeUserPrivileges' = 'yes')` incl
 ## Checking as someone else
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-01)
+-- verified: 9.5.1 (live, 2026-10-06)
 SELECT … FROM <view> CONTEXT ('impersonate_user' = '<user>');
 SELECT … FROM <view> CONTEXT ('impersonate_roles' = '<role>[,<role>…]');
 ```

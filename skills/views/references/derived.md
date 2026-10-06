@@ -36,7 +36,7 @@ The parenthesised list after `TAGS` documents individual columns. It carries the
 description that Data Marketplace and Design Studio show, and the per-column tags:
 
 ```sql
--- verified: 9.5.1 (live, 2026-09-10)
+-- verified: 9.5.1 (live, 2026-10-06)
 CREATE OR REPLACE VIEW customer_contact
     FOLDER = '/03 - business entities'
     DESCRIPTION = 'One row per customer, contact details only.'
@@ -56,7 +56,7 @@ Only the columns you want to annotate need listing. The tags must already exist
 directly** in the SELECT — not through `GETVAR` — and it appears as a column of the result:
 
 ```sql
--- verified: 9.5.1 (live, 2026-09-10)
+-- verified: 9.5.1 (live, 2026-10-06)
 CREATE OR REPLACE VIEW household_in_band
     FOLDER = '/02 - integration'
     AS SELECT household_sk, income_band_sk, buy_potential
@@ -100,7 +100,7 @@ Studio), swapping (`SWAP`, `SWAPSIZE`, `MAXRESULTSIZE`),
 `CHECK_INDIRECT_ACCESS`, `LAYOUT`, and the name:
 
 ```sql
--- verified: 9.5.1 (live, 2026-09-10)
+-- verified: 9.5.1 (live, 2026-10-06)
 ALTER VIEW household_in_band RENAME household_by_band;
 ```
 
