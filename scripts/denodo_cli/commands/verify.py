@@ -28,7 +28,7 @@ from .secret import encrypt_password
 from .testing import run_testing_tool
 from .vql import run_statements
 from ..output import envelope
-from ..profiles import Profile
+from ..profiles import Profile, profiles_path
 from ..templates import TemplateError, format_mark, load_block, update_mark
 from ..vql_split import split_statements
 
@@ -76,6 +76,17 @@ class Chain:
     cleanup: list[str] = field(default_factory=list)
     cleanup_http: list[dict] = field(default_factory=list)
     cleanup_writes: list[str] = field(default_factory=list)
+    # T40: values that depend on the product of the write data source, one table per product
+    # (``[dialects.sqlserver]``), and the marked blocks the chain does not run, with the reason.
+    dialects: dict[str, dict[str, str]] = field(default_factory=dict)
+    not_run: dict[str, str] = field(default_factory=dict)
+
+    def known_values(self) -> set[str]:
+        """The names a values file may set: ``[values]`` and every dialect table's keys."""
+        names = set(self.values)
+        for table in self.dialects.values():
+            names.update(table)
+        return names
 
 
 def load_chain(path: Path) -> Chain:
@@ -101,7 +112,67 @@ def load_chain(path: Path) -> Chain:
     if not isinstance(cleanup_writes, list) or not all(isinstance(s, str) for s in cleanup_writes):
         raise ChainError(f"[cleanup] writes in {path} must be a list of VQL statements, got {cleanup_writes!r}")
     return Chain(values=values, steps=steps, cleanup=cleanup, cleanup_http=cleanup_http,
-                 cleanup_writes=list(cleanup_writes))
+                 cleanup_writes=list(cleanup_writes), dialects=_dialects(document.get("dialects"), path),
+                 not_run=_not_run(document.get("not_run"), path))
+
+
+def _dialects(raw: object, path: Path) -> dict[str, dict[str, str]]:
+    """``[dialects.<product>]`` — the values of the write steps one product spells its own way."""
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict) or not all(isinstance(table, dict) for table in raw.values()):
+        raise ChainError(f"[dialects] in {path} must hold one table per product, got {raw!r}")
+    dialects: dict[str, dict[str, str]] = {}
+    for product, table in raw.items():
+        if not all(isinstance(value, str) for value in table.values()):
+            raise ChainError(f"[dialects.{product}] in {path} must map value names to strings, got {table!r}")
+        dialects[str(product)] = {str(k): v for k, v in table.items()}
+    return dialects
+
+
+def _not_run(raw: object, path: Path) -> dict[str, str]:
+    """``[not_run]`` — a marked block the chain does not run, keyed by its address, with why."""
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict) or not all(isinstance(reason, str) and reason for reason in raw.values()):
+        raise ChainError(f"[not_run] in {path} must map block addresses to a reason, got {raw!r}")
+    return {str(address): reason for address, reason in raw.items()}
+
+
+def default_values_path() -> Path:
+    """The local values file: beside the profiles file, so ``DENODO_PROFILES`` moves both."""
+    return profiles_path().parent / "verify.toml"
+
+
+def load_values_file(path: Path, profile_name: str, known: set[str]) -> dict[str, str]:
+    """The values the profile's own table of the local values file sets — ``{}`` without one.
+
+    The file holds one table per profile (``[dev]``) because the values belong to an
+    installation, and a profile names one. A key the manifest does not declare is refused,
+    naming the file, the table and the known keys: a typo would otherwise change nothing and
+    say nothing, and the run would go on with the value it was meant to replace.
+    """
+    path = Path(path)
+    if not path.is_file():
+        return {}
+    try:
+        document = tomllib.loads(path.read_text(encoding="utf-8"))
+    except (OSError, tomllib.TOMLDecodeError) as exc:
+        raise ChainError(f"cannot read the values file {path}: {exc}") from exc
+    table = document.get(profile_name)
+    if table is None:
+        return {}
+    if not isinstance(table, dict):
+        raise ChainError(f"[{profile_name}] in {path} must be a table of value = \"text\", got {table!r}")
+    values: dict[str, str] = {}
+    for key, value in table.items():
+        if isinstance(value, (dict, list)):
+            raise ChainError(f"{key} in [{profile_name}] of {path} must be a plain value, got {value!r}")
+        if key not in known:
+            raise ChainError(f"{key!r} in [{profile_name}] of {path} is not a value of the chain; "
+                             f"the chain's values are: {', '.join(sorted(known))}")
+        values[str(key)] = str(value)
+    return values
 
 
 def _cleanup_http_entries(raw: object, path: Path) -> list[dict]:

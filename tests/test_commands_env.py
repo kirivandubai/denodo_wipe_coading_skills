@@ -181,6 +181,35 @@ class CheckTest(unittest.TestCase):
         self.assertIn('DESC USER "o\'neil.ops"', seen)
         self.assertTrue(any("'impersonate_user' = 'o''neil.ops'" in s for s in seen), seen)
 
+    def test_features_are_reported_with_the_user_s_rights(self):
+        doc, code = check_environment(profile(), vql_factory=scripted({
+            "DESC USER u": VqlResult("", ["name", "description", "admin", "adminglobal"],
+                                     [["u", None, "true", "true"]]),
+            "SELECT max_processors": VqlResult("", ["max_processors", "current_processors", "status", "details"],
+                                               [[-1, -1, -3, "no MPP"]]),
+            "SELECT database_datasource_name": VqlResult(
+                "", ["database_datasource_name", "datasource_name", "adapter_database_name",
+                     "adapter_database_version", "status", "target_catalog", "target_schema"],
+                [["admin", "vdpcachedatasource", "postgresql", "17", "ON", None, "cache"]]),
+            "SELECT 'llm_enabled'": RuntimeError("Error executing query."),
+        }), rest_factory=OkRest)
+        self.assertEqual(code, 0)
+        features = doc["features"]
+        self.assertIs(features["enterprise_plus"], False)
+        self.assertEqual(features["cache"]["adapter"], "postgresql")
+        self.assertIsNone(features["llm"])
+        self.assertIs(features["admin"], True)
+        self.assertIs(features["impersonation"], True)
+
+    def test_no_features_when_the_server_does_not_answer(self):
+        class BadVql(OkVql):
+            def __init__(self, profile, database=None):
+                raise RuntimeError("connection refused")
+
+        doc, code = check_environment(profile(), vql_factory=BadVql, rest_factory=OkRest)
+        self.assertEqual(code, 1)
+        self.assertIsNone(doc["features"])
+
     def test_marketplace_401_is_a_failure(self):
         class Unauthorized(OkRest):
             def call(self, method, path, **kw):
