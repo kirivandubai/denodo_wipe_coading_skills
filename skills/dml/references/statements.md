@@ -14,6 +14,9 @@ answers differently is documentation only.
 INSERT INTO <view> ( <field> [, <field> ]* ) VALUES ( <value> [, <value> ]* ) [, ( … ) ]*
     [ RETURNING <field> [, <field> ]* ];
 
+INSERT INTO <view> [ ( <field> [, … ] ) ] RETURNING <field> [, … ]
+    VALUES ( … ) [, ( … ) ]*;           -- the documentation's multi-row form, not measured
+
 INSERT INTO <view> SET <field> = <value> [, <field> = <value> ]* [ RETURNING … ];
 
 INSERT INTO <view> <select>;
@@ -46,7 +49,7 @@ UPDATE <view> SET ( <field> [, … ] ) = ( <select returning one row> ) [ WHERE 
 |---|---|
 | `SET col = 'literal' WHERE <key>` | `affected` = rows matched |
 | `SET col = col + 1`, `CONCAT('x', other_col)` | evaluated by the source |
-| `SET col = FORMATDATE(…)` | translated into the source's own function, which failed (`format(…)`) — try an expression new to you on one row first |
+| `SET col = FORMATDATE(…)` | translated into the source's own function, which failed (`format(…)`) — try an expression new to you in a `SELECT` over the same view first; a one-row write is a write |
 | a `WHERE` the source cannot evaluate (`REGEXP_LIKE` on SQL Server) | `Error executing sentence: The update condition is non-delegable` — nothing changed |
 | a `WHERE … IN (SELECT …)` over a view of the same data source | `affected` as expected |
 | the same over a file or another data source | `Error executing sentence: The subquery expressions must be delegable to the same datasource of the IDU statement view.` |
@@ -70,7 +73,7 @@ to the database, which may refuse or ignore them. Measured on SQL Server:
 |---|---|
 | one-row `INSERT … RETURNING <generated key>` | the new key |
 | `INSERT … SET … RETURNING <generated key>` | the new key |
-| several rows in `VALUES` with `RETURNING <key>` | rows inserted, **no result set** |
+| `RETURNING <key>` after a multi-row `VALUES` list | rows inserted, **no result set** |
 | `RETURNING` of a column with a default (`created_at`) | row inserted, **no result set** |
 | `RETURNING <key>, <other>` | `Error in some access … 'The column array is not …` — **nothing inserted** |
 | `UPDATE … WHERE <key> RETURNING <key>` | row updated, **`NULL`** returned |
@@ -113,8 +116,8 @@ reading the row back.
 | `NULL` | `NULL` |
 | `TIMESTAMP '2026-01-15 10:00:00'`, `'2026-01-15 10:00:00'` into `datetime2` | `10:00:00` |
 | `DATE '2026-01-15'` into `datetime2` | `00:00:00` |
-| `TIMESTAMP WITH TIME ZONE '2026-01-15 10:00:00 +02:00'` | `08:00:00` — converted to UTC |
-| `NOW()`, `CURRENT_TIMESTAMP`, `CAST(NOW() AS timestamp)` | the UTC time, while the session shows the same moment at `-07:00` |
+| `TIMESTAMP WITH TIME ZONE '2026-01-15 10:00:00 +02:00'` | `08:00:00` — converted to the Denodo server process's zone (UTC on the server measured) |
+| `NOW()`, `CURRENT_TIMESTAMP`, `CAST(NOW() AS timestamp)` | the time in the Denodo server process's zone (UTC on the server measured), while the session showed the same moment in its own zone (`-07:00` there) |
 | `LOCALTIMESTAMP` | the session's local time |
 
 The source's refusal is cut by the server at a fixed length, and `TRACE` does not bring the
