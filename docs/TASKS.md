@@ -70,17 +70,8 @@ the bottlenecks in trust on another server, in rules kept as prose, and in bulk 
 
 *T38 is done — under «Сделано» below.*
 
-- **T39. A ledger of the session's own objects, and `vql plan`.** `next`. Most contradictions
-  in section C of the review — and the `synchronize` decision of 2026-10-05 — turn on "created
-  in this session", which every skill re-derives in prose. `scripts/denodo` records what the
-  session created (a local state file outside the repository; how a session is identified is
-  settled in the task), and `vql plan <file>` reports per statement: new, replaces an existing
-  object, destructive, the session's own, and whether `vql`'s table puts it under the human's
-  yes; the marketplace `changes` radius is checked against the same ledger. It informs and never
-  refuses — the refusal stays the production profile's (the owner's decision on the core's
-  safety, roadmap 2.1). Then `vql`'s table and the skills point to the plan instead of
-  restating the rule. Done when unit tests and a live run pass and a RED/GREEN pair shows the
-  plan changing what the agent asks for.
+*T39 is done — under «Сделано» below.*
+
 - **T40. A verification chain any server can run.** `next`, after T37 (both edit
   `verification/chain.toml`). Today the chain needs the Denodo demo image (`csv_dir`, SQL
   Server DDL for the write tables, a fixed embedding model), so a user cannot learn which
@@ -92,7 +83,7 @@ the bottlenecks in trust on another server, in rules kept as prose, and in bulk 
   global security policies, LLM, MPP) and `verify` skips a tail the server lacks, saying so.
   Done when the chain passes unchanged on the demo image and on a second configuration — at
   least once with the cache database on PostgreSQL (a server setting: the owner's yes).
-- **T41. Bulk work in the existing skills.** `next`, after T39 (it builds on the plan). The gap
+- **T41. Bulk work in the existing skills.** `next` (T39, the plan it builds on, is done). The gap
   three reviewers hit independently: base views for every table of a JDBC schema
   (`datasources`), one tag on every column matching a pattern (`catalog`, `security`),
   descriptions for hundreds of views in batches (`semantics`). One pattern in `vql`, applied in
@@ -439,6 +430,75 @@ the bottlenecks in trust on another server, in rules kept as prose, and in bulk 
 ---
 
 ## Сделано
+
+- **T39. A ledger of the session's own objects, and `vql plan`.** Design:
+  [2026-10-06-session-ledger-and-plan-design.md](superpowers/specs/2026-10-06-session-ledger-and-plan-design.md),
+  folded into the design spec (6.3, 7.4).
+
+  **The ledger.** The session is the conversation, subagents included: `DENODO_SESSION`, else
+  `CLAUDE_CODE_SESSION_ID` (a subagent sees its parent's id — measured on Claude Code 2.1.289).
+  Every `vql run` reads, before its first statement, whether the objects it creates exist, and
+  records after the last those that did not, with the server's `internal_id` — `CREATE OR
+  REPLACE` and `RENAME` keep it, `DROP` + `CREATE` changes it (measured on 9.5.1) — and follows
+  drops (a dropped database takes its objects) and renames. `<profiles dir>/sessions/<id>.json`,
+  `0600`, locked, pruned after 30 days; a failed read or write never fails the run.
+
+  **The plan.** `vql plan <file>` walks the input against the ledger and the live catalog
+  (`GET_DATABASES`, `GET_ELEMENTS` per database, tags and policies, `LIST ROLES/USERS`,
+  `USED_BY`, policy texts — each read once, only when needed) and gives per statement `action`,
+  `object`, `exists`, `own`, `needs_yes`, `why`, `conditions`, `touches`, `dependents`. Every row
+  of the `vql` table has its reading; what no catalog shows stays in `conditions` (a dropped
+  column a reader uses, the target the human named). "Your project's own file" is read from git:
+  the tree of the last commit before the session started. `api … --plan` classifies a REST call
+  without sending it and, for `DATABASES`/`VIEWS` `synchronize`, marks every entry of both
+  `changes` against the ledger. `vql ledger` lists what the session created. The plan informs
+  and refuses nothing.
+
+  **Skills.** `vql`: plan a file before applying it and after changing it; "created in this
+  session" is the plan's `own`; the first row of the table now says "a file of your project
+  declared before this session (`declared_in`) — a file you have just written vouches for
+  nothing" (a tightening: RED-B on Sonnet replaced a colleague's view under the old wording); two
+  rationalization rows taken from RED. `execute`: the commands and their output. `marketplace`:
+  who sends a `synchronize` reads `api … --plan` (no line added — at its ceiling). `cache`,
+  `catalog`, `dml`, `materialize`, `metrics`, `scheduler`, `security`, `semantics`, `views` point
+  to `own` / `touches` / `needs_yes` at their who-applies tables. No description changed, so no
+  eval run.
+
+  **Checked.** Unit tests: 115 new cases (647 in all, 17 skipped) over the parser, the ledger, the catalog, git
+  declarations, the planner row by row, recording in `vql run`, the radius, the CLI. Live on
+  9.5.1 (`zq39_live`, a colleague under another `DENODO_SESSION`): recording, rename and drop,
+  identity, the mixed plan, `api … --plan` on a synchronize with a colleague's views in the
+  radius (`needs_yes`) and without them (`false`, the after-check as a condition), declarations
+  from a backdated commit. The live runs found three defects the unit tests had not: a `CREATE
+  OR REPLACE` of a colleague's view made it the input's own for the statements after it; a
+  reader renamed earlier in the same input counted as someone else's; the ledger could fail
+  `vql run` on an unexpected catalog answer. All fixed, each with a regression test.
+  `tests/integration/test_stand.py` gained two ledger-and-plan cases (own and colleague
+  objects in one plan; identity across a rename and a drop-and-recreate) — 12 of 12 pass live.
+  `verify` was not run: no template changed, and the chain's addresses are checked by the unit
+  tests. All fixture and probe databases were dropped (their caches cleared first, by a file the
+  plan itself marked as the session's own); both `changes` of the marketplace are empty.
+
+  **RED/GREEN.** A — the context compacted, six changes asked in a database where some views
+  are the session's and some a colleague's, the human away: RED on Opus (24 calls) and Sonnet (17)
+  applied nothing and held all six — three of them their own — having no way to tell; both asked
+  for "a session ledger". GREEN on Opus (40 calls) applied its three (rename, cache, description)
+  and held the colleague's rename and cache and the `DROP` — the split checked on the server.
+  B — a view asked under a name a colleague's view already has: RED on Opus noticed it by habit
+  (no step in the skills says to look); **RED on Sonnet replaced it**, citing "a new view that my
+  own project file declares" about the file it had just written (checked: description replaced,
+  same `internal_id`). GREEN on Opus held it from the plan's `exists: true, own: false`. C —
+  control, everything the session's own: GREEN on Opus applied all five itself.
+  GREEN on Sonnet, after the review fixes: A — the same split (21 calls), checked on the server;
+  B — held the colleague's view on the plan's answer (15 calls; the view is intact on the
+  server): the model whose RED replaced it now stops.
+
+  **Open, from the GREEN reviews (outside T39):** where a one-off statement (`ALTER … RENAME`)
+  and a statement waiting for the yes live when the layer file also declares colleagues'
+  objects — `cache` says the view's own file, `semantics` a file of its own — and in which order
+  a rename and the file that re-declares the view under its new name are applied; grouping by a
+  dimension's label merges two keys that share it (`views`); a project outside git can vouch for
+  no existing object, so re-applying the team's files there always waits.
 
 - **T38. CI on every pull request, with a lint of the skills.** `.github/workflows/ci.yml`
   runs, on every pull request and on `main`, the unit tests on Python 3.11 and 3.14 and

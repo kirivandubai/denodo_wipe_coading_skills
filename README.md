@@ -205,6 +205,15 @@ default:
   session; anything else waits for your yes. On the Scheduler every `PUT` replaces a
   whole job, a status change starts, stops, enables or disables one, and a new job is judged by
   the statement it will run every night.
+- **"Created in this session" is the tool's record, not the agent's memory.** Every `vql run`
+  records the objects it created — the server's id with each — in a ledger kept per session
+  beside your profiles (`~/.denodo/sessions/`, never in the project; the session is the Claude
+  Code conversation, subagents included, or whatever `DENODO_SESSION` names). Before applying a
+  file the agent runs `vql plan`, which reads the file against that ledger and the live server
+  and says per statement whether the rule above lets the agent apply it or waits for your yes —
+  so an object of the same name made by someone else, or a session whose context was
+  compacted, does not turn into a guess. The plan informs and refuses nothing: the hard stop
+  stays the production flag's. `vql ledger` lists what the session created.
 - **Passwords never appear in a command.** Server credentials come from the profile. A
   *data source* password — the one that has to end up in `USERPASSWORD … ENCRYPTED` — is
   turned into its cipher by `secret encrypt`, which reads it from a hidden prompt or

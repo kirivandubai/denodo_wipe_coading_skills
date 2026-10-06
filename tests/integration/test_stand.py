@@ -133,3 +133,78 @@ class RestTransportStandTest(unittest.TestCase):
         finally:
             deleted = self.rest.call("DELETE", f"/public/api/tags/{tag_id}")
         self.assertEqual(deleted.status, 200)
+
+
+@unittest.skipUnless(ENV, "DENODO_TEST_ENV not set")
+class LedgerAndPlanStandTest(unittest.TestCase):
+    """T39: the ledger against a live catalog. Two sessions in a temporary directory — "mine" and a
+    colleague's — over views of a ``t39_`` folder in ``denodo_skills_test``, removed at the end."""
+
+    @classmethod
+    def setUpClass(cls):
+        import tempfile
+        from pathlib import Path
+
+        from denodo_cli.ledger import Ledger
+        from denodo_cli.transports.vql_psycopg2 import VqlPsycopg2Transport
+
+        cls.profile = _profile()
+        cls.factory = VqlPsycopg2Transport
+        cls.tmp = tempfile.TemporaryDirectory()
+        cls.mine = Ledger(Path(cls.tmp.name), "t39-mine")
+        cls.colleague = Ledger(Path(cls.tmp.name), "t39-colleague")
+        admin = VqlPsycopg2Transport(cls.profile)
+        admin.execute(f"CREATE OR REPLACE DATABASE {TEST_DB} 'T5 integration tests'")
+        admin.close()
+
+    @classmethod
+    def tearDownClass(cls):
+        transport = cls.factory(cls.profile, database=TEST_DB)
+        for statement in ("DROP VIEW IF EXISTS t39_report", "DROP VIEW IF EXISTS t39_theirs",
+                          "DROP VIEW IF EXISTS t39_mine2", "DROP VIEW IF EXISTS t39_mine",
+                          "DROP FOLDER IF EXISTS '/t39'"):
+            transport.execute(statement)
+        transport.close()
+        cls.tmp.cleanup()
+
+    def run_as(self, ledger, *statements):
+        from denodo_cli.commands.vql import run_statements
+
+        doc, code = run_statements(self.profile, list(statements), transport_factory=self.factory, max_rows=10,
+                                   database=TEST_DB, ledger=ledger, source="it.vql")
+        self.assertEqual(code, 0, doc)
+        return doc
+
+    def plan(self, *statements):
+        from denodo_cli.commands.plan import plan_input
+
+        doc, code = plan_input(self.profile, list(statements), transport_factory=self.factory, database=TEST_DB,
+                               source=None, ledger=self.mine, session_source="DENODO_SESSION")
+        self.assertEqual(code, 0, doc)
+        return doc["statements"]
+
+    def test_own_and_colleague_objects(self):
+        mine = self.run_as(self.mine, "CREATE OR REPLACE FOLDER '/t39'",
+                           "CREATE OR REPLACE VIEW t39_mine FOLDER = '/t39' AS SELECT 1 AS a FROM Dual()")
+        # the folder may already be this session's from the other test: it is recorded once, when new
+        self.assertIn(f"{TEST_DB}.t39_mine", mine["ledger"]["recorded"])
+        self.run_as(self.colleague,
+                    "CREATE OR REPLACE VIEW t39_theirs FOLDER = '/t39' AS SELECT 2 AS b FROM Dual()",
+                    "CREATE OR REPLACE VIEW t39_report FOLDER = '/t39' AS SELECT a FROM t39_mine")
+        entries = self.plan("CREATE OR REPLACE VIEW t39_mine FOLDER = '/t39' AS SELECT 1 AS a, 2 AS c FROM Dual()",
+                            "CREATE OR REPLACE VIEW t39_theirs FOLDER = '/t39' AS SELECT 3 AS b FROM Dual()",
+                            "ALTER VIEW t39_mine CACHE FULL",
+                            "DROP VIEW t39_theirs")
+        self.assertEqual([e["own"] for e in entries], [True, False, True, False])
+        self.assertEqual([e["needs_yes"] for e in entries], [False, True, True, True])
+        self.assertIn("t39_report", entries[2]["why"])   # the colleague's view reads it
+
+    def test_identity_survives_a_rename_and_not_a_recreate(self):
+        self.run_as(self.mine, "CREATE OR REPLACE FOLDER '/t39'",
+                    "CREATE OR REPLACE VIEW t39_mine2 FOLDER = '/t39' AS SELECT 1 AS a FROM Dual()")
+        self.run_as(self.mine, "ALTER VIEW t39_mine2 RENAME t39_mine2b")
+        self.assertTrue(self.plan("ALTER VIEW t39_mine2b CACHE OFF")[0]["own"])
+        self.run_as(self.colleague, "DROP VIEW t39_mine2b",
+                    "CREATE VIEW t39_mine2b FOLDER = '/t39' AS SELECT 9 AS a FROM Dual()")
+        self.assertFalse(self.plan("ALTER VIEW t39_mine2b CACHE OFF")[0]["own"])
+        self.run_as(self.colleague, "DROP VIEW t39_mine2b")

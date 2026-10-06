@@ -5,6 +5,7 @@ stdout; exit codes: 0 ok, 1 the server refused, 2 usage/config/refused-destructi
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import getpass
 import json
 import os
@@ -15,10 +16,12 @@ from . import __version__
 from .commands import EXIT_ENVIRONMENT, EXIT_USAGE
 from .commands.api import api_call, parse_multipart_specs, parse_params
 from .commands.env import check_environment, init_environment, list_environments
+from .commands.plan import list_ledger, plan_input
 from .commands.secret import encrypt_password
 from .commands.testing import DEFAULT_DB_ADAPTER, run_testing_tool, write_testing_config
 from .commands.vql import describe, run_statements
 from .commands.verify import ChainError, load_chain, run_chain
+from .ledger import Ledger, prune_sessions, session_from_env
 from .output import envelope, to_json
 from .profiles import ProfileError, load_profile, profiles_path
 from .transports import get_rest_transport, get_vql_transport
@@ -67,6 +70,15 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--continue-on-error", action="store_true", help="keep going after a failed statement")
     run.add_argument("--allow-destructive", action="store_true",
                      help="required on a production profile for DROP/ALTER/DELETE statements")
+    plan = vql.add_parser("plan", parents=[env_opt],
+                          help="what a .vql file (or '-' / -e) would do on this server, statement by statement: "
+                               "new or existing, this session's own, and whether the core's safety table puts it "
+                               "under the human's yes; executes nothing")
+    plan.add_argument("file", nargs="?", help="path to a .vql file, or '-' to read stdin")
+    plan.add_argument("-e", "--execute", metavar="VQL", help="VQL text to plan instead of a file")
+    plan.add_argument("--database", help="plan against this database instead of the profile's")
+    vql.add_parser("ledger", parents=[env_opt],
+                   help="the objects this session created on the profile's server, each re-checked against it")
     desc = vql.add_parser("desc", parents=[env_opt], help="DESC [VQL] <type> <name>")
     desc.add_argument("name")
     desc.add_argument("--type", default="view", help="object type, e.g. view, table, 'datasource df', database")
@@ -88,6 +100,9 @@ def build_parser() -> argparse.ArgumentParser:
     api.add_argument("--timeout", type=float, default=300, help="seconds (synchronize calls can be slow)")
     api.add_argument("--allow-destructive", action="store_true",
                      help="required on a production profile for DELETE and set-replacing POST calls")
+    api.add_argument("--plan", action="store_true",
+                     help="do not send the call: say whether the core's safety table puts it under the human's yes; "
+                          "for a catalog synchronize, read both changes and check the radius against this session's ledger")
 
     secret = top.add_parser("secret", help="credentials for data sources").add_subparsers(dest="action",
                                                                                           required=True)
@@ -167,6 +182,23 @@ def _profile(args):
     return load_profile(name)
 
 
+def _open_ledger() -> tuple[Ledger | None, str | None]:
+    """The session's ledger beside the profiles file, touched so it knows when the session started.
+    Never fails a command: without a session id, or when the directory cannot be written, it is off."""
+    session, source = session_from_env(os.environ)
+    if not session:
+        return None, None
+    directory = profiles_path().expanduser().parent / "sessions"
+    ledger = Ledger(directory, session)
+    now = dt.datetime.now(dt.timezone.utc)
+    try:
+        ledger.touch(now)
+        prune_sessions(directory, now)
+    except OSError:
+        return None, None
+    return ledger, source
+
+
 def _read_vql(args) -> tuple[str, str]:
     if bool(args.file) == bool(args.execute):
         raise UsageError("give exactly one input: a .vql file, '-' for stdin, or -e VQL")
@@ -203,6 +235,13 @@ def _read_password() -> str:
     return password
 
 
+def _absolute_source(source: str) -> str:
+    """A file path as the ledger keeps it: absolute, so it means the same thing from any directory."""
+    if source.startswith("<"):
+        return source
+    return str(Path(source).expanduser().absolute())
+
+
 def _json_body(args):
     if args.json and args.json_file:
         raise UsageError("use either --json or --json-file, not both")
@@ -234,6 +273,7 @@ def _dispatch(args) -> tuple[dict, int]:
         return init_environment(profiles_path(), ask=ask, ask_secret=getpass.getpass)
 
     profile = _profile(args)
+    ledger, session_source = _open_ledger()
     if args.group == "env":  # check
         return check_environment(profile, vql_factory=resolve_vql_factory(profile),
                                  rest_factory=resolve_rest_factory())
@@ -242,9 +282,20 @@ def _dispatch(args) -> tuple[dict, int]:
         doc, code = run_statements(profile, split_statements(text), transport_factory=resolve_vql_factory(profile),
                                    max_rows=args.max_rows, database=args.database,
                                    allow_destructive=args.allow_destructive,
-                                   continue_on_error=args.continue_on_error)
+                                   continue_on_error=args.continue_on_error,
+                                   ledger=ledger, source=_absolute_source(source))
         doc["source"] = source
         return doc, code
+    if args.group == "vql" and args.action == "plan":
+        text, source = _read_vql(args)
+        doc, code = plan_input(profile, split_statements(text), transport_factory=resolve_vql_factory(profile),
+                               database=args.database, source=None if source.startswith("<") else source,
+                               ledger=ledger, session_source=session_source)
+        doc["source"] = source
+        return doc, code
+    if args.group == "vql" and args.action == "ledger":
+        return list_ledger(profile, transport_factory=resolve_vql_factory(profile), ledger=ledger,
+                           session_source=session_source)
     if args.group == "testing" and args.action == "run":
         tool = args.tool or os.environ.get("DENODO_TESTING_TOOL_HOME")
         if not tool:
@@ -271,7 +322,8 @@ def _dispatch(args) -> tuple[dict, int]:
             raise UsageError(str(exc)) from exc
         return api_call(profile, args.method, args.path, transport_factory=resolve_rest_factory(),
                         json_body=_json_body(args), params=params, multipart=multipart,
-                        timeout=args.timeout, allow_destructive=args.allow_destructive, server=args.server)
+                        timeout=args.timeout, allow_destructive=args.allow_destructive, server=args.server,
+                        plan=args.plan, ledger=ledger)
     if args.group == "verify":
         repo = Path(__file__).resolve().parents[2]
         manifest = Path(args.chain).expanduser() if args.chain else repo / "verification" / "chain.toml"

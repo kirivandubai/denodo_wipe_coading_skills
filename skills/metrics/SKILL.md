@@ -287,7 +287,8 @@ verify. Changing a metric view you did not create in this session — `CREATE OR
 VIEW` over it, even to add one metric — rewrites what every dashboard on it reads: show the
 file and get a yes (`/denodo:vql`). A missing dimension or metric in another team's metric
 view is a proposal to them; until they add it, your own metric view over the same sources
-answers the question without touching theirs.
+answers the question without touching theirs. Which metric views you created in this session
+is the `own` of `vql plan` (`/denodo:vql`).
 
 ## Verify — the totals check
 

@@ -53,6 +53,9 @@ get it done" are the task, not the yes.
 | writing the statements and the undo into files | the load of a cache the write left stale, on a view you did not create in this session (`/denodo:cache`) |
 | creating a new view for writers in your project's database — a `CREATE` | the first write through it |
 
+`vql plan` marks every write `needs_yes: true` but one: an `INSERT` into a materialized table
+the session created (`/denodo:vql`).
+
 Show it in this shape, after the reads and before any write:
 
 ```

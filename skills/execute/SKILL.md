@@ -25,10 +25,13 @@ tool reads host, user and password from `~/.denodo/profiles.toml` itself.
 | Apply inline VQL | `vql run --env dev -e "SELECT COUNT(*) FROM bv_orders"` |
 | Read stdin | `vql run --env dev -` |
 | Another database | add `--database <db>` (or put `CONNECT DATABASE <db>;` first in the file) |
+| What a file would do, before applying it | `vql plan --env dev model/sales/views.vql` (also `-e`, `-`, `--database`) — reads the server and the session's ledger, executes nothing; per statement `action`, `object`, `exists`, `own`, `needs_yes`, `why`, `conditions`. The rule it applies is `/denodo:vql`'s safety table |
+| What this session created | `vql ledger --env dev` — every object a `vql run` of this session created on the profile's server, each with its `state`, re-checked against the server: `present`, `missing` (gone without a `DROP` this session ran), `replaced` (the name now has another object), `dropped`; `states` counts them |
 | Schema of an object | `vql desc --env dev bv_orders` (`--type view` is the default and covers base views too — there is no `DESC TABLE`) |
 | Server-generated VQL | `vql desc --env dev bv_orders --vql` — read it, do not apply it: it opens with `DROP … CASCADE` and rebuilds the object **together with what it depends on** in its own database — dependencies in another database are left out, except under a metric view of another database: the metric view is left out and its source views come back unqualified, as if they were in yours — never with what depends on it. Which object you ask therefore decides what you get: a base view returns source, wrapper and `CREATE TABLE` in one answer; the source alone returns only itself, without the column list. A name can be qualified — `vql desc --env dev "other_db.bv_orders" --vql` reads another database without switching yours — *verified: 9.5.1 (live, 2026-09-12)*. The object alone, without the data source its dependencies bring (and that source's encrypted password): `vql run --env dev -e "DESC VQL VIEW bv_orders ('includeDependencies' = 'no', 'dropElements' = 'no')"` — *verified: 9.5.1 (live, 2026-10-02)* |
 | Other types | `--type database`, `--type "datasource df"`, `--type "wrapper df"`, `--type tag`, `--type association`, `--type "interface view"`, `--type role`, `--type global_security_policy` (with `--vql`, read only: it starts with `DROP … CASCADE`); folders take a quoted path: `vql desc --env dev "'/sales'" --type folder --vql` |
 | Marketplace call | `api get --env dev /public/api/tags` |
+| … planned, not sent | add `--plan` to any `api` call: `needs_yes`, `why`, `conditions`, `sent: false`; for `element-management/{DATABASES,VIEWS}/synchronize` it reads both `…/changes` and marks every entry against the session's ledger (`radius.own`, `radius.not_own`) |
 | … with a body | `api post --env dev /public/api/tags --json '{"name":"pii","description":"…","descriptionType":"TEXT"}'` |
 | … with the body in a file | `api put --env dev /public/api/views --json-file body.json` — for HTML, quotes, or a body you want to keep |
 | … query params / multipart | `--param k=v` (repeatable), `--part field=@file` / `field=json:{…}` |
@@ -79,6 +82,24 @@ The server message you match against the error reference is
 `403`, `404`, `409` all come with an empty body). `ok` is true only for 2xx. Some
 marketplace calls report failure inside a `200`: `POST /tags/{id}/views` answers
 with the list of ids it could *not* assign — success is an empty list.
+
+**`vql run` keeps the session's ledger.** The session is this conversation, subagents
+included: `CLAUDE_CODE_SESSION_ID`, or `DENODO_SESSION` where a harness sets it. Before the
+first statement the tool reads whether the objects the file creates exist; after the last it
+records those that did not, with the server's id, and follows the drops and renames of objects
+it recorded — the `ledger` part of the answer says what. A `CREATE OR REPLACE` over an object
+that existed records nothing: replacing an object does not make it yours. The file lives beside
+the profiles, never in the project.
+
+**`vql plan`** answers `ok` with exit `0` whenever it could read the server, whatever it found;
+`needs_yes` at the top lists the statements that wait for the human, `not_recognised` those the
+table decides. `session: null` (no session id) means only an object an earlier statement of the
+same input creates counts as yours. `project.base` is the commit the plan read declarations
+from — the last one before this session started; `project: null` means the input is not in a
+git work tree, so no file of it vouches for an object that already exists, however old the
+file — re-declaring such an object waits for the yes, and the summary says the project is not
+versioned. As for `vql run`, `env.database` is the connection's database; where each statement
+lands is its `object.database`, which follows the file's `CONNECT DATABASE`.
 
 **`vql desc`** returns the DESC rows as `columns`/`rows` **at the top level of the
 envelope** — `statements[]` belongs to `vql run` alone, and a parser that expects it
@@ -150,8 +171,9 @@ global objects. `CREATE` of a new object is not. The tool cannot tell whose obje
 or `ALTER` hits, so it flags every one. The flag is not the rule: an `ALTER` of an object you
 created in this session, which nothing else reads yet, is yours to apply, and so is a
 marketplace catalog `synchronize` whose radius, read right before it, holds only what you
-created in this session (`/denodo:vql`); on a production profile every flagged statement and
-call still needs the human's yes and the flag.
+created in this session (`/denodo:vql`) — `vql plan` and `api … --plan` say which, from the
+session's ledger; on a production profile every flagged statement and call still needs the
+human's yes and the flag.
 
 `DROP`, `ALTER`, `DELETE`, `TRUNCATE`; `INSERT` and `UPDATE` (a write through a view lands in
 the source behind it — `INSERT … ON DUPLICATE KEY UPDATE` included, VQL has no `MERGE`); the

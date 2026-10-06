@@ -27,6 +27,10 @@ Remote: `github.com/kirivandubai/denodo_wipe_coading_skills` (имя на GitHub
 Юнит-тесты гоняются без зависимостей: `PYTHONPATH=scripts python3 -m unittest discover -s tests -t .`;
 интеграционные — против стенда: `DENODO_TEST_ENV=dev uv run --with denodo-sqlalchemy
 --with psycopg2-binary python -m unittest tests.integration.test_stand` (с `PYTHONPATH=scripts`).
+Since T39 every `vql run` records what the session created in a ledger beside the profiles, and
+`scripts/denodo vql plan <file>` / `api … --plan` say per statement whether the core's table lets the
+agent apply it — a probe of yours, made in this session, is "own" to every subagent of the session:
+create a fixture that must look like a colleague's with `DENODO_SESSION=<other>` in front of the command.
 Прогон верификации шаблонов — `scripts/denodo verify --env lab`; the AI templates run only
 with `--with-ai` (about 40 paid requests to the stand's LLM), the write templates of `dml` and
 `materialize` only with `--with-writes` (`verify_` tables, a summary and a materialized table

@@ -64,7 +64,7 @@ rewrites its description for every database that uses it — that is a change to
 existing object, show it and get a yes first. The targets get the same check, whatever the tag:
 putting a tag — a new one included — on a view or column you did not create in this session
 changes that view's metadata, and is a yes too (`/denodo:vql`); a tag that a security policy
-names changes who reads what (`/denodo:security`).
+names changes who reads what (`/denodo:security`). `vql plan` checks both for the file.
 
 ```sql
 -- verified: 9.5.1 (live, 2026-10-06)

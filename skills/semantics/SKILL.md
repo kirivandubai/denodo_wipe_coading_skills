@@ -39,7 +39,8 @@ stays out of the text and goes to the human as a question.
    yes to the texts** — whatever the statement: `ALTER VIEW`, `ALTER TAG`, or the view
    re-declared with `CREATE OR REPLACE VIEW`. Re-declaring a view to change its metadata is
    still writing to it, and it rewrites its stored definition besides. The texts are what
-   every consumer will believe; the human who owns the views approves them.
+   every consumer will believe; the human who owns the views approves them. Whose view it
+   is, is the `own` of `vql plan` on the file (`/denodo:vql`).
 3. **When you cannot ask** — the human is away, the go-live is close — the answer is the
    audit, the proposal and the statement file, not the statements applied. Say which file
    to apply and what applying it changes. The one exception is a view the human named to be

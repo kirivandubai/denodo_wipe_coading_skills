@@ -95,7 +95,9 @@ job before anyone agrees to it.
 | — | deleting a job, yours included |
 | — | **anything at all on a profile with `production: true`** |
 
-A file on the Scheduler host counts as existing unless you created it in this session: the API
+What a job's statement changes, and whether you created it in this session, is what `vql plan
+-e "<its statement>"` says (`own`, `needs_yes`); the ledger records no Scheduler job, so a job
+you created is the one your `POST` returned. A file on the Scheduler host counts as existing unless you created it in this session: the API
 cannot tell you whether it is there. A job of yours is judged by what its runs would change at
 that moment: enabled while it only reads, it has to be disabled before a `PUT` gives it an
 exporter that writes over such a file — then the yes enables it.

@@ -261,6 +261,27 @@ of the `cache` and `ai` templates — is the agent's own change and needs no yes
 one whatever it hits, and on a profile marked production every change does. The classifier
 still flags every `ALTER`: it sees no ownership, and the flag only refuses on production.
 
+**Who created it: the session ledger and `vql plan` (T39).** "Created in this session" decides
+half of the table in `/denodo:vql`, and the agent used to carry the answer in its context — which a
+compacted session, a subagent, or an object of the same name on the server defeats: the baseline of
+T39 held all six requested changes for the human when it could not tell its views from a colleague's,
+and replaced a colleague's view citing "your project's own file declares it" about a file it had just
+written. The tool now keeps the answer. Every `vql run` records, per session and per VDP server, the
+objects it created — those that did not exist before the statement — with the server's
+`internal_id` (`CREATE OR REPLACE` and `RENAME` keep it, `DROP` + `CREATE` changes it: measured on
+9.5.1), and follows their drops and renames. `vql plan <file>` reads the file against that ledger and
+the live catalog and says per statement `exists`, `own`, `needs_yes`, `why` (the row of the table)
+and `conditions` (what the row needs that no catalog shows); `api … --plan` does the same for a REST
+call without sending it, and for a catalog `synchronize` checks both `changes` against the ledger.
+"Your project's own file declares it" is read from git: the tree of the last commit made before the
+session started — a file the session wrote or committed vouches for nothing. **The plan informs and
+refuses nothing**; the refusal stays the production profile's (roadmap 2.1). The session is the
+conversation with the human, subagents included: `DENODO_SESSION`, else `CLAUDE_CODE_SESSION_ID`
+(a subagent sees its parent's id — measured on Claude Code 2.1.289); without either the ledger is
+off and only an object an earlier statement of the same input creates counts as the input's own. The
+mapping of the table onto statements is in
+[the T39 design](2026-10-06-session-ledger-and-plan-design.md).
+
 **Criterion for "destructive" (T22, owner review of the roadmap, item 2.1).** A statement is
 destructive when it destroys or overwrites something that exists, or changes state outside
 the agent's own project: server settings, data in sources, objects of other databases, global
@@ -572,6 +593,11 @@ scripts/denodo verify    --env dev            прогон шаблонов, с�
   Exploration") — any path to a file holding a password is at risk of that — and three runs
   lost the tool's exit code in a pipe. `testing config` stays for a human who runs the tool by
   hand. CI writes its own file from its secret store with the same keys.
+- **The session's ledger lives beside the profiles (T39)**: `<profiles dir>/sessions/<session>.json`,
+  `0600` in a `0700` directory, written under a lock and replaced atomically, deleted after 30 days
+  without a write — outside every repository like the profiles. It holds object names and ids, no
+  secrets. Keeping it never fails a command: a read or a write that fails leaves the object unrecorded
+  and says so in the `ledger` part of the answer.
 - **Профиль среды несёт флаг `production: true`** — иначе правило безопасности из ядра
   не имеет опоры: агент должен знать, куда подключён, до выполнения. Каждый ответ
   `scripts/denodo` повторяет этот флаг в поле `env.production`.
