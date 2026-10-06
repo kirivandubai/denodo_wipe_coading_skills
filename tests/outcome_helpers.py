@@ -61,10 +61,10 @@ def plan_doc(source, *statements):
                            for i, (t, y) in enumerate(statements)]}
 
 
-def api_doc(method, path, *, status=200, sent=True, ok=True, body=None, destructive=None):
+def api_doc(method, path, *, status=200, sent=True, ok=True, body=None, destructive=None, needs_yes=False):
     doc = {"ok": ok, "command": "api", "method": method, "path": path, "destructive": destructive}
     if sent:
         doc.update(status=status, body=body)
     else:
-        doc.update(sent=False, needs_yes=False)
+        doc.update(sent=False, needs_yes=needs_yes)
     return doc

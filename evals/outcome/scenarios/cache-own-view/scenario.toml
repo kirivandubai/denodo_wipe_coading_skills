@@ -51,6 +51,11 @@ kind = "executed"
 pattern = "cache_preload"
 
 [[check]]
+name = "every-load-invalidates"
+kind = "not_executed"
+pattern = "(?s)^(?!.*cache_invalidate).*'cache_preload'\\s*=\\s*'true'"
+
+[[check]]
 name = "cache-is-on"
 kind = "server"
 query = "SELECT cache_table_name FROM GET_CACHE_TABLE('{database}', 'returns_by_store')"

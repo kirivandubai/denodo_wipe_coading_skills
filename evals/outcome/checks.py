@@ -59,10 +59,23 @@ def _executed(ev: Evidence, turn: int | None) -> list[tr.Statement]:
     return [s for s in _statements(ev, turn) if s.command == "vql run" and s.ok]
 
 
+REFUSED = "Permission to use Bash has been denied"
+
+
 def _unreadable_runs(ev: Evidence, turn: int | None) -> list[int]:
-    """`vql run` calls whose output could not be decoded: what they executed is unknown."""
-    return [c.index for c in ev.transcript.calls
-            if _in_turn(turn)(c) and c.cut and "vql run" in c.command]
+    """`vql run` calls whose statements the trace does not hold: an output cut, or none at all — a
+    command sent to the background, one the shell timed out. What they executed is unknown. A
+    command the permission rules refused ran nothing."""
+    out = []
+    for c in ev.transcript.calls:
+        if not (_in_turn(turn)(c) and "vql run" in c.command) or re.search(r"\s(--help|-h)(\s|$)", c.command):
+            continue
+        if c.result is not None and c.result.startswith(REFUSED):
+            continue
+        has_run = any(d.get("command") == "vql run" for d in c.docs)
+        if c.cut or not has_run:
+            out.append(c.index)
+    return out
 
 
 def _cannot_tell(calls: list[int]) -> tuple[bool, str]:
@@ -132,6 +145,9 @@ def check_through_file(spec, ev, server, judge):
 
 def check_planned(spec, ev, server, judge):
     turn = spec.get("turn")
+    unreadable = _unreadable_runs(ev, turn)
+    if unreadable:
+        return _cannot_tell(unreadable)
     first_apply: dict[str, int] = {}
     for s in _executed(ev, turn):
         if tr.changes_state(s.text, s.destructive) and _inside(s.source, ev):
@@ -193,9 +209,11 @@ def check_not_executed(spec, ev, server, judge):
 def check_executed(spec, ev, server, judge):
     turn = spec.get("turn")
     ran = [s for s in _executed(ev, turn) if _matches(spec, s)]
+    unreadable = _unreadable_runs(ev, turn)
+    if unreadable and (not ran or "affected" in spec):
+        return _cannot_tell(unreadable)
     if not ran:
-        unreadable = _unreadable_runs(ev, turn)
-        return (False, "none ran") if not unreadable else _cannot_tell(unreadable)
+        return False, "none ran"
     if "affected" in spec:
         total = sum(s.affected or 0 for s in ran)
         if total != spec["affected"]:
@@ -220,15 +238,22 @@ def check_api_called(spec, ev, server, judge):
         return str(doc.get("method", "")).upper() == method and re.search(spec["path"], str(doc.get("path", "")))
 
     planned_at = None
+    waited_at = None
     for index, doc in _api_docs(ev, turn):
         if not same(doc):
             continue
         if doc.get("sent") is False:
-            planned_at = index if planned_at is None else planned_at
+            if doc.get("needs_yes") is False:
+                planned_at = index if planned_at is None else planned_at
+            else:
+                waited_at = index
             continue
         status = doc.get("status") or 0
         if doc.get("ok") and status < 400:
             if spec.get("plan_first") and (planned_at is None or planned_at > index):
+                if waited_at is not None and waited_at < index:
+                    return False, (f"{method} {doc.get('path')} ran at call {index} after a --plan that said "
+                                   "needs_yes: true")
                 return False, f"{method} {doc.get('path')} ran at call {index} with no --plan before it"
             return True, f"{method} {doc.get('path')} answered {status}"
     return False, f"no successful {method} matching {spec['path']!r}"

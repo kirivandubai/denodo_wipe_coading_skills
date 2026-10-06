@@ -47,6 +47,18 @@ class CommandTest(unittest.TestCase):
         self.assertIn("Skill", tools)
         self.assertFalse([t for t in tools if t in ("Bash", "Write", "Edit")], "no unrestricted tool")
 
+    def test_reads_are_the_skills_and_the_project(self):
+        tools = dict(zip(self.command(), self.command()[1:]))["--allowedTools"].split(",")
+        self.assertIn("Read(//repo/skills/**)", tools)
+        self.assertIn("Read(//tmp/p/**)", tools)
+        self.assertIn("Grep(//tmp/p/**)", tools)
+        self.assertFalse([t for t in tools if t in ("Read", "Glob", "Grep")], "no unrestricted read")
+
+    def test_the_tool_s_commands_that_run_other_programs_are_refused(self):
+        refused = dict(zip(self.command(), self.command()[1:]))["--disallowedTools"].split(",")
+        for command in ("testing", "verify", "env init"):
+            self.assertIn(f"Bash(/repo/scripts/denodo {command} *)", refused)
+
     def test_model_and_resume_only_when_given(self):
         self.assertNotIn("--model", self.command())
         self.assertNotIn("--resume", self.command())
@@ -55,11 +67,70 @@ class CommandTest(unittest.TestCase):
         self.assertEqual((pairs["--model"], pairs["--resume"]), ("sonnet", "abc"))
 
     def test_the_child_environment(self):
-        env = run.child_env({"PATH": "/bin", "DENODO_SESSION": "mine", "HOME": "/h"}, session="eval-x", env_name="dev")
+        env = run.child_env({"PATH": "/bin", "DENODO_SESSION": "mine", "HOME": "/h"}, session="eval-x", env_name="dev",
+                            profiles=Path("/tmp/x/profiles.toml"))
+        self.assertEqual(env["DENODO_PROFILES"], "/tmp/x/profiles.toml")
         self.assertEqual(env["DENODO_SESSION"], "eval-x")
         self.assertEqual(env["DENODO_ENV"], "dev")
         self.assertEqual(env["ENABLE_CLAUDEAI_MCP_SERVERS"], "false")
         self.assertEqual(env["PATH"], "/bin")
+
+
+class ProfilesTest(unittest.TestCase):
+    TEXT = """# profiles
+[lab]
+host = "h"
+password = "p"
+
+[lab.extra]
+x = 1
+
+[prod]
+host = "prod-host"
+production = true
+"""
+
+    def test_only_the_named_profile_reaches_the_agent(self):
+        text = run.one_profile(self.TEXT, "lab")
+        self.assertIn('host = "h"', text)
+        self.assertIn("[lab.extra]", text)
+        self.assertNotIn("prod", text)
+
+    def test_a_missing_profile_is_an_error(self):
+        with self.assertRaises(KeyError):
+            run.one_profile(self.TEXT, "nope")
+
+
+class ValuesTest(unittest.TestCase):
+    def test_only_what_the_fixture_declares_is_passed_on(self):
+        fixture = 'local_values = ["fixture_base"]\n[values]\ndatabase = "eval_x"\nfixture_base = "u"\nwrite_schema = "@server"\n'
+        values = '[lab]\nfixture_base = "/d"\nembedding_model = "m"\nwrite_schema = "dbo"\n[other]\nfixture_base = "/o"\n'
+        self.assertEqual(run.fixture_values(fixture, values, "lab"), {"fixture_base": "/d", "write_schema": "dbo"})
+        self.assertEqual(run.toml_table("lab", {"a": 'x "y"'}), '[lab]\na = "x \\"y\\""\n')
+
+
+class GuardTest(unittest.TestCase):
+    def test_pending_changes_of_the_fixture_s_own_database_do_not_count(self):
+        server = FakeServer({"DATABASES": {"serverElements": [{"databaseName": "eval_market"}]},
+                             "VIEWS": {"localElements": [{"databaseName": "eval_market", "elementName": "v"},
+                                                         {"databaseName": "sales", "elementName": "w"}]}})
+        self.assertEqual(run.catalog_pending(server, ignore="eval_market"), ["localElements: sales.w"])
+
+    def test_a_cleanup_that_failed_is_a_fixture_failure(self):
+        report = {"cleanup": {"ran": True, "statements": [{"statement": "DROP DATABASE IF EXISTS x CASCADE", "ok": False,
+                                                           "error": {"message": "locked"}}], "http": []}}
+        self.assertIn("locked", run.cleanup_error(report))
+        self.assertIsNone(run.cleanup_error({"cleanup": {"ran": True, "statements": [{"ok": True}], "http": [{"ok": True}]}}))
+        self.assertIsNone(run.cleanup_error({"cleanup": {"ran": False}}))
+
+
+class FakeServer:
+    def __init__(self, changes):
+        self.changes = changes
+
+    def get(self, path):
+        half = path.split("/")[-2]
+        return True, json.dumps(self.changes.get(half, {}))
 
 
 class SkipTest(unittest.TestCase):
@@ -91,6 +162,7 @@ class SkipTest(unittest.TestCase):
     def test_production_is_refused(self):
         self.assertIn("production", run.production_refusal({"env": {"name": "p", "production": True}}))
         self.assertIsNone(run.production_refusal({"env": {"name": "d", "production": False}}))
+        self.assertIn("could not", run.production_refusal({"ok": False, "error": {"message": "no profile"}}))
 
 
 class PendingTest(unittest.TestCase):
@@ -113,6 +185,12 @@ class SummaryTest(unittest.TestCase):
         self.assertEqual(run.summarise([self.result("skipped")])[1], 0)
         self.assertEqual(run.summarise([self.result("ran", True), self.result("fixture failed")])[1], 2)
 
+    def test_a_run_that_broke_is_not_a_clean_result(self):
+        broken = {**self.result("ran", True), "error": "turn 1 timed out after 1800 s"}
+        table, code = run.summarise([broken])
+        self.assertEqual(code, 2)
+        self.assertIn("timed out", table)
+
     def test_the_table_names_failed_checks(self):
         table, _ = run.summarise([self.result("ran", True, False)])
         self.assertIn("1/2", table)
@@ -128,6 +206,13 @@ class JudgeVotesTest(unittest.TestCase):
         passed, detail = run.majority([(False, "FAIL x"), (False, "FAIL y"), (True, "PASS z")])
         self.assertFalse(passed)
         self.assertIn("FAIL x", detail)
+
+
+class VerdictTest(unittest.TestCase):
+    def test_markdown_around_the_verdict(self):
+        self.assertTrue(run.parse_verdict("**PASS**\nIt asks.")[0])
+        self.assertFalse(run.parse_verdict("## FAIL\nIt claims the drop.")[0])
+        self.assertFalse(run.parse_verdict("")[0])
 
 
 class TeardownLookupTest(unittest.TestCase):

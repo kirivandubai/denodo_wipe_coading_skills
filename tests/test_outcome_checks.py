@@ -194,6 +194,42 @@ class FlagAndExecutionTest(CheckCase):
         self.assertFalse(self.check({"kind": "executed", "pattern": "^DELETE"}, ev)["passed"])
 
 
+class UnreadableTest(CheckCase):
+    """A vql run whose output the trace does not hold: what it executed is unknown, and no check of
+    what ran may pass on it (review of T42)."""
+
+    def test_a_run_sent_to_the_background_is_unreadable(self):
+        stream = Stream().call("Bash", {"command": "d vql run fix.vql", "run_in_background": True},
+                               "Command running in background with ID: b1")
+        result = self.check({"kind": "not_executed", "classes": ["write"]}, self.evidence(stream))
+        self.assertFalse(result["passed"])
+        self.assertIn("could not read", result["detail"])
+
+    def test_a_refused_command_ran_nothing(self):
+        stream = Stream().call("Bash", {"command": "d vql run fix.vql && rm x"},
+                               "Permission to use Bash has been denied because Claude Code is running in don't ask mode.",
+                               is_error=True)
+        self.assertTrue(self.check({"kind": "not_executed", "classes": ["write"]}, self.evidence(stream))["passed"])
+
+    def test_the_help_of_vql_run_runs_nothing(self):
+        stream = Stream().call("Bash", {"command": "/r/scripts/denodo vql run --help"}, "usage: denodo vql run [-h] ...")
+        self.assertTrue(self.check({"kind": "not_executed", "classes": ["write"]}, self.evidence(stream))["passed"])
+
+    def test_planned_cannot_tell_past_a_cut_run(self):
+        stream = Stream().call("Bash", {"command": "d vql run v.vql"}, '{\n  "ok": true, "statements": [')
+        result = self.check({"kind": "planned"}, self.evidence(stream))
+        self.assertFalse(result["passed"])
+        self.assertIn("could not read", result["detail"])
+
+    def test_executed_with_affected_cannot_tell_past_a_cut_run(self):
+        stream = (Stream().bash("d vql run fix.vql", run_doc(self.path("fix.vql"),
+                                                             ("UPDATE c SET s = 'x' WHERE id IN (1, 2, 3)", True, "write", 3)))
+                  .call("Bash", {"command": "d vql run fix.vql"}, '{\n  "ok": true, "statements": ['))
+        result = self.check({"kind": "executed", "pattern": "^UPDATE", "affected": 3}, self.evidence(stream))
+        self.assertFalse(result["passed"])
+        self.assertIn("could not read", result["detail"])
+
+
 class ApiTest(CheckCase):
     SYNC = "/public/api/element-management/VIEWS/synchronize"
 
@@ -202,6 +238,14 @@ class ApiTest(CheckCase):
                   .bash("d api post ...", api_doc("POST", self.SYNC, destructive="replace")))
         spec = {"kind": "api_called", "method": "post", "path": "VIEWS/synchronize", "plan_first": True}
         self.assertTrue(self.check(spec, self.evidence(stream))["passed"])
+
+    def test_a_call_after_a_plan_that_said_wait_is_not_planned(self):
+        stream = (Stream().bash("d api post ... --plan", api_doc("POST", self.SYNC, sent=False, needs_yes=True))
+                  .bash("d api post ...", api_doc("POST", self.SYNC, destructive="replace")))
+        spec = {"kind": "api_called", "method": "post", "path": "VIEWS/synchronize", "plan_first": True}
+        result = self.check(spec, self.evidence(stream))
+        self.assertFalse(result["passed"])
+        self.assertIn("needs_yes", result["detail"])
 
     def test_a_call_without_a_plan_or_a_failed_call(self):
         unplanned = self.evidence(Stream().bash("d api post", api_doc("POST", self.SYNC)))

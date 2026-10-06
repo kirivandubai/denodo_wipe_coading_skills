@@ -24,11 +24,14 @@ import argparse
 import datetime as dt
 import json
 import os
+import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
 import time
+import tomllib
 import urllib.parse
 from pathlib import Path
 
@@ -67,14 +70,26 @@ Answer with PASS or FAIL on the first line, then one sentence saying why."""
 def claude_command(*, repo: Path, project: Path, model: str | None, max_turns: int, budget: float,
                    system: str, resume: str | None) -> list[str]:
     """The headless agent: the plugin from the repository, nothing of the operator's own setup
-    (plugins, hooks, MCP servers, CLAUDE.md), and no tool but the plugin's and the project's files."""
-    tools = ["Skill", "Read", "Glob", "Grep", "TodoWrite",
+    (plugins, hooks, MCP servers, CLAUDE.md), and no tool but the plugin's and the project's files.
+
+    Reads reach the plugin's skills, the project, and the outputs Claude Code saves when a result
+    is too long to show — not the rest of the repository (its design documents would be a source of
+    finished answers) and not the operator's home. The tool's commands that run another program or
+    a manifest of their own (`testing`, `verify`, `env init`) are refused."""
+    home_outputs = Path.home() / ".claude" / "projects"
+    tools = ["Skill", "TodoWrite",
+             *(f"{t}(/{root}/**)" for root in (repo / "skills", project) for t in ("Read", "Glob", "Grep")),
+             f"Read(/{home_outputs}/**)",
              f"Write(/{project}/**)", f"Edit(/{project}/**)", f"Bash({repo}/scripts/denodo *)"]
+    refused = [form.format(tool=f"{repo}/scripts/denodo", command=command)
+               for command in ("testing", "verify", "env init") for form in ("Bash({tool} {command} *)",
+                                                                             "Bash({tool} {command})")]
     command = ["claude", "-p", "--output-format", "stream-json", "--verbose",
                "--max-turns", str(max_turns), "--max-budget-usd", str(budget),
                "--permission-mode", "dontAsk", "--setting-sources", "project",
                "--strict-mcp-config", "--mcp-config", json.dumps({"mcpServers": {}}),
                "--plugin-dir", str(repo), "--allowedTools", ",".join(tools),
+               "--disallowedTools", ",".join(refused),
                "--append-system-prompt", system]
     if model:
         command += ["--model", model]
@@ -83,10 +98,46 @@ def claude_command(*, repo: Path, project: Path, model: str | None, max_turns: i
     return command
 
 
-def child_env(base: dict, *, session: str, env_name: str) -> dict:
+def child_env(base: dict, *, session: str, env_name: str, profiles: Path) -> dict:
+    """The agent's environment: its own session, and a profiles file holding only the profile it
+    is given — the operator's other profiles are out of its reach."""
     env = dict(base)
-    env.update(DENODO_SESSION=session, DENODO_ENV=env_name, ENABLE_CLAUDEAI_MCP_SERVERS="false")
+    env.update(DENODO_SESSION=session, DENODO_ENV=env_name, DENODO_PROFILES=str(profiles),
+               ENABLE_CLAUDEAI_MCP_SERVERS="false")
     return env
+
+
+HEADER = re.compile(r"^\s*\[([^\[\]]+)\]\s*(#.*)?$")
+
+
+def one_profile(text: str, name: str) -> str:
+    """The table ``[name]`` of a profiles file, and its sub-tables, as they are written."""
+    if name not in tomllib.loads(text):
+        raise KeyError(f"no profile {name!r} in the profiles file")
+    keep, out = False, []
+    for line in text.splitlines():
+        header = HEADER.match(line)
+        if header:
+            table = header.group(1).strip()
+            keep = table == name or table.startswith(name + ".")
+        if keep:
+            out.append(line)
+    return "\n".join(out) + "\n"
+
+
+def fixture_values(fixture_text: str, values_text: str, env_name: str) -> dict:
+    """What the operator's values file (verify.toml) sets for the profile that the fixture declares:
+    its local values and its @server and @dialect ones. verify refuses a key a manifest does not
+    declare, and the operator's file is written for the whole chain."""
+    fixture = tomllib.loads(fixture_text)
+    declared = set(fixture.get("local_values") or []) | {
+        k for k, v in (fixture.get("values") or {}).items() if v in ("@server", "@dialect")}
+    table = tomllib.loads(values_text).get(env_name) or {}
+    return {k: table[k] for k in sorted(declared) if k in table}
+
+
+def toml_table(name: str, mapping: dict) -> str:
+    return f"[{name}]\n" + "".join(f"{k} = {json.dumps(str(v))}\n" for k, v in mapping.items())
 
 
 def skip_reason(scenario: scenarios.Scenario, *, with_writes: bool, with_marketplace: bool) -> str | None:
@@ -123,8 +174,24 @@ def fixture_error(report: dict) -> str | None:
     return f"the fixture could not be built: {error.get('message') or error or 'see the verify report'}"
 
 
+def cleanup_error(report: dict) -> str | None:
+    """A cleanup that did not clean: the next run would start from the last one's objects."""
+    cleanup = report.get("cleanup") or {}
+    if not cleanup.get("ran"):
+        return None
+    for entry in (cleanup.get("statements") or []) + (cleanup.get("http") or []):
+        if entry.get("ok") is False:
+            error = entry.get("error") or {}
+            what = entry.get("statement") or entry.get("path") or entry
+            return f"the fixture's cleanup failed at {what}: {error.get('message') or error}"
+    return None
+
+
 def production_refusal(env_doc: dict) -> str | None:
-    env = env_doc.get("env") or {}
+    env = env_doc.get("env")
+    if not env:
+        error = env_doc.get("error") or {}
+        return f"could not read the profile: {error.get('message') or error or 'env check gave no profile'}"
     if env.get("production"):
         return f"profile {env.get('name')!r} is marked production: the scenarios run an agent that creates and drops"
     return None
@@ -159,6 +226,10 @@ def summarise(results: list[dict]) -> tuple[str, int]:
             failed = ", ".join(c["name"] for c in r["checks"] if not c["passed"])
             if failed:
                 code = max(code, 1)
+            if r.get("error"):
+                # the run itself broke (a timeout, no session): its checks are not a clean result
+                failed = f"{failed}; RUN ERROR: {r['error']}" if failed else f"RUN ERROR: {r['error']}"
+                code = 2
         else:
             verdict, failed = r["status"], r.get("reason", "")
             if r["status"] != "skipped":
@@ -174,19 +245,30 @@ class Tool:
     """`scripts/denodo` as the runner calls it: one JSON document back. The runner's own commands
     run under a session of their own, so nothing the fixture creates is the agent's."""
 
-    def __init__(self, env_name: str, session: str):
-        self.env_name, self.session = env_name, session
+    def __init__(self, env_name: str, session: str, scratch: Path):
+        self.env_name, self.session, self.scratch = env_name, session, scratch
 
     def __call__(self, *args: str, timeout: int = 900) -> dict:
         env = {**os.environ, "DENODO_SESSION": self.session}
-        completed = subprocess.run([str(TOOL), *args], capture_output=True, text=True, env=env, timeout=timeout)
+        try:
+            completed = subprocess.run([str(TOOL), *args], capture_output=True, text=True, env=env, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            return {"ok": False, "error": {"message": f"scripts/denodo {' '.join(args[:3])} timed out after {timeout} s"}}
         try:
             return json.loads(completed.stdout)
         except json.JSONDecodeError:
             return {"ok": False, "error": {"message": (completed.stdout + completed.stderr)[-2000:]}}
 
     def verify(self, fixture: Path, *flags: str) -> dict:
-        return self("verify", "--env", self.env_name, "--chain", str(fixture), *flags, timeout=1800)
+        """verify on a scenario's fixture, with the operator's values file narrowed to what the
+        fixture declares."""
+        values = profiles_path().parent / "verify.toml"
+        narrowed = self.scratch / f"values-{fixture.parent.name}.toml"
+        text = values.read_text(encoding="utf-8") if values.is_file() else ""
+        narrowed.write_text(toml_table(self.env_name, fixture_values(fixture.read_text(encoding="utf-8"), text,
+                                                                     self.env_name)), encoding="utf-8")
+        return self("verify", "--env", self.env_name, "--chain", str(fixture), "--values", str(narrowed), *flags,
+                    timeout=1800)
 
 
 class ScriptServer:
@@ -222,7 +304,18 @@ def majority(votes: list[tuple[bool, str]]) -> tuple[bool, str]:
     return passed, f"{len(yes)}/{len(votes)} PASS — {reason}"
 
 
-def claude_judge(model: str, workdir: Path, votes: int = 3):
+def parse_verdict(answer: str) -> tuple[bool, str]:
+    """PASS or FAIL on the first line, markdown around it allowed."""
+    text = answer.strip()
+    first = text.split("\n", 1)[0].strip().lstrip("*#_ `").upper()
+    return first.startswith("PASS"), " ".join(text.split())[:300]
+
+
+def claude_judge(model: str, votes: int = 3):
+    """A model asked about the agent's last message, from a directory of its own: under the
+    repository it would read the repository's CLAUDE.md, as the agent would."""
+    workdir = Path(tempfile.mkdtemp(prefix="denodo-judge-"))
+
     def judge(criterion: str, message: str) -> tuple[bool, str]:
         return majority([one(criterion, message) for _ in range(votes)])
 
@@ -230,15 +323,14 @@ def claude_judge(model: str, workdir: Path, votes: int = 3):
         command = ["claude", "-p", "--output-format", "json", "--max-turns", "1", "--permission-mode", "dontAsk",
                    "--setting-sources", "project", "--strict-mcp-config", "--mcp-config",
                    json.dumps({"mcpServers": {}}), "--model", model]
-        completed = subprocess.run(command, input=JUDGE.format(criterion=criterion.strip(), message=message),
-                                   capture_output=True, text=True, cwd=workdir, timeout=300,
-                                   env={**os.environ, "ENABLE_CLAUDEAI_MCP_SERVERS": "false"})
         try:
+            completed = subprocess.run(command, input=JUDGE.format(criterion=criterion.strip(), message=message),
+                                       capture_output=True, text=True, cwd=workdir, timeout=300,
+                                       env={**os.environ, "ENABLE_CLAUDEAI_MCP_SERVERS": "false"})
             answer = json.loads(completed.stdout).get("result", "")
-        except json.JSONDecodeError:
-            return False, f"the judge did not answer: {completed.stderr[-300:]}"
-        first, _, rest = answer.strip().partition("\n")
-        return first.strip().upper().startswith("PASS"), " ".join((first + " " + rest).split())[:300]
+        except (subprocess.TimeoutExpired, json.JSONDecodeError) as exc:
+            return False, f"the judge did not answer: {exc}"
+        return parse_verdict(answer)
     return judge
 
 
@@ -290,14 +382,43 @@ def regrade(results: Path) -> list[dict]:
 
 # --- one scenario ----------------------------------------------------------------------------
 
-def ledger_dir() -> Path:
-    profiles = os.environ.get("DENODO_PROFILES") or "~/.denodo/profiles.toml"
-    return Path(profiles).expanduser().parent / "sessions"
+def profiles_path() -> Path:
+    return Path(os.environ.get("DENODO_PROFILES") or "~/.denodo/profiles.toml").expanduser()
 
 
-def reset(tool: Tool, scenario: scenarios.Scenario, flags: list[str]) -> tuple[dict | None, str | None, str | None]:
+def fixture_database(scenario: scenarios.Scenario) -> str | None:
+    return (tomllib.loads(scenario.fixture.read_text(encoding="utf-8")).get("values") or {}).get("database")
+
+
+def remove_named(tool: Tool, server: ScriptServer, scenario: scenarios.Scenario) -> list[str]:
+    """Delete by exact name what the agent made on a server-wide object ([[teardown_api]]): before
+    every run — the next agent must not find the last one's tag — and after the last."""
+    problems = []
+    for entry in scenario.teardown_api:
+        ok, body = server.get(entry["lookup"])
+        try:
+            ids = exact_ids(json.loads(body), entry["name"]) if ok else []
+        except json.JSONDecodeError:
+            ok, ids = False, []
+        if not ok:
+            problems.append(f"could not look {entry['name']!r} up: {body[:200]}")
+        for ident in ids:
+            doc = tool("api", "delete", "--env", tool.env_name, entry["delete"].replace("{id}", str(ident)))
+            if not doc.get("ok"):
+                problems.append(f"could not delete {entry['name']!r} ({ident}): {doc.get('error')}")
+    return problems
+
+
+def reset(tool: Tool, server: ScriptServer, scenario: scenarios.Scenario,
+          flags: list[str]) -> tuple[dict | None, str | None, str | None]:
     """(the setup report, why the scenario is skipped, why it failed)."""
-    tool.verify(scenario.fixture, "--cleanup-only", *flags)  # a missing leftover fails its DROP: harmless
+    problems = remove_named(tool, server, scenario)
+    if problems:
+        return None, None, "; ".join(problems)
+    cleaned = tool.verify(scenario.fixture, "--cleanup-only", *flags)
+    failure = cleanup_error(cleaned) or (None if cleaned.get("cleanup") else fixture_error(cleaned))
+    if failure:
+        return cleaned, None, failure
     report = tool.verify(scenario.fixture, "--keep", *flags)
     skip = fixture_skip(report)
     if skip:
@@ -305,21 +426,18 @@ def reset(tool: Tool, scenario: scenarios.Scenario, flags: list[str]) -> tuple[d
     return report, None, fixture_error(report)
 
 
-def teardown(tool: Tool, server: ScriptServer, scenario: scenarios.Scenario, flags: list[str]) -> None:
-    for entry in scenario.teardown_api:
-        ok, body = server.get(entry["lookup"])
-        for ident in exact_ids(json.loads(body) if ok else {}, entry["name"]) if ok else []:
-            tool("api", "delete", "--env", tool.env_name, entry["delete"].replace("{id}", str(ident)))
-    tool.verify(scenario.fixture, "--cleanup-only", *flags)
-
-
-def catalog_pending(server: ScriptServer) -> list[str]:
+def catalog_pending(server, ignore: str | None = None) -> list[str]:
+    """What a catalog synchronisation would take along now, but the entries of ``ignore`` — the
+    scenario's own database, which its cleanup takes back out."""
     pending = []
     for kind in ("DATABASES", "VIEWS"):
         ok, body = server.get(f"/public/api/element-management/{kind}/changes")
         if not ok:
             return [f"{kind}/changes did not answer: {body[:200]}"]
-        pending += pending_entries(json.loads(body))
+        changes = json.loads(body)
+        for key in ("serverElements", "localElements"):
+            changes[key] = [e for e in changes.get(key) or [] if e.get("databaseName") != ignore]
+        pending += pending_entries(changes)
     return pending
 
 
@@ -333,9 +451,26 @@ def new_project() -> Path:
     return project
 
 
+def run_turn(command: list[str], prompt: str, *, cwd: Path, env: dict, trace: Path, timeout: int) -> str | None:
+    """One turn of the agent; its process group is killed on a timeout, so that no command it
+    started acts after the run is graded."""
+    with trace.open("w", encoding="utf-8") as sink:
+        process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=sink, stderr=subprocess.PIPE, text=True,
+                                   cwd=cwd, env=env, start_new_session=True)
+        try:
+            _, stderr = process.communicate(prompt, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            os.killpg(process.pid, signal.SIGKILL)
+            _, stderr = process.communicate()
+            (trace.with_suffix(".stderr.txt")).write_text(stderr or "", encoding="utf-8")
+            return f"timed out after {timeout} s"
+    if stderr:
+        trace.with_suffix(".stderr.txt").write_text(stderr[-20000:], encoding="utf-8")
+    return None
+
+
 def run_agent(scenario: scenarios.Scenario, *, values: dict, env_name: str, model: str | None,
-              out: Path, session: str) -> tuple[transcript.Transcript, Path, str | None]:
-    project = new_project()
+              out: Path, session: str, profiles: Path, project: Path) -> tuple[transcript.Transcript, str | None]:
     system = SYSTEM.format(env=env_name)
     parts: list[transcript.Transcript] = []
     resume = None
@@ -344,79 +479,93 @@ def run_agent(scenario: scenarios.Scenario, *, values: dict, env_name: str, mode
         command = claude_command(repo=REPO, project=project, model=model, max_turns=scenario.max_turns,
                                  budget=scenario.max_budget_usd, system=system, resume=resume)
         trace = out / f"trace-{number}.jsonl"
-        try:
-            with trace.open("w", encoding="utf-8") as sink:
-                subprocess.run(command, input=checks.render(prompt.strip(), {**values, "env": env_name}),
-                               stdout=sink, stderr=subprocess.PIPE, text=True, cwd=project,
-                               env=child_env(os.environ, session=session, env_name=env_name),
-                               timeout=scenario.timeout_seconds)
-        except subprocess.TimeoutExpired:
-            error = f"turn {number} timed out after {scenario.timeout_seconds} s"
+        broke = run_turn(command, checks.render(prompt.strip(), {**values, "env": env_name}), cwd=project,
+                         env=child_env(os.environ, session=session, env_name=env_name, profiles=profiles),
+                         trace=trace, timeout=scenario.timeout_seconds)
         part = transcript.parse(trace.read_text(encoding="utf-8").splitlines(), turn=number)
         parts.append(part)
-        if error or not part.session_id:
-            error = error or f"turn {number} ended without a session id"
+        if broke or not part.session_id:
+            error = f"turn {number} {broke or 'ended without a session id (see its stderr)'}"
             break
         resume = part.session_id
-    return transcript.merge(parts), project, error
+    return transcript.merge(parts), error
 
 
 def run_scenario(scenario: scenarios.Scenario, *, args, tool: Tool, server: ScriptServer, out: Path,
-                 judge) -> list[dict]:
+                 judge, profiles: Path) -> list[dict]:
     flags = [f for f, on in (("--with-writes", args.with_writes), ("--with-marketplace", args.with_marketplace)) if on]
     results = []
     why = skip_reason(scenario, with_writes=args.with_writes, with_marketplace=args.with_marketplace)
     if why:
         return [{"scenario": scenario.name, "run": 0, "status": "skipped", "reason": why, "checks": []}]
+    database = fixture_database(scenario)
+    marketplace = "marketplace" in scenario.gates
+    teardown_flags = flags
     try:
         for number in range(1, args.runs + 1):
             run_out = out / scenario.name / f"run-{number}"
             run_out.mkdir(parents=True)
             base = {"scenario": scenario.name, "run": number, "checks": []}
-            if "marketplace" in scenario.gates:
-                tool.verify(scenario.fixture, "--cleanup-only", *flags)
-                pending = catalog_pending(server)
+            if marketplace:
+                # Read before anything synchronises: the fixture's cleanup synchronises the whole
+                # catalog, and would carry another team's pending changes along.
+                pending = catalog_pending(server, ignore=database)
                 if pending:
-                    results.append({**base, "status": "skipped", "reason": "the catalog has pending changes this "
-                                    "run did not make, which its synchronisations would take along: " + "; ".join(pending[:8])})
+                    teardown_flags = [f for f in flags if f != "--with-marketplace"]
+                    results.append({**base, "status": "skipped", "reason": "the catalog has pending changes the "
+                                    "run did not make, which its synchronisations would take along (nothing was "
+                                    "synchronised): " + "; ".join(pending[:8])})
                     break
-            report, skip, failure = reset(tool, scenario, flags)
+            report, skip, failure = reset(tool, server, scenario, flags)
             (run_out / "fixture.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
             values = (report or {}).get("values") or {}
-            skip = skip or files_reason(scenario, values)
+            skip = skip or (files_reason(scenario, values) if report else None)
             if skip or failure:
                 results.append({**base, "status": "skipped" if skip else "fixture failed", "reason": skip or failure})
                 break
             session = f"eval-{scenario.name}-{number}-{out.name}"
             started = time.monotonic()
             print(f"[{dt.datetime.now():%H:%M:%S}] {scenario.name} run {number}: agent started", flush=True)
-            merged, project, error = run_agent(scenario, values=values, env_name=args.env, model=args.model,
-                                               out=run_out, session=session)
-            ledger_file = ledger_dir() / f"{session}.json"
-            ledger = json.loads(ledger_file.read_text(encoding="utf-8")) if ledger_file.is_file() else None
-            evidence = checks.Evidence(transcript=merged, project=project, ledger=ledger, values={**values, "env": args.env})
-            verdicts = [checks.run_check(spec, evidence, server, judge) for spec in scenario.checks]
-            shutil.copytree(project, run_out / "project", ignore=shutil.ignore_patterns(".git"))
-            shutil.rmtree(project, ignore_errors=True)
-            for suffix in (".json", ".lock"):
-                path = ledger_dir() / f"{session}{suffix}"
-                if path.is_file():
-                    if suffix == ".json":
-                        shutil.copy(path, run_out / "ledger.json")
-                    path.unlink()
+            project = new_project()
+            try:
+                merged, error = run_agent(scenario, values=values, env_name=args.env, model=args.model, out=run_out,
+                                          session=session, profiles=profiles, project=project)
+                ledger_file = profiles.parent / "sessions" / f"{session}.json"
+                ledger = json.loads(ledger_file.read_text(encoding="utf-8")) if ledger_file.is_file() else None
+                evidence = checks.Evidence(transcript=merged, project=project, ledger=ledger,
+                                           values={**values, "env": args.env})
+                verdicts = [checks.run_check(spec, evidence, server, judge) for spec in scenario.checks]
+            finally:
+                shutil.copytree(project, run_out / "project", ignore=shutil.ignore_patterns(".git"))
+                shutil.rmtree(project, ignore_errors=True)
+                for suffix in (".json", ".lock"):
+                    path = profiles.parent / "sessions" / f"{session}{suffix}"
+                    if path.is_file():
+                        if suffix == ".json":
+                            shutil.copy(path, run_out / "ledger.json")
+                        path.unlink()
             result = {**base, "status": "ran", "checks": verdicts, "values": evidence.values, "error": error,
-                      "cost_usd": merged.cost_usd,
-                      "turns": merged.turns, "seconds": round(time.monotonic() - started),
-                      "final": merged.final_text}
+                      "stop": merged.stop, "cost_usd": merged.cost_usd, "turns": merged.turns,
+                      "seconds": round(time.monotonic() - started), "final": merged.final_text}
             (run_out / "checks.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
             failed = [c["name"] for c in verdicts if not c["passed"]]
             print(f"[{dt.datetime.now():%H:%M:%S}] {scenario.name} run {number}: "
                   f"{len(verdicts) - len(failed)}/{len(verdicts)} checks, ${merged.cost_usd or 0:.2f}"
-                  + (f"; failed: {', '.join(failed)}" if failed else ""), flush=True)
+                  + (f"; failed: {', '.join(failed)}" if failed else "") + (f"; RUN ERROR: {error}" if error else ""),
+                  flush=True)
             results.append(result)
     finally:
         if not args.keep:
-            teardown(tool, server, scenario, flags)
+            problems = remove_named(tool, server, scenario)
+            if marketplace and "--with-marketplace" in teardown_flags and catalog_pending(server, ignore=database):
+                # something appeared since the run: leave the catalog alone, say so
+                teardown_flags = [f for f in teardown_flags if f != "--with-marketplace"]
+                problems.append("the catalog had pending changes the run did not make: its database's entries "
+                                "were not synchronised out")
+            cleaned = tool.verify(scenario.fixture, "--cleanup-only", *teardown_flags)
+            problems += [p for p in [cleanup_error(cleaned)] if p]
+            for problem in problems:
+                print(f"[{dt.datetime.now():%H:%M:%S}] {scenario.name} teardown: {problem}", file=sys.stderr, flush=True)
     return results
 
 
@@ -449,25 +598,42 @@ def main(argv: list[str] | None = None) -> int:
         parser.error(f"unknown scenario(s) {sorted(unknown)}; known: {[s.name for s in all_scenarios]}")
     out = Path(args.results) / dt.datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
     out.mkdir(parents=True)
-    tool = Tool(args.env, session=f"eval-fixture-{out.name}")
+    scratch = Path(tempfile.mkdtemp(prefix="denodo-outcome-run-"))
+    os.chmod(scratch, 0o700)
+    tool = Tool(args.env, session=f"eval-fixture-{out.name}", scratch=scratch)
     refusal = production_refusal(tool("env", "check", "--env", args.env))
     if refusal:
         print(refusal, file=sys.stderr)
         return 2
+    # The agent's profiles file: the one profile it is given, 0600, in a directory of the run's own
+    # (its session ledger lands beside it).
+    profiles = scratch / "agent" / "profiles.toml"
+    profiles.parent.mkdir(mode=0o700)
+    profiles.write_text(one_profile(profiles_path().read_text(encoding="utf-8"), args.env), encoding="utf-8")
+    os.chmod(profiles, 0o600)
     server = ScriptServer(tool)
-    judge = None if args.no_judge else claude_judge(args.judge_model, out)
+    judge = None if args.no_judge else claude_judge(args.judge_model)
     results: list[dict] = []
-    for scenario in chosen:
-        results += run_scenario(scenario, args=args, tool=tool, server=server, out=out, judge=judge)
-    for suffix in (".json", ".lock"):  # the fixtures' own ledger: nothing reads it after the run
-        (ledger_dir() / f"{tool.session}{suffix}").unlink(missing_ok=True)
+    interrupted = False
+    try:
+        for scenario in chosen:
+            results += run_scenario(scenario, args=args, tool=tool, server=server, out=out, judge=judge,
+                                    profiles=profiles)
+    except KeyboardInterrupt:
+        interrupted = True
+        print("interrupted: the report holds the runs that finished", file=sys.stderr)
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
+        for suffix in (".json", ".lock"):  # the fixtures' own ledger: nothing reads it after the run
+            (profiles_path().parent / "sessions" / f"{tool.session}{suffix}").unlink(missing_ok=True)
     table, code = summarise(results)
     report = {"started": out.name, "env": args.env, "model": args.model, "runs": args.runs,
-              "cost_usd": round(sum(r.get("cost_usd") or 0 for r in results), 2), "results": results}
+              "interrupted": interrupted, "cost_usd": round(sum(r.get("cost_usd") or 0 for r in results), 2),
+              "results": results}
     (out / "report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
     print(table)
     print(f"total ${report['cost_usd']:.2f}; report: {out / 'report.json'}")
-    return code
+    return 130 if interrupted else code
 
 
 if __name__ == "__main__":

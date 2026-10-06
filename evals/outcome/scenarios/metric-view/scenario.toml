@@ -55,3 +55,8 @@ name = "the-right-average"
 kind = "final_number"
 decimals = 2
 query = "SELECT AVG(r.sr_net_loss) FROM {database}.bv_store_returns r INNER JOIN {database}.bv_reason d ON r.sr_reason_sk = d.r_reason_sk WHERE TRIM(d.r_reason_desc) = 'Damaged in transit'"
+
+[[check]]
+name = "answered-from-the-metric-view"
+kind = "executed"
+pattern = '(?s)^SELECT\b.*\bFROM\s+(\w+\.)?returns_kpis\b'

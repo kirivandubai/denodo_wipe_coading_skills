@@ -75,6 +75,7 @@ class Transcript:
     turns: int | None = None
     session_id: str | None = None
     cwd: str | None = None       # the agent's working directory, from the init event
+    stop: str | None = None      # how the last turn ended: success, error_max_turns, error_max_budget_usd …
     # the last answer of each turn, by turn number (merge fills it; parse gives its own turn's)
     finals: dict[int, str] = field(default_factory=dict)
 
@@ -177,6 +178,7 @@ def parse(lines: Iterable[str], turn: int = 1) -> Transcript:
                     call.docs, call.cut = _read_documents(call.result)
         elif kind == "result":
             final = event.get("result")
+            t.stop = event.get("subtype")
             t.cost_usd = event.get("total_cost_usd")
             t.turns = event.get("num_turns")
             t.session_id = event.get("session_id")
@@ -202,6 +204,7 @@ def merge(transcripts: list[Transcript]) -> Transcript:
             merged.turns = (merged.turns or 0) + part.turns
         merged.session_id = part.session_id or merged.session_id
         merged.cwd = merged.cwd or part.cwd
+        merged.stop = part.stop or merged.stop
     return merged
 
 

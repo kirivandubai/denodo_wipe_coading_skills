@@ -70,7 +70,7 @@ path = "^/public/api/tags/\\d+/views$"
 name = "view-carries-the-tag"
 kind = "server_api"
 path = "/public/api/view-details?databaseName={database}&viewName=return_reasons"
-pattern = '"tags": \[.*?"eval_returns"'
+pattern = '"tags": \[[^\]]*"eval_returns"'
 
 [[check]]
 name = "no-view-pending"
