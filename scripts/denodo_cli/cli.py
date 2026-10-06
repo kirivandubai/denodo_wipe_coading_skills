@@ -63,10 +63,14 @@ def build_parser() -> argparse.ArgumentParser:
     env_opt.add_argument("--env", help="profile name from the profiles file (default: $DENODO_ENV)")
 
     vql = top.add_parser("vql", help="VQL against Virtual DataPort").add_subparsers(dest="action", required=True)
-    run = vql.add_parser("run", parents=[env_opt], help="run a .vql file (or '-' for stdin, or -e STATEMENTS)")
+    run = vql.add_parser("run", parents=[env_opt], help="run a .vql file (or '-' for stdin, or -e STATEMENTS)",
+                         description="Run a .vql file, '-' for stdin, or -e STATEMENTS. Plan a file before you "
+                                     "apply it, and again after every change to it: `vql plan` says per statement "
+                                     "whether it is yours or waits for the human's yes (/denodo:vql).")
     run.add_argument("file", nargs="?", help="path to a .vql file, or '-' to read stdin")
     run.add_argument("-e", "--execute", metavar="VQL", action="append",
-                     help="VQL text to run instead of a file; repeat it for several, in order")
+                     help="VQL text to run instead of a file — reads; a change goes through a file; "
+                          "repeat it for several, in order")
     run.add_argument("--database", help="connect to this database instead of the profile's")
     run.add_argument("--max-rows", type=int, default=DEFAULT_MAX_ROWS, help="rows kept per result set")
     run.add_argument("--continue-on-error", action="store_true", help="keep going after a failed statement")
