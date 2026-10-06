@@ -1,7 +1,7 @@
 # VQL procedures
 
 Denodo's procedural language: variables, branches, loops, cursors, exceptions and DDL, with
-no Java and no JAR. **Requires the Denodo Enterprise or Enterprise Plus bundle** (VQL Guide,
+no Java and no JAR. **Requires the Denodo Enterprise or Enterprise Plus bundle** (Developer Guide,
 *Developing VQL Stored Procedures*) — the syntax is not the thing that fails on a server
 without it.
 

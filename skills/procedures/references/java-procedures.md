@@ -42,15 +42,20 @@ statement fails on creation:
 error storing procedure: Unable to find class 'com.acme.denodo.OrderEnrichment'
 ```
 
-*verified: 9.5.1 (live, 2026-09-12) — the failure, not the success: importing a JAR needs
-the file on the server's own disk, which this repository cannot place, so the working form
-stays unverified.*
+*verified: 9.5.1 (live, 2026-09-12) — the failure only; the working form is unverified.*
+
+The human imports the JAR in Design Studio (*File > Extension Management*, uploaded from their
+own machine — the route the documentation recommends). VQL has `CREATE [OR REPLACE] JAR <name>
+'<base64>'` too, but a JAR belongs to the whole server and `OR REPLACE` swaps it under
+everything that uses it, so the human decides.
 
 `CLASSPATH` points at JAR files on the machine instead, and the documentation recommends
 against it: the procedure then depends on a path existing on that particular server.
 
-`CHECK_INDIRECT_ACCESS ON` makes the server check the `INDIRECT_ACCESS` privilege on the
-views the procedure reads, when that privilege is enabled server-wide.
+`CHECK_INDIRECT_ACCESS ON` restricts indirect access to the procedure itself: once the
+`INDIRECT_ACCESS` privilege is enabled server-wide (it is off by default), users who reach the
+procedure through a derived view get no data from it unless one of their roles holds
+`INDIRECT_ACCESS` on it.
 
 ## Everything else is the same
 

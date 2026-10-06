@@ -970,8 +970,8 @@ kind = "template"
 channel = "vql"
 address = "skills/procedures/references/vql-procedures.md#Cursors: walking rows"
 database = "{database}"
-# Every row of the view comes back, the last one included.
-check = "SELECT n FROM p_cursor() WHERE label = 'three'"
+# Every row of the view comes back once: the last one included, and not twice.
+check = "SELECT COUNT(*) FROM p_cursor() HAVING COUNT(*) = 3 AND COUNT(DISTINCT n) = 3"
 
 [[step]]
 id = "procedure-exceptions"

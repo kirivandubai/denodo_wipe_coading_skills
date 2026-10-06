@@ -10,7 +10,7 @@ which one the request is about:
 
 | Kind | Statement | When |
 |---|---|---|
-| **Predefined** | none — you only call it | the server ships them — `LIST PROCEDURES` shows which yours has; metadata, dependencies, statistics, cache, OAuth |
+| **Predefined** | none — you only call it | the server ships them — `LIST PROCEDURES` shows which yours has; metadata, dependencies, statistics, cache |
 | **VQL procedure** | `CREATE OR REPLACE VQL PROCEDURE` | procedural logic — variables, branches, loops, cursors — without Java |
 | **Java procedure** | `CREATE OR REPLACE PROCEDURE … CLASSNAME` | a compiled class from a JAR already imported into the server |
 
@@ -18,7 +18,8 @@ which one the request is about:
 objects**. Drop the word `VQL` from a procedure that has a body and the parser stops at the
 parameter list: `Syntax error: Exception parsing query near '('`.
 
-Everything here is VQL against Virtual DataPort (the profile's port, 9996 by default).
+Everything here is VQL, sent over the profile's ODBC (PostgreSQL-protocol) port of Virtual
+DataPort (9996 by default).
 Introspecting a JDBC source into base views also runs through predefined procedures
 (`PING_DATA_SOURCE`, `GET_JDBC_DATASOURCE_TABLES`, `GENERATE_VQL_TO_CREATE_JDBC_BASE_VIEW`),
 but that is a step of a different job and lives in `/denodo:datasources`. Databases, folders
@@ -36,30 +37,32 @@ SELECT view_name, depth FROM USED_BY()
    AND input_view_name = 'customer';
 ```
 
-**Input parameters go in the `WHERE` clause, named `input_…`.** They are parameters, not
-filters: the server passes them into the procedure instead of filtering its output, and a
-procedure that requires one refuses the call without it —
+**Input parameters go in the `WHERE` clause, under the procedure's own parameter names** —
+`input_…` for many catalog procedures (`USED_BY`, `GET_ELEMENTS`), plain names for many others
+(`PING_DATA_SOURCE`: `database_name`, `data_source_type`, `data_source_name`;
+`DROP_REMOTE_TABLE`: `base_view_database_name`, `base_view_name`); `DESC PROCEDURE <name>`
+lists them. They are parameters, not filters: the server passes them into the procedure
+instead of filtering its output, and a procedure that requires one refuses the call without it —
 `No search methods ready to be run. The following fields are obligatory: input_view_database_name, input_view_name`.
 That message is also the cheapest way to learn which parameters are mandatory.
 
 The result schema holds **both** the input and the output parameters, so `SELECT *` shows
-the `input_…` columns echoed back. Name the columns you want, as above.
+the input columns echoed back. Name the columns you want, as above.
 
 `CALL` is the other form and takes the values **positionally**, `null` for every optional
 one you skip: `CALL USED_BY('sales_analytics', 'customer', null)`. Prefer the `SELECT`
-form — it names its parameters, it lets you join the result with a view, and some
-procedures accept no positional arguments at all (`PING_DATA_SOURCE(…)` answers a bare
-`Error executing query`, with nothing about what went wrong).
+form — it names its parameters and it lets you join the result with a view.
 
 **Some predefined procedures change state, and they are called exactly like a read.**
-`GENERATE_STATS` overwrites a view's statistics, `CLEAN_CACHE_DATABASE` deletes cached rows,
-`DROP_REMOTE_TABLE` drops a table in the source, `LOGCONTROLLER` changes logging for the whole
-server — the full list, with what each one changes, is `references/predefined.md`, "A call that
-looks like a read and is not". Show the human the call and wait for the yes, as for a `DROP`
-(`/denodo:vql`); "run the stats procedure" is the task, not that yes. The tool flags each one
-`destructive: "procedure"`. Two exceptions belong to other skills, each on objects you created in
-this session: a new remote table (`/denodo:materialize`) and clearing the cache of your own view
-(`/denodo:cache`).
+`GET_STATS_FOR_FIELDS` with `input_save = true` overwrites a view's statistics,
+`CLEAN_CACHE_DATABASE` deletes cached rows, `DROP_REMOTE_TABLE` drops a table in the source,
+`LOGCONTROLLER` changes logging for the whole server — the list the tool checks, with what each
+one changes, is `references/predefined.md`, "A call that looks like a read and is not". It is
+not every writer: read the page of any other procedure before calling it. Show the human the
+call and wait for the yes, as for a `DROP` (`/denodo:vql`); "run the stats procedure" is the
+task, not that yes. The tool flags each one `destructive: "procedure"`. Two exceptions belong
+to other skills, each on objects you created in this session: a new remote table
+(`/denodo:materialize`) and clearing the cache of your own view (`/denodo:cache`).
 
 ### VQL procedure
 
@@ -168,9 +171,9 @@ without a complaint and fails on the first call — with `Error executing query.
 |---|---|---|
 | `CREATE OR REPLACE PROCEDURE p (a IN INT, b OUT VARCHAR) AS ( … ) BEGIN … END` | `Syntax error … near '('` | `CREATE OR REPLACE VQL PROCEDURE` — without `VQL` it is the Java statement |
 | `CREATE OR REPLACE VQL PROCEDURE p (a IN INT) FOLDER = '/x' AS …` | `Syntax error … near 'FOLDER'` | `FOLDER =` goes before the parameter list |
-| `CREATE OR REPLACE VQL PROCEDURE p (…) AS ( ) BEGIN … END` | `Syntax error … near ')'` | declare at least one local variable, or drop the whole `AS ( )` |
+| `CREATE OR REPLACE VQL PROCEDURE p (…) AS ( ) BEGIN … END` | `Syntax error … near ')'` | declare at least one local variable (a placeholder such as `tmp VARCHAR;`); the `AS ( … )` block itself is required |
 | `SELECT * FROM USED_BY()` | `No search methods ready to be run. The following fields are obligatory: …` | pass the mandatory `input_…` parameters in `WHERE` |
-| `SELECT status FROM PING_DATA_SOURCE('db', 'JDBC', 'ds')` | `Error executing query. Total time …` | positional arguments do not work for every procedure — use `WHERE input_… = …` |
+| `SELECT status FROM PING_DATA_SOURCE() WHERE input_database_name = 'db' …` | `Error in select view conditions: Field not found 'input_database_name' …` | its parameters have no prefix: `WHERE database_name = 'db' AND data_source_type = 'JDBC' AND data_source_name = 'ds'`. A bare `Error executing query. Total time …` from it means no such database or data source |
 | `SELECT band FROM order_size_band()` | `View without search methods: The following obligatory fields cannot be removed: amount` | pass the parameter, or declare it `NULLABLE` |
 | `CALL no_such_procedure()` | `error invoking stored procedure: 'no_such_procedure' not found` | `LIST PROCEDURES`, and check you are in the right database |
 | `DROP PROCEDURE p` where there is none | `error removing stored procedure: The database does not contains the specified stored procedure` | `DROP PROCEDURE IF EXISTS p` |

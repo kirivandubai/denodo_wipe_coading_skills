@@ -92,6 +92,11 @@ STATE_CHANGING_PROCEDURES = frozenset({
     "GENERATE_SMART_STATS_FOR_FIELDS",
     "COMPUTE_SOURCE_TABLE_STATS",
     "MAINTAIN_METADATA_TABLES",
+    # each also has a mode that only lists, and is flagged in it too: the name is all this reads
+    "GET_STATS_FOR_FIELDS",
+    "CHECK_METADATA",
+    "CHECK_CACHE_NAMES",
+    "MIGRATE_DATE_TYPES",
 })
 # ``FROM name(`` anywhere in the statement (a view defined over the procedure would run it
 # on every query), ``CALL name(`` at the start; an optional ``database.`` qualifier.
