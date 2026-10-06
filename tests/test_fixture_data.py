@@ -40,7 +40,7 @@ class FixtureDataTest(unittest.TestCase):
                     self.assertEqual((Path(tmp) / file).read_bytes(), (DATA / file).read_bytes())
 
     def test_headers_are_quoted_upper_case_as_the_wrappers_map_them(self):
-        for name in ("income_band", "household_demographics", "reason", "store_returns", "web_returns"):
+        for name in ("income_band", "household_demographics", "reason", "store_returns", "web_returns", "store"):
             header = (DATA / f"{name}.csv").read_text(encoding="utf-8").splitlines()[0]
             with self.subTest(file=name):
                 for column in header.split(","):
@@ -81,6 +81,17 @@ class FixtureDataTest(unittest.TestCase):
         self.assertTrue(rows and all(len(row) == 8 for row in rows))
         self.assertTrue(any(row[3] == "" for row in rows))
         self.assertTrue(all(row[0].startswith("C-") for row in rows))
+
+    def test_the_store_history_has_one_closed_store_and_one_tie(self):
+        rows = _rows("store")
+        self.assertEqual(len(rows), 21)
+        self.assertEqual(len({row[1] for row in rows}), 12)
+        open_rows = [row for row in rows if row[3] == ""]
+        self.assertEqual(len(open_rows), 11)
+        self.assertEqual(len({row[1] for row in open_rows}), 11)
+        starts = Counter((row[1], row[2]) for row in rows)
+        self.assertEqual([key for key, count in starts.items() if count > 1], [("AAAAAAAAAAAHAAAA", "2016-03-13")])
+        self.assertTrue(all(len(row) == 29 for row in rows))
 
     def test_thirty_five_reasons(self):
         rows = _rows("reason")

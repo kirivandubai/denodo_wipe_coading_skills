@@ -127,6 +127,9 @@ writes = [
   "SELECT * FROM DROP_REMOTE_TABLE() WHERE base_view_database_name = '{database}' AND base_view_name = '{tag_prefix}orders_drop' AND drop_base_view_on_cascade = true",
   "SELECT remote_table, base_view, status FROM CREATE_REMOTE_TABLE() WHERE remote_table_name = '{tag_prefix}customer' AND replace_remote_table_if_exist = true AND query = 'SELECT 1 AS x FROM Dual()' AND datasource_database_name = '{write_datasource_database}' AND datasource_name = '{write_datasource_name}' AND datasource_catalog = '{write_catalog}' AND datasource_schema = '{write_schema}' AND base_view_database_name = '{database}' AND base_view_name = '{tag_prefix}customer_drop' AND replace_base_view_if_exist = true",
   "SELECT * FROM DROP_REMOTE_TABLE() WHERE base_view_database_name = '{database}' AND base_view_name = '{tag_prefix}customer_drop' AND drop_base_view_on_cascade = true",
+  # the one-row-in-database step's copy of the store history
+  "SELECT remote_table, base_view, status FROM CREATE_REMOTE_TABLE() WHERE remote_table_name = '{tag_prefix}store' AND replace_remote_table_if_exist = true AND query = 'SELECT 1 AS x FROM Dual()' AND datasource_database_name = '{write_datasource_database}' AND datasource_name = '{write_datasource_name}' AND datasource_catalog = '{write_catalog}' AND datasource_schema = '{write_schema}' AND base_view_database_name = '{database}' AND base_view_name = '{tag_prefix}store_drop' AND replace_base_view_if_exist = true",
+  "SELECT * FROM DROP_REMOTE_TABLE() WHERE base_view_database_name = '{database}' AND base_view_name = '{tag_prefix}store_drop' AND drop_base_view_on_cascade = true",
   # the materialize steps' remote table and summary table, whether or not materialize-drop ran
   "SELECT remote_table, base_view, status FROM CREATE_REMOTE_TABLE() WHERE remote_table_name = '{tag_prefix}household_income' AND replace_remote_table_if_exist = true AND query = 'SELECT 1 AS x FROM Dual()' AND datasource_database_name = '{write_datasource_database}' AND datasource_name = '{write_datasource_name}' AND datasource_catalog = '{write_catalog}' AND datasource_schema = '{write_schema}' AND base_view_database_name = '{database}' AND base_view_name = '{tag_prefix}household_income_drop' AND replace_base_view_if_exist = true",
   "SELECT * FROM DROP_REMOTE_TABLE() WHERE base_view_database_name = '{database}' AND base_view_name = '{tag_prefix}household_income_drop' AND drop_base_view_on_cascade = true",
@@ -466,6 +469,140 @@ substitute = { sales_analytics = "{database}" }
 database = "{database}"
 # The aggregate's column traced to the file's column it averages.
 check = "SELECT column_name FROM COLUMN_DEPENDENCIES() WHERE input_view_database_name = '{database}' AND input_view_name = 'household_income_by_band' AND input_column_name = 'avg_vehicles' AND dependency_column_name = 'hd_vehicle_count'"
+
+# --- One row per key: skills/views/references/one-row-per-key.md -------------------------------
+# The store dimension of the fixture data keeps the history of twelve stores as validity-dated
+# versions: store 5 was closed (its last version has an end), and store 7 has two versions that
+# start on the same day, the higher surrogate key the newer. So the current rows are 11, the latest
+# versions 12, and the latest version of store 7 is surrogate key 13. The window template runs
+# over a database only; its step is in the write tail below, over a copy of this file in the cache
+# database.
+
+[[step]]
+id = "fixture-store-history"
+kind = "fixture"
+channel = "vql"
+database = "{database}"
+check = "SELECT COUNT(*) FROM bv_store HAVING COUNT(*) = 21"
+vql = """
+CONNECT DATABASE {database};
+
+CREATE OR REPLACE DATASOURCE DF ds_demo_store
+    FOLDER = '/01 - connectivity'
+    IGNOREMATCHINGERRORS = FALSE
+    ROUTE {fixture_route} '{fixture_base}/store.csv'
+    CHARSET = 'UTF-8'
+    COLUMNDELIMITER = ','
+    HEADER = TRUE;
+
+CREATE OR REPLACE WRAPPER DF wr_store
+    FOLDER = '/01 - connectivity'
+    DATASOURCENAME = ds_demo_store
+    OUTPUTSCHEMA (
+        s_store_sk = '"S_STORE_SK"',
+        s_store_id = '"S_STORE_ID"',
+        s_rec_start_date = '"S_REC_START_DATE"',
+        s_rec_end_date = '"S_REC_END_DATE"',
+        s_closed_date_sk = '"S_CLOSED_DATE_SK"',
+        s_store_name = '"S_STORE_NAME"',
+        s_number_employees = '"S_NUMBER_EMPLOYEES"',
+        s_floor_space = '"S_FLOOR_SPACE"',
+        s_hours = '"S_HOURS"',
+        s_manager = '"S_MANAGER"',
+        s_market_id = '"S_MARKET_ID"',
+        s_geography_class = '"S_GEOGRAPHY_CLASS"',
+        s_market_desc = '"S_MARKET_DESC"',
+        s_market_manager = '"S_MARKET_MANAGER"',
+        s_division_id = '"S_DIVISION_ID"',
+        s_division_name = '"S_DIVISION_NAME"',
+        s_company_id = '"S_COMPANY_ID"',
+        s_company_name = '"S_COMPANY_NAME"',
+        s_street_number = '"S_STREET_NUMBER"',
+        s_street_name = '"S_STREET_NAME"',
+        s_street_type = '"S_STREET_TYPE"',
+        s_suite_number = '"S_SUITE_NUMBER"',
+        s_city = '"S_CITY"',
+        s_county = '"S_COUNTY"',
+        s_state = '"S_STATE"',
+        s_zip = '"S_ZIP"',
+        s_country = '"S_COUNTRY"',
+        s_gmt_offset = '"S_GMT_OFFSET"',
+        s_tax_precentage = '"S_TAX_PRECENTAGE"'
+    );
+
+CREATE OR REPLACE TABLE bv_store I18N us_pst (
+        s_store_sk:int,
+        s_store_id:text,
+        s_rec_start_date:localdate,
+        s_rec_end_date:localdate,
+        s_closed_date_sk:int,
+        s_store_name:text,
+        s_number_employees:int,
+        s_floor_space:int,
+        s_hours:text,
+        s_manager:text,
+        s_market_id:int,
+        s_geography_class:text,
+        s_market_desc:text,
+        s_market_manager:text,
+        s_division_id:int,
+        s_division_name:text,
+        s_company_id:int,
+        s_company_name:text,
+        s_street_number:text,
+        s_street_name:text,
+        s_street_type:text,
+        s_suite_number:text,
+        s_city:text,
+        s_county:text,
+        s_state:text,
+        s_zip:text,
+        s_country:text,
+        s_gmt_offset:int,
+        s_tax_precentage:decimal
+    )
+    FOLDER = '/01 - connectivity'
+    PRIMARY KEY ( 's_store_sk' )
+    CACHE OFF
+    TIMETOLIVEINCACHE DEFAULT
+    ADD SEARCHMETHOD wr_store (
+        OUTPUTLIST ( s_store_sk, s_store_id, s_rec_start_date, s_rec_end_date, s_closed_date_sk, s_store_name, s_number_employees, s_floor_space, s_hours, s_manager, s_market_id, s_geography_class, s_market_desc, s_market_manager, s_division_id, s_division_name, s_company_id, s_company_name, s_street_number, s_street_name, s_street_type, s_suite_number, s_city, s_county, s_state, s_zip, s_country, s_gmt_offset, s_tax_precentage )
+        WRAPPER (df wr_store)
+    );
+"""
+
+[[step]]
+id = "one-row-current"
+kind = "template"
+channel = "vql"
+needs = ["fixture-store-history"]
+address = "skills/views/references/one-row-per-key.md#The current row of a history"
+substitute = { sales_analytics = "{database}" }
+database = "{database}"
+# Eleven open versions, one per store: the closed store has none.
+check = "SELECT COUNT(*) FROM iv_store_current HAVING COUNT(*) = 11 AND COUNT(DISTINCT store_id) = 11"
+
+[[step]]
+id = "one-row-from-file"
+kind = "template"
+channel = "vql"
+needs = ["fixture-store-history"]
+address = "skills/views/references/one-row-per-key.md#The latest version, from a file"
+substitute = { sales_analytics = "{database}" }
+database = "{database}"
+# Every store once, the closed one included, and the tie decided by the surrogate key.
+check = "SELECT a.n FROM (SELECT COUNT(*) AS n, COUNT(DISTINCT store_id) AS k FROM iv_store_latest) a, (SELECT COUNT(*) AS t FROM iv_store_latest WHERE store_id = 'AAAAAAAAAAAHAAAA' AND store_sk = 13) b WHERE a.n = 12 AND a.k = 12 AND b.t = 1"
+
+[[step]]
+id = "one-row-checks"
+kind = "template"
+channel = "vql"
+needs = ["one-row-current", "one-row-from-file"]
+address = "skills/views/references/one-row-per-key.md#Checks"
+substitute = { sales_analytics = "{database}" }
+database = "{database}"
+# Check 2 of the block: the three numbers equal; and check 4 finds exactly the closed store.
+check = "SELECT 1 FROM (SELECT COUNT(DISTINCT s_store_id) AS keys_in FROM bv_store) i, (SELECT COUNT(*) AS rows_out, COUNT(DISTINCT store_id) AS keys_out FROM iv_store_latest) o, (SELECT COUNT(*) AS closed FROM iv_store_latest l LEFT OUTER JOIN iv_store_current c ON c.store_id = l.store_id WHERE c.store_id IS NULL) d WHERE i.keys_in = o.rows_out AND o.rows_out = o.keys_out AND d.closed = 1"
 
 [[step]]
 id = "interface-view"
@@ -1222,6 +1359,148 @@ check = "SELECT s.t FROM (SELECT SUM(x.household_count) AS t FROM (SELECT income
 # the role impersonator — `env check` reports it as vdp.impersonation; without it these checks
 # fail with "This user cannot impersonate", which is the answer, not a bug in the template.
 
+
+# --- Periods: skills/metrics/references/periods.md --------------------------------------------
+# A metric view of the fixture's store returns over a calendar of 2014-2018 (the years their date
+# keys fall in, julian day numbers as TPC-DS keys them). The returns start on 2014-03-23 and stop on
+# 2018-12-19, some without a date: 2014 is a partial year, which the coverage of the year-over-year
+# view has to show, and the undated lines are the NULL period. The to-date view reads CURRENT_DATE;
+# its step fixes "today" at 2017-07-01, so the windows hold returns and can be compared with the fact.
+
+[[step]]
+id = "fixture-calendar"
+kind = "fixture"
+channel = "vql"
+database = "{database}"
+check = "SELECT COUNT(*) FROM bv_date_dim HAVING COUNT(*) = 1826"
+vql = """
+CONNECT DATABASE {database};
+
+CREATE OR REPLACE DATASOURCE DF ds_demo_date_dim
+    FOLDER = '/01 - connectivity'
+    IGNOREMATCHINGERRORS = FALSE
+    ROUTE {fixture_route} '{fixture_base}/date_dim.csv'
+    CHARSET = 'UTF-8'
+    COLUMNDELIMITER = ','
+    HEADER = TRUE;
+
+CREATE OR REPLACE WRAPPER DF wr_date_dim
+    FOLDER = '/01 - connectivity'
+    DATASOURCENAME = ds_demo_date_dim
+    OUTPUTSCHEMA (
+        d_date_sk = '"D_DATE_SK"',
+        d_date_id = '"D_DATE_ID"',
+        d_date = '"D_DATE"',
+        d_month_seq = '"D_MONTH_SEQ"',
+        d_week_seq = '"D_WEEK_SEQ"',
+        d_quarter_seq = '"D_QUARTER_SEQ"',
+        d_year = '"D_YEAR"',
+        d_dow = '"D_DOW"',
+        d_moy = '"D_MOY"',
+        d_dom = '"D_DOM"',
+        d_qoy = '"D_QOY"',
+        d_fy_year = '"D_FY_YEAR"',
+        d_fy_quarter_seq = '"D_FY_QUARTER_SEQ"',
+        d_fy_week_seq = '"D_FY_WEEK_SEQ"',
+        d_day_name = '"D_DAY_NAME"',
+        d_quarter_name = '"D_QUARTER_NAME"',
+        d_holiday = '"D_HOLIDAY"',
+        d_weekend = '"D_WEEKEND"',
+        d_following_holiday = '"D_FOLLOWING_HOLIDAY"',
+        d_first_dom = '"D_FIRST_DOM"',
+        d_last_dom = '"D_LAST_DOM"',
+        d_same_day_ly = '"D_SAME_DAY_LY"',
+        d_same_day_lq = '"D_SAME_DAY_LQ"',
+        d_current_day = '"D_CURRENT_DAY"',
+        d_current_week = '"D_CURRENT_WEEK"',
+        d_current_month = '"D_CURRENT_MONTH"',
+        d_current_quarter = '"D_CURRENT_QUARTER"',
+        d_current_year = '"D_CURRENT_YEAR"'
+    );
+
+CREATE OR REPLACE TABLE bv_date_dim I18N us_pst (
+        d_date_sk:int,
+        d_date_id:text,
+        d_date:localdate,
+        d_month_seq:int,
+        d_week_seq:int,
+        d_quarter_seq:int,
+        d_year:int,
+        d_dow:int,
+        d_moy:int,
+        d_dom:int,
+        d_qoy:int,
+        d_fy_year:int,
+        d_fy_quarter_seq:int,
+        d_fy_week_seq:int,
+        d_day_name:text,
+        d_quarter_name:text,
+        d_holiday:text,
+        d_weekend:text,
+        d_following_holiday:text,
+        d_first_dom:int,
+        d_last_dom:int,
+        d_same_day_ly:int,
+        d_same_day_lq:int,
+        d_current_day:text,
+        d_current_week:text,
+        d_current_month:text,
+        d_current_quarter:text,
+        d_current_year:text
+    )
+    FOLDER = '/01 - connectivity'
+    PRIMARY KEY ( 'd_date_sk' )
+    CACHE OFF
+    TIMETOLIVEINCACHE DEFAULT
+    ADD SEARCHMETHOD wr_date_dim (
+        OUTPUTLIST ( d_date_sk, d_date_id, d_date, d_month_seq, d_week_seq, d_quarter_seq, d_year, d_dow, d_moy, d_dom, d_qoy, d_fy_year, d_fy_quarter_seq, d_fy_week_seq, d_day_name, d_quarter_name, d_holiday, d_weekend, d_following_holiday, d_first_dom, d_last_dom, d_same_day_ly, d_same_day_lq, d_current_day, d_current_week, d_current_month, d_current_quarter, d_current_year )
+        WRAPPER (df wr_date_dim)
+    );
+"""
+
+[[step]]
+id = "metric-periods-model"
+kind = "template"
+channel = "vql"
+needs = ["fixture-calendar", "fixture-returns"]
+address = "skills/metrics/references/periods.md#The periods are dimensions"
+substitute = { sales_analytics = "{database}" }
+database = "{database}"
+# Every return line in the metric with no dimension: the undated ones are kept, in the NULL period.
+check = "SELECT m.n FROM (SELECT evaluate_metric(return_lines) AS n FROM store_return_metrics) m CROSS JOIN (SELECT COUNT(sr_ticket_number) AS f FROM bv_retail_store_returns) b WHERE m.n = b.f AND m.n > 0"
+
+[[step]]
+id = "metric-periods-yoy"
+kind = "template"
+channel = "vql"
+needs = ["metric-periods-model"]
+address = "skills/metrics/references/periods.md#Year over year"
+substitute = { sales_analytics = "{database}" }
+database = "{database}"
+# Five years, and the coverage of the partial first year read from the returns, not the calendar.
+check = "SELECT 1 FROM (SELECT COUNT(*) AS n FROM store_returns_yoy) a, (SELECT first_day FROM store_returns_yoy WHERE return_year = 2014) b WHERE a.n = 5 AND b.first_day > DATE '2014-01-01'"
+
+[[step]]
+id = "metric-periods-ytd"
+kind = "template"
+channel = "vql"
+needs = ["metric-periods-model"]
+address = "skills/metrics/references/periods.md#To date, against the same days of last year"
+substitute = { sales_analytics = "{database}", CURRENT_DATE = "DATE '2017-07-01'" }
+database = "{database}"
+# The year to 2017-06-30 equals the fact summed over the same days.
+check = "SELECT 1 FROM store_returns_ytd v, (SELECT SUM(r.sr_return_amt) AS a FROM bv_retail_store_returns r INNER JOIN bv_date_dim d ON r.sr_returned_date_sk = d.d_date_sk WHERE d.d_date BETWEEN DATE '2017-01-01' AND DATE '2017-06-30') f WHERE v.return_amount_ytd = f.a AND v.as_of = DATE '2017-06-30'"
+
+[[step]]
+id = "metric-periods-running"
+kind = "template"
+channel = "vql"
+needs = ["metric-periods-model"]
+address = "skills/metrics/references/periods.md#Running total within a year"
+substitute = { sales_analytics = "{database}" }
+database = "{database}"
+# December's running total is the year's total.
+check = "SELECT 1 FROM store_returns_running r, (SELECT evaluate_metric(return_amount) AS a FROM store_return_metrics WHERE return_year = 2016) y WHERE r.return_year = 2016 AND r.return_month = 12 AND r.return_amount_ytd = y.a"
 [[step]]
 id = "security-user"
 kind = "fixture"
@@ -1945,6 +2224,48 @@ address = "skills/testing/SKILL.md#A view over a database runs in the database"
 # no cause printed and one JDBC route.
 substitute = { "'SELECT * FROM household_income_by_band'" = "'SELECT income_band_sk, COUNT(*) AS households FROM bv_dwh_household_income GROUP BY income_band_sk'" }
 database = "{database}"
+
+# The window template of one-row-per-key.md needs a database: the store history, copied into the
+# cache database by the procedure the materialize template uses, is that database here. The step
+# then plans the view: the window has to be inside the one SQLSentence that goes there.
+
+[[step]]
+id = "writes-store-history"
+kind = "fixture"
+channel = "vql"
+writes = true
+needs = ["fixture-store-history"]
+database = "{database}"
+check = "SELECT COUNT(*) FROM bv_dwh_store HAVING COUNT(*) = 21"
+vql = """
+CONNECT DATABASE {database};
+
+SELECT phase, status, error, inserted_rows
+FROM CREATE_REMOTE_TABLE()
+WHERE remote_table_name = '{tag_prefix}store'
+  AND replace_remote_table_if_exist = false
+  AND query = 'SELECT s_store_sk, s_store_id, s_rec_start_date, s_rec_end_date, s_store_name FROM bv_store'
+  AND datasource_database_name = '{write_datasource_database}'
+  AND datasource_name = '{write_datasource_name}'
+  AND datasource_catalog = '{write_catalog}'
+  AND datasource_schema = '{write_schema}'
+  AND base_view_database_name = '{database}'
+  AND base_view_name = 'bv_dwh_store'
+  AND base_view_folder = '/01 - connectivity'
+  AND replace_base_view_if_exist = false;
+"""
+
+[[step]]
+id = "one-row-in-database"
+kind = "template"
+channel = "vql"
+writes = true
+needs = ["writes-store-history", "one-row-from-file"]
+address = "skills/views/references/one-row-per-key.md#The latest version, in the database"
+substitute = { sales_analytics = "{database}", "VIEW iv_store_latest" = "VIEW iv_dwh_store_latest", "FROM bv_store ) ranked" = "FROM bv_dwh_store ) ranked" }
+database = "{database}"
+# The same rows as the anti-join over the file, and the window runs in the database.
+check = "SELECT 1 FROM GET_QUERY_EXECUTION_PLAN() p, (SELECT COUNT(*) AS n FROM iv_dwh_store_latest w INNER JOIN iv_store_latest f ON w.store_id = f.store_id AND w.store_sk = f.store_sk) m WHERE p.input_query = 'SELECT * FROM iv_dwh_store_latest' AND p.execution_plan LIKE '%row_number() OVER%' AND m.n = 12"
 
 [[step]]
 id = "materialize-summary"

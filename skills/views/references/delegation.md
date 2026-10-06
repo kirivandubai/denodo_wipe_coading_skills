@@ -31,7 +31,9 @@ answer `Error executing query` with nothing more — plan the query without it; 
 is not free to plan: the literal is evaluated while planning (`/denodo:ai`). Plan the top view, not the pieces: the
 optimizer works through the `iv_` layer, and what reaches the database is decided for the
 whole stack. The text is long; the lines that decide are `noDelegationCause`,
-`optimizationsApplied`, `JDBC ROUTE (`, `datasource =` and `SQLSentence =`. Three outcomes:
+`optimizationsApplied`, `JDBC ROUTE (`, `datasource =` and `SQLSentence =`.
+`noDelegatedVectorSearchCause = No LIMIT clause` on a route is about vector search, not about
+delegation: search for `noDelegationCause`, whole. Three outcomes:
 
 | In the plan | Means |
 |---|---|

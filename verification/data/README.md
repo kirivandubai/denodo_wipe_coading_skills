@@ -1,6 +1,6 @@
 # Fixture data of the verification chain
 
-Five delimited files the fixtures of `verification/chain.toml` read through a DF data source:
+Six delimited files the fixtures of `verification/chain.toml` read through a DF data source:
 synthetic rows under the TPC-DS table and column names, written by `generate.py` (standard
 library, deterministic — run it only when the data has to change, and commit what it writes).
 
@@ -11,6 +11,7 @@ library, deterministic — run it only when the data has to change, and commit w
 | `reason.csv` | 35 | invented return reasons; the first six read like product reviews |
 | `store_returns.csv` | 2,000 | invented, with `NULL` date and reason keys |
 | `web_returns.csv` | 1,000 | invented, with `NULL` date and reason keys |
+| `store.csv` | 21 | the TPC-DS store dimension's layout: twelve stores kept as validity-dated versions, one closed, two versions of one store starting the same day |
 
 **How the server reads them.** `fixture_route` and `fixture_base` in `[values]` of the manifest:
 by default over HTTP from this repository on GitHub. A server that cannot reach GitHub reads them
