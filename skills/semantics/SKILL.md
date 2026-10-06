@@ -19,8 +19,8 @@ unique is answered with confidence.
 tag descriptions, primary keys, the associations that are missing, and the MCP visibility
 tag. Logical names, property groups and descriptions edited in the marketplace live only in
 the Data Marketplace (`/denodo:marketplace`, or its UI); configuring the MCP Server, the AI
-SDK or Assisted Query is the administrator's. Applying files is `/denodo:execute`; the
-working loop and the safety rule are `/denodo:vql`.
+SDK or Assisted Query is the administrator's (the last two are Enterprise Plus features).
+Applying files is `/denodo:execute`; the working loop and the safety rule are `/denodo:vql`.
 
 **A view you are building now** (`/denodo:views`) gets the same metadata in its own file:
 profile it (section 2), write the texts (section 3), put them in its `CREATE OR REPLACE VIEW`
@@ -287,10 +287,11 @@ read their copy of it. "We run the shipped configuration" settles it as `mcp`, a
 carried by the views the agent does see confirms it. Otherwise do not guess a tag name, and
 do not create one to make a view appear.
 
-VDP tags need the Enterprise Plus subscription bundle (`env check --env dev` →
-`features.enterprise_plus`). On a server without it `ALTER TAG` fails and no view can be made
-visible by tag: say so, leave out the tag lines of the audit and of section 5, and treat which
-views the MCP Server shows as the administrator's configuration (`mcp.visibility.tags`).
+VDP tags are part of the Enterprise Plus subscription bundle (documentation;
+`env check --env dev` → `features.enterprise_plus`). On a server without it expect `ALTER TAG`
+to fail, and no view can be made visible by tag: say so, leave out the tag lines of the audit
+and of section 5, and treat which views the MCP Server shows as the administrator's
+configuration (`mcp.visibility.tags`).
 
 In order:
 
@@ -307,9 +308,9 @@ In order:
    does not exist, unless you run it as that user (documentation). Granting is a change of
    who reads what: `/denodo:security`, after the human's yes.
 3. **The server has picked the change up**: it refreshes its schema while
-   `mcp.schema-refresh.enabled` is on (the default; not immediate), and a new client session
-   lists views again. Off, the server does not detect the change; the manual names no way to
-   force it, so ask the administrator.
+   `mcp.schema-refresh.enabled` is on (the default), but not at once: a change can wait until
+   a subsequent request prompts the server to update. Off, the server does not detect the
+   change; the manual names no way to force it, so ask the administrator.
 4. The view's file does not carry the tag → the next apply of that file hides the view
    again (section 5).
 

@@ -11,7 +11,7 @@ consumers: the Denodo MCP Server and Denodo AI SDK user manuals (Denodo Connects
 | Reads from | Denodo, over JDBC, live | the Data Marketplace catalog | the Data Marketplace, into its own vector store |
 | Which views | tagged with one of `mcp.visibility.tags`; all the user may read when unset | the view the user asks about, plus its direct associations | the databases or tags named in its `getMetadata` call (`vdp_database_names` / `vdp_tag_names`) |
 | View | name, database, description, tags | name, database, subtype, description, tags with their descriptions, property groups (if included in AI context) | everything in the view's schema |
-| Field | name, type, description, tags, `[PK]`, `[NOT NULL]`, sample values | name, logical name, type, source type, description, primary key, nullable, obligatory, tags with descriptions, view data if sample data is enabled | the same, plus sample rows (needs the cache) |
+| Field | name, type, description, tags, `[PK]`, `[NOT NULL]`, sample values | name, logical name, type, source type, description, primary key, nullable, obligatory, tags with descriptions, view data if sample data is enabled | the same; its sample data needs the cache |
 | Joins | associations, as `JOINs` with their descriptions | direct associations, with the same metadata as the view | associations |
 | Picks up a change | on its schema refresh (`mcp.schema-refresh.enabled`) | after the marketplace is synchronised | after synchronisation and a new `getMetadata` run |
 
@@ -28,8 +28,9 @@ MCP Server configuration that decides visibility, in its `config/application.pro
 | `mcp.schema-refresh.enabled` | off: changes to views and tags are not detected |
 
 Privileges are the final filter: `CONNECT` on the database and `EXECUTE` on the view for the
-Denodo user the MCP client authenticates with; the AI SDK's synchronisation user also needs
-`METADATA`.
+Denodo user the MCP client authenticates with; the AI SDK's synchronisation user needs
+`CONNECT` and `METADATA` on the database, and with sample data also `EXECUTE` there and
+`CONNECT` and `CREATE VIEW` on the cache database.
 
 ## Reading the metadata
 
