@@ -35,6 +35,7 @@ class TemplateBlock:
     body: str               # block content, mark line included, dedented
     mark_line: int | None   # 1-based line of the mark in the file, None when the block carries none
     mark: str | None        # "verified: 9.5.1 (live, 2026-09-09)" or None
+    line: int = 0           # 1-based line of the block's first body line (the one after the fence)
 
 
 def parse_address(address: str) -> tuple[str, str, int]:
@@ -65,7 +66,7 @@ def load_block(root: Path, address: str) -> TemplateBlock:
             mark_line, mark = first_line + offset, found.group(1).strip()
             break
     return TemplateBlock(path=path, section=section, index=index,
-                         body="\n".join(body_lines), mark_line=mark_line, mark=mark)
+                         body="\n".join(body_lines), mark_line=mark_line, mark=mark, line=first_line)
 
 
 def _dedent_line(line: str, width: int) -> str:

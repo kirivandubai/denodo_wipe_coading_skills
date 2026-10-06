@@ -44,7 +44,10 @@ class ChainManifestMatchesSkillsTest(unittest.TestCase):
         has captured *yet* fails here rather than halfway through a live run, with
         marketplace objects already created.
         """
-        available = dict(self.chain.values)
+        # A value the run fills in (``@server``, ``@dialect``, T40) renders here as "0": an id in a
+        # JSON body has to stay parseable, and no text check below depends on what it is.
+        available = {name: "0" if value in ("@server", "@dialect") else value
+                     for name, value in self.chain.values.items()}
         per_step: dict[str, dict[str, str]] = {}
         for step in self.chain.steps:
             # A step may name what it captures itself: the read-back after a create names the
@@ -200,3 +203,85 @@ class ChainManifestMatchesSkillsTest(unittest.TestCase):
                     "serverId", entry["params"],
                     f"[cleanup] http {entry['method']} {entry['path']} names the server "
                     f"itself, so the profile's marketplace_server_id is never used")
+
+
+def marked_blocks(root: Path) -> dict[tuple[str, int], str]:
+    """Every block of ``skills/`` carrying a ``verified:`` mark, by (file, first body line).
+
+    The lint's rule decides what a block's mark is (``tests/skills_lint.py``): one inside the
+    block, or, for a block without one, a mark in the paragraph right above or below it. A
+    block marked ``unverified`` inside is documentation, not a claim a run could confirm.
+    """
+    import re
+
+    from tests.skills_lint import Block, Paragraph, _parse
+
+    any_mark = re.compile(r"(?<![\w`])(?:un)?verified:")
+    verified = re.compile(r"(?<![\w`])verified:")
+    found: dict[tuple[str, int], str] = {}
+    for path in sorted((root / "skills").rglob("*.md")):
+        elements = _parse(path.read_text(encoding="utf-8").splitlines())
+        for index, element in enumerate(elements):
+            if not isinstance(element, Block):
+                continue
+            inner = [line for line in element.lines if any_mark.search(line)]
+            if inner:
+                marked = any(verified.search(line) for line in inner)
+            else:
+                marked = any(isinstance(elements[i], Paragraph) and not elements[i].heading
+                             and verified.search(elements[i].prose())
+                             for i in (index - 1, index + 1) if 0 <= i < len(elements))
+            if marked:
+                first = next((line.strip() for line in element.lines if line.strip()), "")
+                found[(path.relative_to(root).as_posix(), element.start + 1)] = first[:70]
+    return found
+
+
+class EveryMarkedBlockRunsOrSaysWhyTest(unittest.TestCase):
+    """A block marked ``verified`` was run once on a live server; the chain runs it again, or
+    ``[not_run]`` says why not (T40). Both directions, so neither list can drift."""
+
+    def setUp(self):
+        self.chain = load_chain(MANIFEST)
+
+    def _where(self, address: str) -> tuple[str, int]:
+        block = load_block(REPO, address)
+        return block.path.relative_to(REPO).as_posix(), block.line
+
+    def test_every_marked_block_is_a_step_or_listed_as_not_run(self):
+        run = set()
+        for step in self.chain.steps:
+            for address in [step.address, *(spec["address"] for spec in step.files.values())]:
+                if address:
+                    run.add(self._where(address))
+        listed = {self._where(address) for address in self.chain.not_run}
+        missing = {key: first for key, first in marked_blocks(REPO).items() if key not in run | listed}
+        self.assertEqual(missing, {}, "marked blocks no step runs and [not_run] does not list — add a step to "
+                                      "verification/chain.toml, or the block's address and the reason to [not_run]")
+
+    def test_every_not_run_entry_is_a_marked_block_no_step_runs(self):
+        marked = marked_blocks(REPO)
+        run = {self._where(step.address) for step in self.chain.steps if step.address}
+        for address, reason in self.chain.not_run.items():
+            with self.subTest(address=address):
+                where = self._where(address)
+                self.assertIn(where, marked, f"{address} is not a block with a verified mark")
+                self.assertNotIn(where, run, f"{address} is run by a step; remove it from [not_run]")
+                self.assertTrue(reason.strip())
+
+    def test_requires_names_only_features(self):
+        from denodo_cli.features import FEATURE_NAMES
+        for step in self.chain.steps:
+            for name in step.requires:
+                self.assertIn(name, FEATURE_NAMES, step.id)
+
+    def test_every_marker_value_can_be_filled(self):
+        from denodo_cli.commands.verify import DIALECT, SERVER, SERVER_SOURCES
+        for name, value in self.chain.values.items():
+            with self.subTest(value=name):
+                if value == SERVER:
+                    self.assertTrue(name in SERVER_SOURCES or name == "scheduler_data_source_id",
+                                    f"nothing on the server fills {name}")
+                if value == DIALECT:
+                    for product, table in self.chain.dialects.items():
+                        self.assertIn(name, table, f"[dialects.{product}] lacks {name}")
