@@ -1,8 +1,8 @@
 """``env list | check | init``: which Denodo installations this machine knows about.
 
-``env init`` is interactive on purpose: the human runs it themselves (in Claude Code:
-``! scripts/denodo env init``) so the password is typed into a hidden prompt and never
-lands in a command line or a session transcript.
+``env init`` is interactive on purpose: the human runs it themselves in a terminal, not
+through the agent, so the password is typed into a hidden prompt and never lands in a
+command line or a session transcript.
 """
 
 from __future__ import annotations

@@ -115,9 +115,9 @@ def profiles_path() -> Path:
 def _read_all(path: Path) -> dict:
     if not path.exists():
         raise ProfileError(
-            f"profiles file not found: {path}. Create it with `scripts/denodo env init` "
-            f"(interactive, run it yourself so the password never enters a transcript) or point "
-            f"DENODO_PROFILES at an existing file."
+            f"profiles file not found: {path}. Create it with `env init` (interactive: run it "
+            f"yourself in a terminal, not through the agent, so the password never enters a "
+            f"transcript) or point DENODO_PROFILES at an existing file."
         )
     try:
         with path.open("rb") as fh:

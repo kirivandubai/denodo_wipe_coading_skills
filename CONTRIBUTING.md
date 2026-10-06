@@ -154,7 +154,8 @@ Four, each answering a different question. The first runs in CI on every pull re
 (`.github/workflows/ci.yml`), together with `claude plugin validate .`; the other three
 need a server or a paid model and are yours to run. The validator's warning about a missing
 `version` is expected: without one Claude Code versions an install by its commit, so every merge
-reaches `claude plugin update`, and a `version` in either manifest would hold every user on it.
+reaches `claude plugin update`. A `version` in `plugin.json` or in the plugin's entry of
+`marketplace.json` would hold every user on it; `metadata.version` is not read.
 
 **Unit tests** — the execution layer, and the lint of what a plugin user and the agent
 read. No dependencies, no server, fast:

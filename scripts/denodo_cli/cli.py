@@ -76,8 +76,8 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--continue-on-error", action="store_true", help="keep going after a failed statement")
     run.add_argument("--allow-destructive", action="store_true",
                      help="required on a production profile for any statement the safety classifier marks "
-                          "destructive: DROP, ALTER, writes, settings, state-changing procedures, cache loads, "
-                          "security objects, source tables")
+                          "destructive: DROP, ALTER, DELETE, writes, settings, state-changing procedures, "
+                          "cache loads, security objects, source tables")
     plan = vql.add_parser("plan", parents=[env_opt],
                           help="what a .vql file (or '-' / -e) would do on this server, statement by statement: "
                                "new or existing, this session's own, and whether the core's safety table puts it "
@@ -108,8 +108,8 @@ def build_parser() -> argparse.ArgumentParser:
                      help="multipart part (repeatable); implies multipart/form-data")
     api.add_argument("--timeout", type=float, default=300, help="seconds (synchronize calls can be slow)")
     api.add_argument("--allow-destructive", action="store_true",
-                     help="required on a production profile for DELETE, set-replacing POST calls and "
-                          "Scheduler changes")
+                     help="required on a production profile for DELETE, set-replacing POST calls, and "
+                          "Scheduler deletes, PUTs, status changes and new jobs")
     api.add_argument("--plan", action="store_true",
                      help="do not send the call: say whether the core's safety table puts it under the human's yes; "
                           "for a catalog synchronize, read both changes and check the radius against this session's ledger")
@@ -253,9 +253,8 @@ def _read_password() -> str:
         if password.endswith("\r"):
             password = password[:-1]
     if not password:
-        raise UsageError("no password on stdin: pipe it in, or run the command yourself in a "
-                         "terminal (in Claude Code: `! scripts/denodo secret encrypt --env <env>`) "
-                         "to type it into a hidden prompt")
+        raise UsageError("no password on stdin: pipe it in, or run `secret encrypt --env <env>` yourself "
+                         "in a terminal, not through the agent, to type it into a hidden prompt")
     if "\n" in password or "\r" in password:
         raise UsageError("the password must be one line; got several, so nothing was encrypted")
     return password
@@ -290,9 +289,9 @@ def _dispatch(args) -> tuple[dict, int]:
         return list_environments(profiles_path())
     if args.group == "env" and args.action == "init":
         if not sys.stdin.isatty():
-            raise UsageError("env init is interactive: run it yourself in a terminal "
-                             "(in Claude Code: `! scripts/denodo env init`) so the password is typed "
-                             "into a hidden prompt and never enters a transcript")
+            raise UsageError("env init is interactive: run it yourself in a terminal, not through the "
+                             "agent, so the password is typed into a hidden prompt and never enters a "
+                             "transcript")
         def ask(prompt, default=""):
             suffix = f" [{default}]" if default else ""
             return input(f"{prompt}{suffix}: ") or default

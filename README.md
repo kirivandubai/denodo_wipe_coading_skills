@@ -90,11 +90,12 @@ session transcript. They live in a profile file outside any repository — by de
 input, so nothing is echoed into the transcript. In Claude Code, prefix it with `!`:
 
 ```
-! "$(for d in ~/.claude/plugins/cache/denodo-skills/denodo/*/; do [ -e "$d.orphaned_at" ] || echo "$d"; done | head -1)scripts/denodo" env init
+! "$(for d in ~/.claude/plugins/cache/denodo-skills/denodo/*/; do [ -e "$d.orphaned_at" ] || echo "$d"; done | head -1 | grep . || echo /denodo-plugin-not-installed/)scripts/denodo" env init
 ```
 
 The loop finds the installed copy of the plugin: after an update the previous copy stays in the
-cache for 14 days, marked with an `.orphaned_at` file, and a plain `*` would match both.
+cache for 14 days, marked with an `.orphaned_at` file, and a plain `*` would match both. Without
+an installed copy the line fails on `/denodo-plugin-not-installed/`.
 
 Or write the file by hand:
 
@@ -130,7 +131,7 @@ The templates were run on one 9.5.1 server; yours may have another bundle, anoth
 database, no LLM. One command runs them on yours — ask Claude to run it, or run it yourself:
 
 ```
-"$(for d in ~/.claude/plugins/cache/denodo-skills/denodo/*/; do [ -e "$d.orphaned_at" ] || echo "$d"; done | head -1)scripts/denodo" verify --env dev
+"$(for d in ~/.claude/plugins/cache/denodo-skills/denodo/*/; do [ -e "$d.orphaned_at" ] || echo "$d"; done | head -1 | grep . || echo /denodo-plugin-not-installed/)scripts/denodo" verify --env dev
 ```
 
 It creates its own database (`denodo_skills_test`), runs every verified template of the
