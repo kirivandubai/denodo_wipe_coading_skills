@@ -21,9 +21,9 @@ setting, not yours.
 Building or changing the view itself is `/denodo:views`; base views are
 `/denodo:datasources`. A view whose columns call the server's LLM (`CLASSIFY_AI` …) is
 cached so that readers stop paying for it, and **every load of it is a paid run of every
-row** — the number of rows is the human's (`/denodo:ai`); a column of the vector type
-cannot be cached at all. Applying files is `/denodo:execute`. The working loop and the safety
-rule are `/denodo:vql`.
+row** — the number of rows is the human's; a full cache of a vector column failed on 9.5.1
+(`/denodo:ai`). Applying files is `/denodo:execute`. The working loop and the safety rule
+are `/denodo:vql`.
 
 **Everything here changes what every reader of the view gets, and does it silently.** The
 statements succeed; the view then returns 0 rows, a filtered subset, yesterday's rows or
@@ -222,7 +222,7 @@ ALTER VIEW iv_household_income CACHE OFF;
 - Only clearing, the cache staying on: `INVALIDATE` alone. The view returns 0 rows until the
   next load.
 - Switching off for good: also delete the `ALTER VIEW … CACHE FULL` line from the view's
-  file, or its next apply switches the cache back on; and stop the refresh job
+  file, or its next apply switches the cache back on; and disable the refresh job
   (`/denodo:scheduler`) — a load of a
   view whose cache is off answers `ok` and does nothing, every night. Readers get the
   sources' answers back, with the sources' rules (Silent failures, 9, in reverse).
@@ -276,7 +276,7 @@ Each runs without an error — *verified: 9.5.1 (live, 2026-09-30)*.
 | 7. the load over a view built on the cached one | nothing loaded, `ok` | the load names the cached view itself |
 | 8. `'cache_wait_for_load' = 'false'` | the old content, while the load reported `ok` | `'true'` |
 | 9. switched a view on | its queries, and the filters, `GROUP BY`, `DISTINCT`, joins and `ORDER BY` of every view on it, now run in the cache database with that database's rules: its collation, trailing spaces, `NULL` ordering, numeric scale. On a SQL Server cache database (measured): a case-insensitive collation made `= 'did not fit'` match `'Did not fit'` (rows the sources did not return), trailing spaces stopped counting, `NULL`s sorted first, and `decimal` came back with 20 decimal places. Switching off reverses all of it | before switching: `SELECT UPPER(TRIM(<col>)), COUNT(DISTINCT <col>) FROM <view> GROUP BY UPPER(TRIM(<col>)) HAVING COUNT(DISTINCT <col>) > 1` finds the values a case-insensitive database would merge; after: the readers' filters against `CONTEXT ('cache' = 'off')`. `CAST(<expression> AS decimal(12,2))` around the final value in the view that reads it gives the scale back (an `AVG` over a cast column does not). Tell the human what differs — the adapter's name does not say the collation |
-| 10. a load over a view whose cache is off — a refresh job left running | nothing loaded, `ok` | stop the job when you switch the cache off |
+| 10. a load over a view whose cache is off — a refresh job left running | nothing loaded, `ok` | disable the job when you switch the cache off |
 
 ## Common mistakes
 
