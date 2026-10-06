@@ -317,6 +317,57 @@ vql = "SELECT 1 FROM DUAL()"
         self.assertIn("tag_prefix", doc["error"]["message"])
 
 
+    VALUES_CHAIN = """
+[values]
+database = "denodo_skills_test"
+fixture_base = "https://example.org/data"
+
+[[step]]
+id = "fix"
+kind = "fixture"
+channel = "vql"
+vql = "SELECT '{fixture_base}' FROM DUAL()"
+"""
+
+    def chain_file(self):
+        path = Path(self.tmp.name) / "chain.toml"
+        path.write_text(self.VALUES_CHAIN, encoding="utf-8")
+        return path
+
+    def test_the_values_file_beside_the_profiles_is_read_for_the_profile(self):
+        (Path(self.tmp.name) / "verify.toml").write_text('[dev]\nfixture_base = "/srv/data"\n', encoding="utf-8")
+        doc, code = self.run_cli("verify", "--env", "dev", "--chain", str(self.chain_file()))
+        self.assertEqual(code, 0, doc)
+        self.assertIn("SELECT '/srv/data' FROM DUAL()", FakeVql.executed)
+        self.assertEqual(doc["values_from"]["fixture_base"], "file")
+        self.assertEqual(doc["values_file"], str(Path(self.tmp.name) / "verify.toml"))
+
+    def test_without_a_values_file_the_manifest_s_values_stand(self):
+        doc, code = self.run_cli("verify", "--env", "dev", "--chain", str(self.chain_file()))
+        self.assertEqual(code, 0, doc)
+        self.assertIsNone(doc["values_file"])
+        self.assertIn("SELECT 'https://example.org/data' FROM DUAL()", FakeVql.executed)
+
+    def test_values_names_another_file(self):
+        other = Path(self.tmp.name) / "other.toml"
+        other.write_text('[dev]\nfixture_base = "/other"\n', encoding="utf-8")
+        doc, code = self.run_cli("verify", "--env", "dev", "--chain", str(self.chain_file()), "--values", str(other))
+        self.assertEqual(code, 0, doc)
+        self.assertIn("SELECT '/other' FROM DUAL()", FakeVql.executed)
+
+    def test_a_values_file_named_on_the_command_line_must_exist(self):
+        doc, code = self.run_cli("verify", "--env", "dev", "--chain", str(self.chain_file()),
+                                 "--values", str(Path(self.tmp.name) / "missing.toml"))
+        self.assertEqual(code, 2)
+        self.assertIn("missing.toml", doc["error"]["message"])
+
+    def test_a_typo_in_the_values_file_is_a_usage_error(self):
+        (Path(self.tmp.name) / "verify.toml").write_text('[dev]\nfixture_bas = "/srv"\n', encoding="utf-8")
+        doc, code = self.run_cli("verify", "--env", "dev", "--chain", str(self.chain_file()))
+        self.assertEqual(code, 2)
+        self.assertIn("fixture_bas", doc["error"]["message"])
+
+
 class SecretCommandTest(CliHarness, unittest.TestCase):
     """The password reaches the server and nothing else: not a command line, not the output."""
 

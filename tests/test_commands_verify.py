@@ -412,7 +412,7 @@ vql = "SELECT 1 FROM DUAL()"
         self.assertFalse(doc["steps"][0]["ok"])
         self.assertIn("Syntax error", doc["steps"][0]["error"]["message"])
         self.assertTrue(doc["steps"][1]["skipped"])
-        self.assertEqual(doc["summary"], {"verified": 0, "failed": 1, "skipped": 1})
+        self.assertEqual(doc["summary"], {"verified": 0, "failed": 1, "skipped": 1, "not_run": 0})
 
     def test_fixture_steps_do_not_count_as_verified(self):
         chain = self.chain("""

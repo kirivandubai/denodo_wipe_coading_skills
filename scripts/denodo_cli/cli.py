@@ -20,7 +20,7 @@ from .commands.plan import list_ledger, plan_input
 from .commands.secret import encrypt_password
 from .commands.testing import DEFAULT_DB_ADAPTER, run_testing_tool, write_testing_config
 from .commands.vql import describe, run_statements
-from .commands.verify import ChainError, load_chain, run_chain
+from .commands.verify import ChainError, default_values_path, load_chain, load_values_file, run_chain
 from .ledger import Ledger, prune_sessions, session_from_env
 from .output import envelope, to_json
 from .profiles import ProfileError, load_profile, profiles_path
@@ -165,6 +165,9 @@ def build_parser() -> argparse.ArgumentParser:
     verify.add_argument("--testing-tool", metavar="DIR",
                         help="also run the .denodotest templates with the Denodo Testing Tool installed in DIR "
                              "(its bin/denodo-test.sh needs Java on PATH or in JAVA_HOME)")
+    verify.add_argument("--values", metavar="FILE",
+                        help="values of this installation, one table per profile (default: verify.toml "
+                             "beside the profiles file)")
     verify.add_argument("--keep", action="store_true", help="leave the created objects on the server")
     verify.add_argument("--update-marks", action="store_true",
                         help="rewrite the verified: mark of every template step that passed")
@@ -333,7 +336,12 @@ def _dispatch(args) -> tuple[dict, int]:
         # together — so both come out as the one JSON usage error, never as a traceback.
         try:
             chain = load_chain(manifest)
+            values_path = Path(args.values).expanduser() if args.values else default_values_path()
+            if args.values and not values_path.is_file():
+                raise ChainError(f"the values file {values_path} does not exist")
+            file_values = load_values_file(values_path, profile.name, chain.known_values())
             return run_chain(profile, chain, root=repo, vql_factory=resolve_vql_factory(profile),
+                             file_values=file_values, values_file=values_path if values_path.is_file() else None,
                              rest_factory=resolve_rest_factory(), database=args.database,
                              with_marketplace=args.with_marketplace, with_ai=args.with_ai,
                              with_writes=args.with_writes, with_scheduler=args.with_scheduler,

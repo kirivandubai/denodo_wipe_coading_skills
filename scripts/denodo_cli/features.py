@@ -13,7 +13,10 @@ the properties of ``PARAMETERS``.
 
 from __future__ import annotations
 
+import re
 from typing import Any
+
+_PLAIN_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
 # Short name -> server setting. Nothing that holds a secret: names, switches and models only.
 PARAMETERS: dict[str, str] = {
@@ -160,3 +163,34 @@ def scheduler_data_source(rest, user: str) -> tuple[str | None, list[dict]]:
                    "connectionURI": s.get("connectionURI")} for s in sources]
     mine = [c for c in candidates if c["login"] == user]
     return (str(mine[0]["id"]) if len(mine) == 1 else None), (mine or candidates)
+
+
+def _identifier(name: str) -> str:
+    return name if _PLAIN_NAME.fullmatch(name) else '"' + name.replace('"', '""') + '"'
+
+
+def is_admin(transport, user: str) -> bool | None:
+    """Whether the profile's user is a global administrator: ``adminglobal`` of ``DESC USER``,
+    which any user may run on themselves. Global security policies and restrictions do not
+    apply to an administrator, so their own queries prove nothing about them (T31). ``None``
+    when the server does not say — a user known only to LDAP or an identity provider."""
+    try:
+        result = transport.execute(f"DESC USER {_identifier(user)}")
+        flags = dict(zip(result.columns or [], (result.rows or [[]])[0]))
+        return str(flags["adminglobal"]).lower() == "true" if "adminglobal" in flags else None
+    except Exception:  # noqa: BLE001 — an unknown answer, not a failed check
+        return None
+
+
+def can_impersonate(transport, user: str) -> bool | None:
+    """Whether a query of this profile may run as someone else
+    (``CONTEXT('impersonate_user' = …)``), the only way an administrator sees what a policy
+    leaves to another user (T31). Asked by impersonating oneself over ``Dual()``: the server
+    refuses users without the ``impersonator`` role with a message of its own. ``None`` for
+    any other refusal, which says nothing about the role."""
+    literal = user.replace("'", "''")
+    try:
+        transport.execute(f"SELECT 1 AS probe FROM Dual() CONTEXT ('impersonate_user' = '{literal}')")
+        return True
+    except Exception as exc:  # noqa: BLE001
+        return False if "cannot impersonate" in str(exc) else None

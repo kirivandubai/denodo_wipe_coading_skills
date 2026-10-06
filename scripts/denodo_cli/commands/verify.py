@@ -27,6 +27,8 @@ from .api import api_call, parse_multipart_specs
 from .secret import encrypt_password
 from .testing import run_testing_tool
 from .vql import run_statements
+from ..features import (FEATURE_NAMES, FEATURE_REASONS, can_impersonate, feature_state, is_admin,
+                        read_features, scheduler_data_source, server_values)
 from ..output import envelope
 from ..profiles import Profile, profiles_path
 from ..templates import TemplateError, format_mark, load_block, update_mark
@@ -36,6 +38,10 @@ KINDS = ("template", "fixture")
 CHANNELS = ("vql", "http", "denodotest")
 EXPECTS = ("rows", "no rows")
 THROWAWAY = "@encrypt-throwaway"
+# T40: a value that belongs to an installation is filled in by the run — from what the server
+# says, or from the manifest's table for the write data source's product.
+SERVER = "@server"
+DIALECT = "@dialect"
 HTTP_SERVERS = ("marketplace", "scheduler")
 PLACEHOLDER = re.compile(r"\{([a-z_][a-z0-9_]*)\}")
 
@@ -67,6 +73,9 @@ class Step:
     files: dict[str, dict] = field(default_factory=dict)
     capture_from: int | None = None
     poll: dict | None = None
+    # T40: the features of the server the step needs (features.FEATURE_NAMES); a step whose
+    # feature the server is known to lack is skipped with the reason.
+    requires: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -274,6 +283,13 @@ def _step(raw: dict) -> Step:
         raise ChainError(f"step {step_id!r}: capture_from must be an integer, got {capture_from!r}")
     if (files or poll or capture_from is not None) and channel != "http":
         raise ChainError(f"step {step_id!r}: files, poll and capture_from only apply to an http-channel step")
+    requires = raw.get("requires", [])
+    if not isinstance(requires, list) or not all(isinstance(name, str) for name in requires):
+        raise ChainError(f"step {step_id!r}: requires must be a list of feature names, got {requires!r}")
+    unknown = [name for name in requires if name not in FEATURE_NAMES]
+    if unknown:
+        raise ChainError(f"step {step_id!r}: requires names {unknown}, which are not features; "
+                         f"the features are {', '.join(FEATURE_NAMES)}")
     return Step(id=step_id, kind=kind, channel=channel, address=address, vql=vql,
                 scheduler=scheduler, files=files, poll=poll, capture_from=capture_from,
                 calls=_int_calls(raw.get("calls", []), step_id),
@@ -281,7 +297,7 @@ def _step(raw: dict) -> Step:
                 capture={str(k): str(v) for k, v in (raw.get("capture") or {}).items()},
                 expect_body={str(k): str(v) for k, v in expect_body.items()},
                 check=raw.get("check"), expect=expect, marketplace=marketplace, ai=ai, writes=writes,
-                database=database)
+                database=database, requires=list(requires))
 
 
 def _files(raw: object, step_id: str) -> dict[str, dict]:
@@ -522,6 +538,8 @@ def run_chain(
     allow_destructive: bool = False,
     testing_tool: Path | None = None,
     testing_runner: Callable | None = None,
+    file_values: dict[str, str] | None = None,
+    values_file: Path | None = None,
 ) -> tuple[dict, int]:
     """Run every vql-channel step of ``chain`` in order and report what happened.
 
@@ -603,16 +621,29 @@ def run_chain(
     way past the flag either: a run's own ``DROP DATABASE ... CASCADE`` is exactly the kind
     of operation the gate exists for, not an exception to it.
     """
-    values = dict(chain.values)
-    if database:
-        values["database"] = database
     if profile.production and not allow_destructive:
+        values = {**chain.values, **({"database": database} if database else {})}
         return _refused_on_production(profile, values), EXIT_USAGE
+    # T40: the server is asked once, before anything is created, and only when the manifest
+    # needs it — a value it fills in, or a step that requires a feature.
+    features = _probe(profile, vql_factory) if _needs_server(chain) else None
+    server = server_values(features) if features else {}
+    scheduler_note = "the Scheduler tail did not run (--with-scheduler)"
+    if with_scheduler and chain.values.get("scheduler_data_source_id") == SERVER and rest_factory is not None:
+        found, candidates = _scheduler_source(profile, rest_factory)
+        if found:
+            server["scheduler_data_source_id"] = found
+        else:
+            scheduler_note = (f"no single VDP data source of the Scheduler logs in as {profile.user!r}; "
+                              f"its VDP data sources: {candidates or 'none'}")
+    values, values_from, unresolved = resolve_values(
+        chain, database=database, file_values=file_values, server=server, values_file=values_file,
+        profile_name=profile.name, scheduler_note=scheduler_note)
     if not keep:
         # Gated on the same condition _cleanup itself checks first: when --keep is set,
         # cleanup never renders or runs, so an unresolved cleanup placeholder must not
         # abort a run that has nothing to do with cleanup.
-        _check_cleanup_placeholders(chain, values)
+        _check_cleanup_placeholders(chain, {**values, **{name: "" for name in unresolved}})
     # After the local checks above and before anything is created: a value the manifest
     # cannot hold literally (see _encrypt_throwaways) is filled in here, and a server that
     # cannot produce it stops the run while nothing has been written yet.
@@ -651,6 +682,16 @@ def run_chain(
                     step, "Testing Tool steps run a .denodotest file with the Denodo Testing Tool; "
                           "they need --testing-tool <its install directory>"))
                 continue
+            lacking = [name for name in step.requires if feature_state(features or {}, name) is False]
+            if lacking:
+                reports.append(_skipped(step, "the server lacks " + "; ".join(
+                    f"{name}: {FEATURE_REASONS[name]}" for name in lacking)))
+                continue
+            named = sorted(_step_value_names(step) & set(unresolved))
+            if named:
+                reports.append(_skipped(step, "; ".join(
+                    f"value {{{name}}} is unresolved: {unresolved[name]}" for name in named)))
+                continue
             report = _run_step(profile, step, values=values, root=root, vql_factory=vql_factory,
                                rest_factory=rest_factory, allow_destructive=allow_destructive,
                                update_marks=update_marks, version=version, day=day,
@@ -665,14 +706,120 @@ def run_chain(
         cleanup_report = _cleanup(profile, chain, values=values, vql_factory=vql_factory,
                                   rest_factory=rest_factory, allow_destructive=allow_destructive,
                                   keep=keep, with_marketplace=with_marketplace, with_writes=with_writes,
-                                  with_scheduler=with_scheduler)
+                                  with_scheduler=with_scheduler, unresolved=unresolved)
     ok = all(r["ok"] for r in reports if not r["skipped"])
     ok = ok and (cleanup_report["ran"] is False or (
         all(s["ok"] for s in cleanup_report["statements"]) and
         all(h["ok"] for h in cleanup_report["http"])))
+    extra = {"features": features} if features is not None else {}
     doc = envelope(ok, profile, "verify", database=values.get("database"), steps=reports,
-                   summary=_summary(reports), cleanup=cleanup_report, values=values)
+                   summary=_summary(reports, not_run=len(chain.not_run)), cleanup=cleanup_report,
+                   values=values, values_from=values_from, unresolved=unresolved,
+                   values_file=str(values_file) if values_file else None, **extra)
     return doc, EXIT_OK if ok else EXIT_EXECUTION
+
+
+# Where each @server value comes from, for the reason of a value the server did not give.
+SERVER_SOURCES = {
+    "embedding_model": "GET_PARAMETER of the embedding model, which only an administrator may read",
+    "write_datasource_database": "the cache data source in GET_CACHE_CONFIGURATION",
+    "write_datasource_name": "the cache data source in GET_CACHE_CONFIGURATION",
+    "write_catalog": "target_catalog in GET_CACHE_CONFIGURATION, empty when the cache database sets none",
+    "write_schema": "target_schema in GET_CACHE_CONFIGURATION, empty when the cache database sets none",
+    "write_dialect": "adapter_database_name in GET_CACHE_CONFIGURATION",
+}
+
+
+def _needs_server(chain: Chain) -> bool:
+    return (any(value in (SERVER, DIALECT) for value in chain.values.values())
+            or any(step.requires for step in chain.steps))
+
+
+def _probe(profile: Profile, vql_factory: Callable) -> dict:
+    """The server's features (``features.read_features``) and the user's rights, read once.
+
+    A server that cannot be reached leaves every feature unknown; the first step then fails
+    with the real reason, which is a better report than a failed probe.
+    """
+    unknown = {"enterprise_plus": None, "mpp": None, "cache": None, "llm": None, "embedding": None,
+               "summary_rewrite": None, "data_movement": None, "admin": None, "impersonation": None}
+    try:
+        transport = vql_factory(profile)
+    except Exception:  # noqa: BLE001
+        return unknown
+    try:
+        features = read_features(transport)
+        features.update(admin=is_admin(transport, profile.user),
+                        impersonation=can_impersonate(transport, profile.user))
+        return features
+    except Exception:  # noqa: BLE001
+        return unknown
+    finally:
+        transport.close()
+
+
+def _scheduler_source(profile: Profile, rest_factory: Callable) -> tuple[str | None, list[dict]]:
+    try:
+        rest = rest_factory(profile, server="scheduler")
+    except Exception:  # noqa: BLE001
+        return None, []
+    return scheduler_data_source(rest, profile.user)
+
+
+def resolve_values(chain: Chain, *, database: str | None, file_values: dict[str, str] | None,
+                   server: dict[str, str], values_file: Path | None, profile_name: str,
+                   scheduler_note: str = "") -> tuple[dict[str, str], dict[str, str], dict[str, str]]:
+    """The run's values, where each came from, and why each unresolved one is.
+
+    Precedence: ``--database``, then the values file, then the server (``@server``) or the
+    dialect table (``@dialect``), then the manifest. A value nobody filled in is left out of
+    the values, so no text naming it can be rendered and sent; the reason ends with the line to
+    add to the values file.
+    """
+    values: dict[str, str] = {}
+    origin: dict[str, str] = {}
+    why: dict[str, str] = {}
+    for name, value in chain.values.items():
+        if value == SERVER:
+            if name in server:
+                values[name], origin[name] = server[name], "server"
+            elif name == "scheduler_data_source_id":
+                why[name] = scheduler_note
+            else:
+                why[name] = f"the server did not say ({SERVER_SOURCES.get(name, 'no source is known')})"
+        elif value != DIALECT:
+            values[name], origin[name] = value, "manifest"
+    for name, value in (file_values or {}).items():
+        values[name], origin[name] = value, "file"
+        why.pop(name, None)
+    dialect = values.get("write_dialect")
+    for name, value in chain.values.items():
+        if value != DIALECT or origin.get(name) == "file":
+            continue
+        table = chain.dialects.get(dialect or "")
+        if table is not None and name in table:
+            values[name], origin[name] = table[name], "dialect"
+        elif dialect:
+            why[name] = (f"the manifest has no {name} for {dialect!r}, the product of the write data source "
+                         f"(its dialects: {', '.join(sorted(chain.dialects)) or 'none'})")
+        else:
+            why[name] = "the product of the write data source is unknown (write_dialect)"
+    if database:
+        values["database"], origin["database"] = database, "flag"
+    where = str(values_file) if values_file else "the values file"
+    unresolved = {name: f"{reason}; set {name} = \"…\" in [{profile_name}] of {where}"
+                  for name, reason in why.items()}
+    origin.update({name: "unresolved" for name in unresolved})
+    return values, origin, unresolved
+
+
+def _step_value_names(step: Step) -> set[str]:
+    """The ``{value}`` names the manifest's texts for ``step`` use."""
+    texts = [step.vql or "", step.check or "", step.database or "", *step.substitute.values(),
+             *step.expect_body.values()]
+    for spec in step.files.values():
+        texts.extend(spec["substitute"].values())
+    return {match.group(1) for text in texts for match in PLACEHOLDER.finditer(text)}
 
 
 def _encrypt_throwaways(profile: Profile, values: dict[str, str], *, vql_factory: Callable) -> dict | None:
@@ -761,7 +908,8 @@ def _check_cleanup_placeholders(chain: Chain, values: dict[str, str]) -> None:
 
 def _cleanup(profile: Profile, chain: Chain, *, values: dict[str, str], vql_factory: Callable,
              rest_factory: Callable | None, allow_destructive: bool, keep: bool,
-             with_marketplace: bool = False, with_writes: bool = False, with_scheduler: bool = False) -> dict:
+             with_marketplace: bool = False, with_writes: bool = False, with_scheduler: bool = False,
+             unresolved: dict[str, str] | None = None) -> dict:
     """Always runs, including after a failure: a run that did not clean up must say so.
 
     Cleanup statements are destructive by definition (``DROP ...``, ``DELETE``, and the
@@ -799,13 +947,25 @@ def _cleanup(profile: Profile, chain: Chain, *, values: dict[str, str], vql_fact
     if not chain.cleanup and not chain.cleanup_http and not chain.cleanup_writes:
         return {"ran": False, "reason": "the manifest has no cleanup section",
                 "statements": [], "http": []}
-    vql_report: list[dict] = []
     # The write steps' table lives in a source database, not in the test database: it goes
     # first, through the base view DROP DATABASE would take away, and only when those steps
     # could have run.
     vql_cleanup = (chain.cleanup_writes if with_writes else []) + chain.cleanup
-    if vql_cleanup:
-        statements = [render(s, {}, values) for s in vql_cleanup]
+    # A statement naming a value the run never had (T40) is reported, not sent: its target was
+    # never created either, since every step naming that value was skipped.
+    held: list[dict] = []
+    sendable: list[str] = []
+    for statement in vql_cleanup:
+        names = sorted({m.group(1) for m in PLACEHOLDER.finditer(statement)} & set(unresolved or {}))
+        if names:
+            held.append({"statement": statement, "ok": True, "skipped": True, "error": None,
+                         "reason": "; ".join(f"value {{{n}}} is unresolved: {(unresolved or {})[n]}"
+                                             for n in names)})
+        else:
+            sendable.append(statement)
+    vql_report: list[dict] = list(held)
+    if sendable:
+        statements = [render(s, {}, values) for s in sendable]
         doc, _ = run_statements(profile, statements, transport_factory=vql_factory, max_rows=MAX_ROWS,
                                 allow_destructive=allow_destructive, continue_on_error=True)
         if doc.get("statements") is None:
@@ -817,10 +977,10 @@ def _cleanup(profile: Profile, chain: Chain, *, values: dict[str, str], vql_fact
             # report itself as having succeeded — the `all(s["ok"] ...)` in run_chain is
             # vacuously true over an empty list. One synthetic failed entry keeps the
             # refusal visible and keeps the run's overall ok computation honest.
-            vql_report = [{"statement": "; ".join(statements), "ok": False, "error": doc.get("error")}]
+            vql_report += [{"statement": "; ".join(statements), "ok": False, "error": doc.get("error")}]
         else:
-            vql_report = [{"statement": s["statement"], "ok": s["ok"], "error": s["error"]}
-                         for s in doc["statements"]]
+            vql_report += [{"statement": s["statement"], "ok": s["ok"], "error": s["error"]}
+                          for s in doc["statements"]]
     http_report = _cleanup_http(profile, chain.cleanup_http, values=values, rest_factory=rest_factory,
                                 allow_destructive=allow_destructive, with_marketplace=with_marketplace,
                                 with_scheduler=with_scheduler)
@@ -935,11 +1095,13 @@ def _server_version(profile: Profile, vql_factory: Callable) -> str | None:
     return match.group(0) if match else None
 
 
-def _summary(reports: list[dict]) -> dict:
+def _summary(reports: list[dict], not_run: int = 0) -> dict:
     return {
         "verified": sum(1 for r in reports if r["kind"] == "template" and r["ok"] and not r["skipped"]),
         "failed": sum(1 for r in reports if not r["ok"]),
         "skipped": sum(1 for r in reports if r["skipped"]),
+        # marked blocks of the skills the manifest lists under [not_run], with the reason
+        "not_run": not_run,
     }
 
 
