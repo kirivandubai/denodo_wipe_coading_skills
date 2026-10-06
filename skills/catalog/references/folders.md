@@ -82,7 +82,8 @@ WHERE input_database_name = '<db>' AND type IN ('folder', 'view', 'datasource', 
 
 `folder` in `GET_ELEMENTS()` is the **parent path** of the element (`/` for a top-level
 folder), in **lowercase** — `name` keeps its case: a folder `/Sales/EU` appears as
-`name = 'EU', folder = '/sales'`; the full path is `folder + '/' + name`. `type` values on
+`name = 'EU', folder = '/sales'`; the full path is `'/' + name` at the top level and
+`folder + '/' + name` below it, so compare paths with `lower()`. `type` values on
 9.5.1: `folder`, `datasource`, `wrapper`, `view` (subtype `base`, `derived`, `interface`,
 `materialized`, `metric`), `association`, `storedProcedure`, `webService`, `tag`, and
 `type` — registers and arrays (`CREATE TYPE`, or left by `NEST`/`REGISTER`), `folder = null`.
