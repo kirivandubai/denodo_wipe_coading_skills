@@ -922,12 +922,13 @@ check = "SELECT COUNT(*) FROM order_line_summary HAVING COUNT(*) = 3 AND SUM(lin
 id = "catalog-many-columns"
 kind = "template"
 channel = "vql"
-# Every field of the database and the base columns behind each field of its derived views, after
-# the union and array views exist: one view the procedure cannot read fails the whole join.
+# Every field of the database and the columns under each field of its derived views, each row
+# on the view it names (d.view_name = e.name), after the union and array views exist: one view
+# the procedure cannot read fails the whole join.
 address = "skills/catalog/SKILL.md#One tag on many columns"
 substitute = { sales_analytics = "{database}" }
 database = "{database}"
-check = "SELECT e.name FROM GET_ELEMENTS() AS e INNER JOIN COLUMN_DEPENDENCIES() AS d ON (d.input_view_database_name = e.database_name AND d.input_view_name = e.name) WHERE e.input_database_name = '{database}' AND e.input_type = 'views' AND e.subtype = 'derived' AND e.name = 'iv_household_income' AND d.column_name = 'buy_potential' AND d.dependency_column_name = 'hd_buy_potential'"
+check = "SELECT e.name FROM GET_ELEMENTS() AS e INNER JOIN COLUMN_DEPENDENCIES() AS d ON (d.input_view_database_name = e.database_name AND d.input_view_name = e.name) WHERE e.input_database_name = '{database}' AND e.input_type = 'views' AND e.subtype = 'derived' AND d.view_name = e.name AND e.name = 'iv_household_income' AND d.column_name = 'buy_potential' AND d.dependency_column_name = 'hd_buy_potential'"
 
 [[step]]
 id = "vql-procedure"
