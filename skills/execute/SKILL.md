@@ -162,8 +162,10 @@ encrypt --env dev` — which keeps the plaintext out of the terminal as well.
   into a file both put the password into a Bash argument, and that is kept in the transcript.
 - **The ciphertext belongs to the server that produced it** — `--env` therefore names the
   environment the `.vql` will be applied to. Another environment means encrypting again there.
-- A wrong password encrypts just as happily; the mistake surfaces later as the source's own
-  `The username or password is incorrect`. *verified: 9.5.1 (live, 2026-09-12)*
+- A wrong password encrypts just as happily; the mistake surfaces later, on the first use of
+  the source, as that database's own authentication error — from a JDBC source pointing at a
+  Virtual DataPort server, `The username or password is incorrect`; other databases word it
+  their own way. *verified: 9.5.1 (live, 2026-09-12)*
 
 ### Destructive operations
 

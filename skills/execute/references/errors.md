@@ -2,9 +2,10 @@
 
 Two classes of errors reach the agent through `scripts/denodo`:
 
-1. **Virtual DataPort** (`vql run`, `vql desc`, exit `1`): the server has no error codes,
-   only text. Match by **substring** of `statements[failed_at].error.message` (the
-   `raw` field keeps the driver's full two-line message). Names in quotes vary.
+1. **Virtual DataPort** (`vql run`, `vql desc`, exit `1`): the tool passes on no error code,
+   only text (the codes in the Developer Guide's appendix belong to the JDBC API). Match by
+   **substring** of `statements[failed_at].error.message` (the `raw` field keeps the driver's
+   full two-line message). Names in quotes vary.
 2. **Data Marketplace** (`api`, exit `1`): HTTP `status`, plus `body.code` when the
    server bothers to send a body — it often does not.
 
@@ -23,7 +24,7 @@ skills create — instead of retrying `DROP` + `CREATE`.
 
 | Substring | Statement | Meaning |
 |---|---|---|
-| `Database already exists` | `CREATE DATABASE` | there is no `CREATE OR REPLACE DATABASE` ambiguity — it exists, connect to it |
+| `Database already exists` | `CREATE DATABASE` | the database exists: `CREATE OR REPLACE DATABASE` re-applies yours and keeps the objects inside; one you did not create is not yours to replace — connect to it or pick another name (`/denodo:vql`) |
 | `Error creating folder: /x already exists` | `CREATE FOLDER` | folder exists |
 | `Invalid tag name: already exists` | `CREATE TAG` | tag exists |
 | `Duplicate object identifier` | `CREATE DATASOURCE`, `CREATE WRAPPER` | source/wrapper of that name exists (message prefix names which) |
@@ -67,7 +68,7 @@ gave up, which is usually *after* the real mistake. Known causes, by token:
 
 | Substring | Statement | Fix |
 |---|---|---|
-| `error while loading the type of the field 'bigint'` | `CREATE INTERFACE VIEW`, `CREATE TABLE` | use VQL types: `long`, `int`, `text`, `decimal`, `date`, `timestamp`, `boolean` — not SQL ones |
+| `error while loading the type of the field 'bigint'` | `CREATE INTERFACE VIEW`, `CREATE TABLE` | use VQL types: `long`, `int`, `text`, `decimal`, `localdate`, `timestamp`, `boolean` — not SQL ones (`date` is the deprecated timestamp-with-zone type) |
 
 ### Dependencies on DROP
 
@@ -78,7 +79,7 @@ datasources → folders → database.
 | Substring | Statement | Meaning |
 |---|---|---|
 | `There are some elements that depend on this one` | `DROP VIEW`, `DROP DATASOURCE`, `DROP WRAPPER` | dependents exist; drop them first |
-| `Some elements depend on '<tag>'` | `DROP TAG` | tag is still assigned; `ALTER TAG … REMOVE_FROM` first |
+| `Some elements depend on '<tag>'` | `DROP TAG` | the tag is still assigned, or a global security policy names it: `ALTER TAG … REMOVE_FROM` for assignments; a policy is `/denodo:security` (`CASCADE` deletes the policy too) |
 | `folder /x contains elements and can not be dropped` | `DROP FOLDER [IF EXISTS]` | empty the folder first; `IF EXISTS` does not help |
 | `The database does not contain the specified view` | `DROP VIEW` without `IF EXISTS` | already gone; use `IF EXISTS` |
 | `cannot be dropped because the connection was established with this database` | `DROP DATABASE` | the session is connected to it: run the drop with `--database admin` (and no `CONNECT DATABASE <db>` before it) |
@@ -88,7 +89,7 @@ datasources → folders → database.
 | Substring | Where | Meaning |
 |---|---|---|
 | `Error executing query. Total time …` + in `raw`: `[DF ROUTE] [PARSE_ERROR] … Error getting input Stream` | `SELECT` from a DF base view | the file path in the datasource `ROUTE` is wrong or unreadable on the *server* (paths are server-side) |
-| `authentication error: The username or password is incorrect` | any (arrives as `error.kind: connection`) | profile password wrong — the human edits `profiles.toml` |
+| `authentication error: The username or password is incorrect` | any (arrives as `error.kind: connection`) | profile password wrong — the human edits `profiles.toml`; in a statement's error instead (no `error.kind`), a data source's password (SKILL.md, *A password for a data source*) |
 
 Silent failures worth knowing — `ok:true` and a broken object, every one of them reproduced
 on a 9.5.1 server like the rows above:
@@ -96,7 +97,7 @@ on a 9.5.1 server like the rows above:
 | What creates cleanly | What is actually wrong | How you find out |
 |---|---|---|
 | a DF wrapper whose `OUTPUTSCHEMA` lists only some of the file's columns | its base view returns **zero rows** | `SELECT` — list every column of the file (`/denodo:datasources`) |
-| `CREATE OR REPLACE VIEW` that renames or drops a column | every view above it goes to `view_status = 'INVALID'`, every association mapping it goes to `valid = false` | `GET_VIEWS(… input_retrieve_invalid_views_only = true)` and `GET_ASSOCIATIONS()` (`/denodo:views`) |
+| `CREATE OR REPLACE VIEW` that renames or drops a column | every view that used the column goes to `view_status = 'INVALID'` (views built on those stay `OK` and fail on `SELECT`), every association mapping it goes to `valid = false` | `GET_VIEWS(… input_retrieve_invalid_views_only = true)`, then `USED_BY()` above each one, and `GET_ASSOCIATIONS()` (`/denodo:views`) |
 | `SET IMPLEMENTATION` over a view that does not match the interface | the contract fails on `SELECT` with `… <NAME> [INTERFACE] [ERROR]`, which names nothing else | `SELECT` through the interface view, and `view_status` — `INVALID`, or `INTERFACE_NOT_IMPLEMENTED` when there is no implementation at all |
 | `ENDPOINT … PRINCIPAL` without `REFERENTIAL CONSTRAINT` | not a foreign key; clients see no relationship | `is_referential_constraint` in `GET_ASSOCIATIONS()` |
 | an `ADD_TO` naming a view or column that does not exist | the tag is simply not assigned | `GET_VIEW_TAGS()` (`/denodo:catalog`) |
@@ -114,7 +115,7 @@ object back** — that is what the Verify section of every domain skill is for.
 | `401` | `AUTHENTICATION_SERVER_NOT_FOUND` "Server not found" | wrong `marketplace_server_id` in the profile, **or** wrong VDP password with a serverId set | fix the profile; a single registered VDP server may leave `marketplace_server_id` unset |
 | `500` | `GENERIC` "Session Expired." | **more than one VDP server is registered and no server was named** — the marketplace cannot tell which catalog you mean | set `marketplace_server_id` in the profile and the tool names the server on every call; the ids are in `GET /public/api/configuration/servers`. `--param serverId=<id>` overrides the profile for one call |
 | `403` | empty, on `/external-tool-servers` and other server-scoped paths | the same missing `serverId` — this family answers `403` where tags answer `500` | as above: name the server |
-| `403` | empty — *observed once* | `PUT`/`POST …/views`/`DELETE` on a tag imported from VDP (`vdpTag:true`) | imported tags are read-only here; change them in VDP (`/denodo:catalog`) |
+| `403` | empty — *observed once* | `PUT`, or `POST`/`DELETE …/views` (assign, unassign), on a tag imported from VDP (`vdpTag:true`) | imported tags are read-only here; change them in VDP (`/denodo:catalog`) |
 | `404` | empty | `DELETE` of a non-existent server, element type, provider type; `GET` of an object that is gone | look the object up by name first. **When you are checking that something was deleted, `404` is the answer you wanted** — the envelope still says `ok:false` and exits `1`, so a verification script has to expect it |
 | `404` | `{"status":404,"error":"Not Found","path":…}` (Spring) | wrong path | check the path under `/public/api/…` |
 | `400` | `MISSING_REQUEST_PARAMETER` | a paged endpoint called without `offset`/`limit` (`…/categories/{id}/views`, `/tag-management/tags`) | add `--param offset=0 --param limit=50` |
@@ -158,7 +159,7 @@ errors"; a run's own errors are in its report, not in the call's answer.
 | `config` | 2 | `lacks required field(s)` / `unknown field(s)` / `cannot parse` | the human edits `profiles.toml` |
 | `config` | 2 | profile has no `marketplace_url` (from `api`) | the human adds `marketplace_url` to the profile |
 | `connection` | 1 | `connection to server at "host", port N failed: Connection refused` | VDP not running or wrong host/port; `env check` |
-| `connection` | 1 | `<urlopen error [Errno 61] Connection refused>` (from `api`) | marketplace not running or wrong `marketplace_url` |
+| `connection` | 1 | `<urlopen error [Errno …] Connection refused>` (from `api`) | marketplace not running or wrong `marketplace_url` |
 | `connection` | 1 | `<urlopen error …>` (from `api --server scheduler`) | the web container is down, or `scheduler_url` is wrong; `env check` shows the address it used |
 | `usage` | 2 | `the path '…' contains a '..' segment; nothing was sent` | a path under the server's own base URL; the Scheduler is `--server scheduler` |
 | `connection` | 1 | `authentication error: The username or password is incorrect` | wrong password in the profile |
