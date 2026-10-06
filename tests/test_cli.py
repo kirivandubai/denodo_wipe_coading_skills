@@ -118,6 +118,12 @@ class CliTest(CliHarness, unittest.TestCase):
         self.assertEqual(FakeVql.executed, ["SELECT 1 FROM DUAL()", "SELECT 2 FROM DUAL()"])
         self.assertEqual(doc["executed"], 2)
 
+    def test_vql_run_runs_every_inline_statement_given(self):
+        doc, code = self.run_cli("vql", "run", "--env", "dev", "-e", "SELECT 1 FROM DUAL()",
+                                 "-e", "SELECT 2 FROM DUAL()")
+        self.assertEqual(code, 0)
+        self.assertEqual(FakeVql.executed, ["SELECT 1 FROM DUAL()", "SELECT 2 FROM DUAL()"])
+
     def test_vql_run_file(self):
         script = Path(self.tmp.name) / "x.vql"
         script.write_text("-- header\nCREATE OR REPLACE FOLDER '/a';\nSELECT BOOM;\nSELECT 3 FROM DUAL();\n")

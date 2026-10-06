@@ -130,6 +130,14 @@ class RunRecordsTest(LedgerCase):
         self.assertIsNotNone(self.ledger.find(SERVER, ObjectRef("database", None, "mart")))
         self.assertIsNotNone(self.ledger.find(SERVER, ObjectRef("view", "mart", "v")))
 
+    def test_dropping_a_database_the_session_did_not_create_takes_its_objects_along(self):
+        server = LiveLikeServer(databases=("admin", "sales", "shared"))
+        self.run_it(server, ["CONNECT DATABASE shared", "CREATE OR REPLACE VIEW mine AS SELECT 1 AS a FROM Dual()"])
+        self.assertIsNotNone(self.ledger.find(SERVER, ObjectRef("view", "shared", "mine")))
+        doc, _ = self.run_it(server, ["DROP DATABASE shared CASCADE"])
+        self.assertIsNone(self.ledger.find(SERVER, ObjectRef("view", "shared", "mine")))
+        self.assertEqual(doc["ledger"]["dropped"], ["shared"])
+
     def test_reads_cost_no_catalog_query(self):
         server = LiveLikeServer()
         doc, _ = self.run_it(server, ["SELECT 1 FROM Dual()"])
@@ -168,6 +176,21 @@ class PlanCommandTest(LedgerCase):
         self.assertEqual(doc["executed"], 0)
         self.assertEqual(doc["session"]["id"], "s1")
         self.assertFalse(any(s.startswith(("CREATE", "DROP")) for s in server.executed))
+
+    def test_a_long_input_is_summarised_and_its_duplicates_listed(self):
+        server = LiveLikeServer(elements={"sales": {("view", "theirs"): "_t1"}})
+        doc, _ = plan_input(profile(), ["CONNECT DATABASE sales",
+                                        "CREATE OR REPLACE VIEW a AS SELECT 1 AS x FROM Dual()",
+                                        "CREATE OR REPLACE VIEW b AS SELECT 1 AS x FROM Dual()",
+                                        "CREATE OR REPLACE VIEW a AS SELECT 2 AS x FROM Dual()",
+                                        "CREATE OR REPLACE VIEW theirs AS SELECT 2 AS x FROM Dual()"],
+                            transport_factory=server, database="sales", source=None, ledger=self.ledger,
+                            session_source="CLAUDE_CODE_SESSION_ID")
+        self.assertEqual(doc["actions"], {"session": 1, "create": 2, "replace": 2})
+        self.assertEqual(doc["duplicates"], [{"object": {"type": "view", "database": "sales", "name": "a",
+                                                         "kind": "derived view"},
+                                              "statements": [1, 3]}])
+        self.assertEqual(doc["needs_yes"], [4])
 
     def test_without_a_session_the_answer_says_so(self):
         doc, code = plan_input(profile(), ["SELECT 1 FROM Dual()"], transport_factory=LiveLikeServer(),

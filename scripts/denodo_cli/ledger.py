@@ -135,9 +135,16 @@ class Ledger:
             objects = doc["servers"].setdefault(server, {"objects": []})["objects"]
             for entry in objects:
                 if entry["status"] == "present" and _same(entry, ref) and entry["name"].lower() == ref.name.lower():
-                    if internal_id and not entry.get("internal_id"):
-                        entry["internal_id"] = internal_id
-                    return
+                    recorded = entry.get("internal_id")
+                    if not (internal_id and recorded and recorded != internal_id):
+                        if internal_id and not recorded:
+                            entry["internal_id"] = internal_id
+                        return
+                    # The caller records only what did not exist before the statement, so an entry
+                    # still present under this name is one the ledger never saw go: dropped by
+                    # someone else, or with a database or data source this session did not create.
+                    entry["status"] = "dropped"
+                    entry["dropped_at"] = _iso(now)
             objects.append({
                 "type": ref.type, "kind": ref.kind, "database": ref.database, "name": ref.name,
                 "internal_id": internal_id, "created_at": _iso(now), "source": source,

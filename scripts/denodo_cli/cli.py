@@ -65,7 +65,8 @@ def build_parser() -> argparse.ArgumentParser:
     vql = top.add_parser("vql", help="VQL against Virtual DataPort").add_subparsers(dest="action", required=True)
     run = vql.add_parser("run", parents=[env_opt], help="run a .vql file (or '-' for stdin, or -e STATEMENTS)")
     run.add_argument("file", nargs="?", help="path to a .vql file, or '-' to read stdin")
-    run.add_argument("-e", "--execute", metavar="VQL", help="VQL text to run instead of a file")
+    run.add_argument("-e", "--execute", metavar="VQL", action="append",
+                     help="VQL text to run instead of a file; repeat it for several, in order")
     run.add_argument("--database", help="connect to this database instead of the profile's")
     run.add_argument("--max-rows", type=int, default=DEFAULT_MAX_ROWS, help="rows kept per result set")
     run.add_argument("--continue-on-error", action="store_true", help="keep going after a failed statement")
@@ -76,7 +77,8 @@ def build_parser() -> argparse.ArgumentParser:
                                "new or existing, this session's own, and whether the core's safety table puts it "
                                "under the human's yes; executes nothing")
     plan.add_argument("file", nargs="?", help="path to a .vql file, or '-' to read stdin")
-    plan.add_argument("-e", "--execute", metavar="VQL", help="VQL text to plan instead of a file")
+    plan.add_argument("-e", "--execute", metavar="VQL", action="append",
+                     help="VQL text to plan instead of a file; repeat it for several, in order")
     plan.add_argument("--database", help="plan against this database instead of the profile's")
     vql.add_parser("ledger", parents=[env_opt],
                    help="the objects this session created on the profile's server, each re-checked against it")
@@ -211,7 +213,7 @@ def _read_vql(args) -> tuple[str, str]:
     if bool(args.file) == bool(args.execute):
         raise UsageError("give exactly one input: a .vql file, '-' for stdin, or -e VQL")
     if args.execute:
-        return args.execute, "<inline>"
+        return ";\n".join(args.execute), "<inline>"
     if args.file == "-":
         return sys.stdin.read(), "<stdin>"
     path = Path(args.file).expanduser()

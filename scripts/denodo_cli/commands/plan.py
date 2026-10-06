@@ -50,9 +50,22 @@ def plan_input(profile: Profile, statements: list[str], *, transport_factory: Ca
     finally:
         transport.close()
 
+    actions: dict[str, int] = {}
+    for e in entries:
+        actions[e["action"]] = actions.get(e["action"], 0) + 1
+    duplicates = []
+    for e in entries:
+        if "duplicate_of" in e:
+            first = e["duplicate_of"]
+            known = next((d for d in duplicates if first in d["statements"]), None)
+            if known is None:
+                duplicates.append({"object": e["object"], "statements": [first, e["index"]]})
+            else:
+                known["statements"].append(e["index"])
     doc = envelope(True, profile, "vql plan", database=database, statements=entries,
                    needs_yes=[e["index"] for e in entries if e["needs_yes"] is True],
                    not_recognised=[e["index"] for e in entries if e["needs_yes"] is None],
+                   actions=actions, duplicates=duplicates,
                    executed=0, total=len(entries), session=_session(ledger, session_source, server),
                    project=None if declarations.root is None else {
                        "root": str(declarations.root), "base": declarations.base,

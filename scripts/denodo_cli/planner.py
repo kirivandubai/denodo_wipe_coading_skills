@@ -55,6 +55,7 @@ class _Walk:
         self.new: dict[tuple, ObjectRef] = {}               # created by an earlier statement of the input
         self.renamed: dict[tuple, ObjectRef] = {}           # old key -> the object under its new name
         self.dropped: set[tuple] = set()                    # dropped by an earlier statement of the input
+        self.declared: dict[tuple, int] = {}                # the statement of the input that last declared it
 
     def exists(self, ref: ObjectRef) -> bool | None:
         if ref.key() in self.state:
@@ -143,13 +144,22 @@ def plan_statements(statements: list[str], ctx: PlanContext) -> list[dict]:
 
 
 def _advance(st: Statement, walk: _Walk, entry: dict) -> None:
-    """What the statement leaves behind, for the statements after it."""
+    """What the statement leaves behind, for the statements after it.
+
+    A second declaration of one object in the same input is named (``duplicate_of``): in a file
+    generated for many objects it is a naming rule that gave two sources one name, and the later
+    definition silently replaces the earlier one."""
     if st.action == "create" and st.obj is not None:
+        if st.obj.key() in walk.declared:
+            entry["duplicate_of"] = walk.declared[st.obj.key()]
+        walk.declared[st.obj.key()] = entry["index"]
         if entry["exists"] is False:
             walk.create(st.obj)          # new: the input's own from here on
     elif st.action == "drop" and st.obj is not None:
+        walk.declared.pop(st.obj.key(), None)
         walk.drop(st.obj)
     elif st.action == "rename" and st.obj is not None and st.new_name:
+        walk.declared.pop(st.obj.key(), None)
         walk.rename(st.obj, st.new_name)
     elif st.action == "call" and st.procedure == "CREATE_REMOTE_TABLE":
         view = _remote_table_view(st)
@@ -286,8 +296,14 @@ def _create(entry: dict, st: Statement, walk: _Walk, ctx: PlanContext) -> dict:
         decision = _decision(entry, True, "every load of a summary changes other people's answers — create it with "
                                           "DATA_LOAD_IMMEDIATE = FALSE (/denodo:materialize)")
     elif not exists:
+        others = [ObjectRef("view", db, view) for db, view in st.endpoints]
+        others = [ref.label() for ref in others if walk.exists(ref) and not walk.own(ref)]
         if kind == "remote table":
             decision = _decision(entry, False, "a new table in a source database", list(_TARGET_CONDITIONS))
+        elif others:
+            decision = _decision(entry, True, "a new association between views you did not create in this session: "
+                                              + ", ".join(others) + " — it becomes a dependant of both, and their "
+                                              "owner's DROP VIEW then needs CASCADE (/denodo:semantics)")
         else:
             decision = _decision(entry, False, "a new object")
     elif own:
@@ -332,6 +348,10 @@ def _alter(entry: dict, st: Statement, walk: _Walk) -> dict:
         return _security(entry, st, walk)
     if entry["exists"] is None:
         return _decision(entry, True, "the server could not be read: whose object this is is unknown")
+    if entry["exists"] is False:
+        return _decision(entry, False, "the object does not exist at this point of the input: the server refuses "
+                                       "the statement", ["create it first — apply the file that does, then plan "
+                                                         "this one again"])
     if not entry["own"]:
         return _decision(entry, True, "an ALTER of an object this session did not create")
     if ref.type == "view":
