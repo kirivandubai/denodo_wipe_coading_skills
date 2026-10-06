@@ -80,6 +80,12 @@ the bottlenecks in trust on another server, in rules kept as prose, and in bulk 
 
 *T43 is done — under «Сделано» below. The development the review recommended is complete.*
 
+**The final review (2026-10-06).** [The verdict on the owner's five points](superpowers/specs/2026-10-06-final-review.md)
+and [every finding that survived verification](superpowers/specs/2026-10-06-final-review-findings.md).
+It proposes one closing task before development moves to session-driven changes only; the task is
+queued when the owner agrees on its order and on three decisions — the brownfield recipe (the open
+question below), the plugin's `version`, and whether `vql` keeps a map of the skills.
+
 ---
 
 ## Открытые вопросы
