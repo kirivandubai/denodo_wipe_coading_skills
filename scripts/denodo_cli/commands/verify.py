@@ -141,6 +141,9 @@ def load_chain(path: Path) -> Chain:
         for needed in step.needs:
             if by_id.get(needed, index) >= index:
                 raise ChainError(f"step {step.id!r} needs {needed!r}, which is not an earlier step of {path}")
+    if "local_values" in (document.get("values") or {}):
+        raise ChainError(f"local_values in {path} is a list at the top of the manifest, before [values], "
+                         f"not a value inside it")
     local_values = document.get("local_values", [])
     if not isinstance(local_values, list) or not all(isinstance(name, str) and name in values for name in local_values):
         raise ChainError(f"local_values in {path} must list names of [values], got {local_values!r}")
@@ -698,13 +701,16 @@ def run_chain(
     day = today or dt.date.today()
     reports: list[dict] = []
     skipped_why: dict[str, str] = {}
+    # Ids a skipped step would have captured: they skip the steps naming them, and stay out of
+    # the report's `unresolved`, which lists the values an installation has to give.
+    lost: dict[str, str] = {}
     stop = False
     try:
         for step in chain.steps:
             if stop:
                 reports.append(_skipped(step, "an earlier step failed", cause="failure"))
                 continue
-            why, cause = _why_skip(step, features=features, unresolved=unresolved, skipped_why=skipped_why,
+            why, cause = _why_skip(step, features=features, unresolved={**lost, **unresolved}, skipped_why=skipped_why,
                                    root=root, with_marketplace=with_marketplace, with_scheduler=with_scheduler,
                                    with_ai=with_ai, with_writes=with_writes, testing_tool=testing_tool,
                                    assumed=assume_missing)
@@ -715,7 +721,7 @@ def run_chain(
                 # nobody will fill in: every later step naming it is skipped, not failed.
                 for name in step.capture:
                     if name not in values:
-                        unresolved.setdefault(name, f"step {step.id!r}, which captures it, was skipped: {why}")
+                        lost.setdefault(name, f"step {step.id!r}, which captures it, was skipped: {why}")
                 continue
             report = _run_step(profile, step, values=values, root=root, vql_factory=vql_factory,
                                rest_factory=rest_factory, allow_destructive=allow_destructive,
@@ -850,11 +856,19 @@ def _step_value_names(step: Step, root: Path | None = None) -> set[str]:
              *step.expect_body.values()]
     for spec in step.files.values():
         texts.extend(spec["substitute"].values())
-    if root is not None and step.address:
-        try:
-            texts.append(load_block(root, step.address).body)
-        except TemplateError:
-            pass
+    if root is not None:
+        blocks = [(step.address, step.substitute)] + [(spec["address"], spec["substitute"])
+                                                      for spec in step.files.values()]
+        for address, substitute in blocks:
+            if not address:
+                continue
+            try:
+                body = load_block(root, address).body
+            except TemplateError:
+                continue
+            for needle, replacement in substitute.items():
+                body = body.replace(needle, replacement)
+            texts.append(body)
     return {match.group(1) for text in texts for match in PLACEHOLDER.finditer(text)}
 
 

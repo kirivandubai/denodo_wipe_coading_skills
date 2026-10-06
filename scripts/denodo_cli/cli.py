@@ -168,8 +168,8 @@ def build_parser() -> argparse.ArgumentParser:
                              "(its bin/denodo-test.sh needs Java on PATH or in JAVA_HOME)")
     verify.add_argument("--without", metavar="FEATURE", action="append", default=[], choices=FEATURE_NAMES,
                         help="treat the server as lacking this feature (repeatable): its steps are skipped, "
-                             "as on a server without it — to rehearse a smaller server, or to keep a run "
-                             "off the cache")
+                             "as on a server without it — to rehearse a smaller server, or to skip the steps "
+                             "that cache")
     verify.add_argument("--values", metavar="FILE",
                         help="values of this installation, one table per profile (default: verify.toml "
                              "beside the profiles file)")

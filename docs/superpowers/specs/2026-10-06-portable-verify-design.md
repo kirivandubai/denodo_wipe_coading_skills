@@ -106,13 +106,15 @@ not known to be off.
 
 The vocabulary is closed (`enterprise_plus`, `llm`, `embedding`, `cache`, `summary_rewrite`,
 `data_movement`, `impersonation`); an unknown name in `requires` is a manifest error.
-`--without <feature>` treats the server as lacking one — to rehearse a smaller server, or to keep
-a run off the cache — and the reason then says so.
+`--without <feature>` treats the server as lacking one — to rehearse a smaller server, or to skip
+the caching steps (`--with-writes` still writes into the cache data source) — and the reason then
+says so.
 
 **A skip travels.** A step that uses what an earlier step creates names it in `needs = [...]`;
 when that step was skipped, so is this one, with its reason, transitively. A value an earlier
 step would have captured (the id of an object it creates) is unresolved for every later step
-naming it once that step is skipped. Without this a skip turned into a failure further down and
+naming it once that step is skipped; such an id skips the steps but stays out of the report's
+`unresolved`, which lists only what an installation has to give. Without this a skip turned into a failure further down and
 stopped the chain — on the commonest smaller server, an administrator without the `impersonator`
 role, the default run failed at the security reads (review finding). A unit test over the real
 manifest holds it statically: every object a step that may be skipped creates is used only by

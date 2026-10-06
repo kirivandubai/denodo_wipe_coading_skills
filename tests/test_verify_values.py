@@ -455,6 +455,7 @@ class SkipsTravelTest(unittest.TestCase):
         self.assertTrue(use["skipped"])
         self.assertIn("make-job", use["reason"])
         self.assertFalse(any("{job_id}" in s for s in Server.sent))
+        self.assertNotIn("job_id", doc["unresolved"])     # not a value the installation gives
 
     def test_without_treats_the_server_as_lacking_a_feature(self):
         self.path.write_text(REQUIRES, encoding="utf-8")
@@ -525,6 +526,12 @@ vql = "SELECT 1;"
             values.write_text(f'[lab]\n{key} = "x"\n', encoding="utf-8")
             with self.subTest(key=key), self.assertRaisesRegex(ChainError, "value of the chain itself"):
                 load_values_file(values, "lab", self.chain.settable_values(), own=own)
+
+    def test_local_values_inside_values_is_refused(self):
+        self.path.write_text(self.MANIFEST.replace('local_values = ["fixture_base"]\n', '').replace(
+            '[values]\n', '[values]\nlocal_values = ["fixture_base"]\n'), encoding="utf-8")
+        with self.assertRaisesRegex(ChainError, "top of the manifest"):
+            load_chain(self.path)
 
     def test_local_values_must_be_values(self):
         self.path.write_text(self.MANIFEST.replace('local_values = ["fixture_base"]', 'local_values = ["nope"]'),

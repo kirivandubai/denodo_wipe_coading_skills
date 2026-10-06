@@ -350,8 +350,8 @@ class ASkippedStepTakesItsDependantsWithItTest(unittest.TestCase):
                     continue
                 if (step.id, name) in NOT_A_USE:
                     continue
-                if not any(self._covered(gates[maker], gates[step.id]) or maker in needs[step.id]
-                           for maker in makers):
+                if not any((self._covered(gates[maker], gates[step.id]) and needs[maker] <= needs[step.id])
+                           or maker in needs[step.id] for maker in makers):
                     problems.append(f"{step.id} uses {name}, created only by {makers}, which may be skipped "
                                     f"when {step.id} runs — add needs = [...] or the same gates")
             for name in made:
