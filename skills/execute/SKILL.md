@@ -21,7 +21,7 @@ tool reads host, user and password from `~/.denodo/profiles.toml` itself.
 
 | Task | Command |
 |---|---|
-| Apply a file | `vql run --env dev model/sales/views.vql` |
+| Apply a file | `vql run --env dev model/sales/views.vql` — after `vql plan` of the same file, and again after every change to it (`/denodo:vql`): a file of new objects and a cache load included |
 | Apply inline VQL | `vql run --env dev -e "SELECT COUNT(*) FROM bv_orders"` — reads only: every `CREATE`, `ALTER` and `DROP` goes through a file (`/denodo:vql`) |
 | Read stdin | `vql run --env dev -` |
 | Another database | add `--database <db>` (or put `CONNECT DATABASE <db>;` first in the file) |
