@@ -223,7 +223,9 @@ instead of a weekday number.
 
 - The `date` type and `TO_DATE` are deprecated: `localdate`, `timestamp`, `timestamptz` and
   `TO_LOCALDATE` / `TO_TIMESTAMP` / `TO_TIMESTAMPTZ` replace them. In a `CAST`, the SQL name
-  `DATE` means `localdate`: `CAST('2024-03-15' AS date)` → `2024-03-15`.
+  `DATE` means `localdate`: `CAST('2024-03-15' AS date)` → `2024-03-15`; `CAST(x AS localdate)`
+  is a syntax error, and the two-argument `CAST('date', x)` returns the deprecated `date`, with
+  a zone — there it is `CAST('localdate', x)` (measured).
 - `CATALOG_ELEMENTS`, `CATALOG_VIEWS`, `CATALOG_PKS` and `CATALOG_FKS` are deprecated:
   `GET_ELEMENTS`, `GET_VIEWS`, `GET_PRIMARY_KEYS`, `GET_FOREIGN_KEYS`. `CATALOG_PERMISSIONS`
   and `CATALOG_VDP_METADATA_VIEWS` are not.
