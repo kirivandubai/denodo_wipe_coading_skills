@@ -350,8 +350,8 @@ defaults already filled in, then assemble the string from the table below.
 the rest of the rows come from the driver directories the server ships and are unverified.*
 `DATABASEVERSION` is the source's own version as a string (`'16'`, `'19c'`, `'2022'`) — ask
 for it, do not assume the newest — and `CLASSPATH` the directory matching it (`postgresql-16`,
-`oracle-19c`; `oracle` for 23 and newer). MySQL and the other databases whose driver Denodo does
-not ship need the official one imported by an administrator first: `references/jdbc.md`, *Driver directories*.
+`oracle-19c`; `oracle` for 23 and newer). MySQL and other databases whose driver Denodo does
+not ship need the official one, imported by an administrator first (`references/jdbc.md`).
 
 Certificate and TLS options are driver properties: in the URI or in `PROPERTIES ( … )` —
 SQL Server on a self-signed certificate needs `trustServerCertificate=true`, and that is a
@@ -500,9 +500,9 @@ no shell. Three ways to get it, in order of preference:
    server-generated sources carry no `IGNOREMATCHINGERRORS` and often no `CHARSET`, so you
    add `IGNOREMATCHINGERRORS = FALSE` yourself — inheriting the donor's silence is exactly
    the failure the template protects you from. And its mappings may be spelled unlike the
-   template's — a file whose header is quoted and upper-case gives `hd_demo_sk = '"HD_DEMO_SK"'`
-   where the template writes `hd_demo_sk = 'hd_demo_sk'`: both work, because the mapping is
-   positional either way (*verified: 9.5.1 (live, 2026-09-12)*). Do not conclude the template is stale.
+   template's — a header quoted and upper-case gives `hd_demo_sk = '"HD_DEMO_SK"'` where the
+   template writes `hd_demo_sk = 'hd_demo_sk'`: both work, because the mapping is positional
+   either way (*verified: 9.5.1 (live, 2026-09-12)*). Do not conclude the template is stale.
 
    Mind the truncation: `GET_ELEMENTS()` on a populated server returns more rows than
    `--max-rows` keeps (a well-populated server easily has more sources than the default of
@@ -552,16 +552,16 @@ They can also pipe it from a password manager (`op read op://vault/db/password |
 way the answer carries one field, `encrypted`, and the project file then reads
 `USERPASSWORD = '<that string>' ENCRYPTED`.
 
-The server accepts such a ciphertext as a real credential: the same source with the
-ciphertext of a wrong password answers `The username or password is incorrect`, which is
-proof the string was decrypted and used. *verified: 9.5.1 (live, 2026-09-12)*
+The server decrypts and uses such a ciphertext: encrypt a wrong password, and the source answers
+its database's own authentication error, not a format error — a source on a Virtual DataPort
+server, `The username or password is incorrect`. *verified: 9.5.1 (live, 2026-09-12)*
 
 **Never assemble `ENCRYPT_PASSWORD '<password>'` yourself** — neither with `-e` nor through
 a temp file written by `printf`: both put the plaintext into a Bash argument, and Bash
 arguments are kept in the session transcript.
 
 - **The ciphertext is tied to the installation's encryption key.** `--env` names the
-  environment the file goes to; another one means encrypting again, unless the two share the key.
+  environment the file goes to; another one means encrypting again, unless both share the key.
 - **A source to the same database may already exist — then you need no password at all.**
   `vql desc --env dev --database <db> <existing_ds> --type "datasource jdbc" --vql`
   prints `USERNAME` and `USERPASSWORD '…' ENCRYPTED`, and both work verbatim in your own

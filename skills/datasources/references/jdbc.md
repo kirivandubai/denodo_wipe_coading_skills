@@ -76,8 +76,9 @@ would land in a Bash argument and stay in the transcript (`/denodo:execute`, "A 
 a data source"). Encrypt on the environment the data source will live on: the ciphertext is
 tied to the installation's encryption key, and it is salted, so the same password encrypts
 to a different string every time. A ciphertext produced this way is accepted as a real
-credential — with a deliberately wrong password the source answers `The username or
-password is incorrect`, not a format error. *verified: 9.5.1 (live, 2026-09-12)*
+credential — with a deliberately wrong password the source answers with its database's own
+authentication error, not a format error (a source on a Virtual DataPort server answers
+`The username or password is incorrect`). *verified: 9.5.1 (live, 2026-09-12)*
 
 Credentials are **replaced, never merged**: re-applying `CREATE OR REPLACE DATASOURCE`
 without the `USERPASSWORD` clause leaves the source with no password, and the next query
@@ -158,10 +159,10 @@ CREATE [ OR REPLACE ] WRAPPER JDBC <name>
 
 ## Introspection procedures
 
-`PING_DATA_SOURCE` and the listing and generating procedures need the source to be
-reachable; `GET_SOURCE_TABLE` / `GET_SOURCE_COLUMNS` read the base view's own metadata and
-answer without it. Run against Oracle, SQL Server and PostgreSQL —
-*verified: 9.5.1 (live, 2026-09-09)*.
+`PING_DATA_SOURCE` and the listing and generating procedures need the source to be reachable.
+Run against Oracle, SQL Server and PostgreSQL — *verified: 9.5.1 (live, 2026-09-09)*.
+`GET_SOURCE_TABLE` / `GET_SOURCE_COLUMNS` read the base view's own metadata and answer
+without it: both answered over a host that does not resolve, as measured on a 9.5.1 server.
 
 | Procedure | Call | Notes |
 |---|---|---|
