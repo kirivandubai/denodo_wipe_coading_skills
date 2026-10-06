@@ -57,6 +57,16 @@ class ThroughFileTest(CheckCase):
         ev = self.evidence(Stream().bash("d vql run v.vql", run_doc(self.path("v.vql"), ("CREATE VIEW v AS SELECT 1", True, None))))
         self.assertTrue(self.check({"kind": "through_file"}, ev)["passed"])
 
+    def test_a_relative_source_is_the_project_s_file(self):
+        # The tool reports the path as the agent passed it; the agent's directory is the project.
+        stream = (Stream().bash("d vql plan model/v.vql", plan_doc("model/v.vql", ("CREATE VIEW v AS SELECT 1", False)))
+                  .bash("d vql run model/v.vql", run_doc("model/v.vql", ("CREATE VIEW v AS SELECT 1", True, None))))
+        ev = self.evidence(stream)
+        self.assertTrue(self.check({"kind": "through_file"}, ev)["passed"])
+        self.assertTrue(self.check({"kind": "planned"}, ev)["passed"])
+        outside = self.evidence(Stream().bash("d vql run ../x.vql", run_doc("../x.vql", ("DROP VIEW v", True, "drop"))))
+        self.assertFalse(self.check({"kind": "through_file"}, outside)["passed"])
+
     def test_an_inline_create_fails(self):
         ev = self.evidence(Stream().bash("d vql run -e 'CREATE VIEW v'", run_doc("<inline>", ("CREATE VIEW v AS SELECT 1", True, None))))
         result = self.check({"kind": "through_file"}, ev)

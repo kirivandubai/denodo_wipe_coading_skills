@@ -17,9 +17,14 @@ from __future__ import annotations
 
 import json
 import re
+import shlex
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable
+
+sys.path.append(str(Path(__file__).resolve().parents[2] / "scripts"))
+from denodo_cli.vql_split import split_statements  # noqa: E402  (standard library only)
 
 # The first keywords of a statement that changes something, besides what the tool itself
 # classifies as destructive (a cache load, a state-changing procedure called as a SELECT).
@@ -196,7 +201,53 @@ def merge(transcripts: list[Transcript]) -> Transcript:
     return merged
 
 
-def statements(t: Transcript) -> list[Statement]:
+def _flat(text: str) -> str:
+    return " ".join(text.split())
+
+
+def _inline_texts(command: str) -> list[str]:
+    """The statements a `vql run -e … [-e …]` command carried, whole."""
+    try:
+        words = shlex.split(command)
+    except ValueError:
+        return []
+    texts = []
+    for i, word in enumerate(words):
+        if word in ("-e", "--execute") and i + 1 < len(words):
+            texts.append(words[i + 1])
+        elif word.startswith("--execute="):
+            texts.append(word.split("=", 1)[1])
+    return [part for text in texts for part in split_statements(text)]
+
+
+def _file_texts(source: str, project: Path | None) -> list[str]:
+    if project is None:
+        return []
+    path = Path(source)
+    path = path if path.is_absolute() else project / path
+    try:
+        return split_statements(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError):
+        return []
+
+
+def _whole(head: str, candidates: list[str]) -> str:
+    """The tool echoes a statement's first 160 characters, whitespace flattened, ending in "…" when
+    cut; the whole text is the candidate it begins."""
+    if not head.endswith("…"):
+        return head
+    prefix = head[:-1]
+    for candidate in candidates:
+        flat = _flat(candidate)
+        if flat.startswith(prefix):
+            return flat
+    return head
+
+
+def statements(t: Transcript, project: Path | None = None) -> list[Statement]:
+    """Every statement of every `vql run`, `vql plan` and `vql desc` in the transcript, in order. A
+    statement the tool cut to its head is given whole when the command (`-e`) or the file it came
+    from — relative to ``project``, the agent's directory — still has it."""
     out: list[Statement] = []
     for call in t.calls:
         for doc in call.docs:
@@ -208,9 +259,13 @@ def statements(t: Transcript) -> list[Statement]:
                 continue
             if command not in ("vql run", "vql plan") or not isinstance(doc.get("statements"), list):
                 continue
+            source = doc.get("source") or ""
+            candidates = (_inline_texts(call.command) if source == "<inline>"
+                          else [] if source.startswith("<") else _file_texts(source, project))
             for s in doc["statements"]:
                 out.append(Statement(
-                    call=call.index, turn=call.turn, command=command, text=str(s.get("statement", "")),
+                    call=call.index, turn=call.turn, command=command,
+                    text=_whole(str(s.get("statement", "")), candidates),
                     ok=s.get("ok") if command == "vql run" else None, destructive=s.get("destructive"),
                     affected=s.get("affected"), rows=s.get("rows"), source=doc.get("source"),
                     needs_yes=s.get("needs_yes")))

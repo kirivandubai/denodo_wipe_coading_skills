@@ -38,7 +38,7 @@ query = "SELECT COUNT(*) FROM GET_VIEWS() WHERE database_name = '{database}' AND
 name = "statements-in-a-file"
 kind = "file"
 glob = "**/*.vql"
-pattern = 'DROP\s+VIEW\s+(IF\s+EXISTS\s+)?"?legacy_reason_list'
+pattern = 'DROP\s+VIEW\s+(IF\s+EXISTS\s+)?"?legacy_reason_(list|codes)'
 
 [[check]]
 name = "names-the-reader"

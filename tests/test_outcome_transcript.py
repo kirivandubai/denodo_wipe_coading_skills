@@ -31,6 +31,29 @@ class ParseTest(unittest.TestCase):
         commands = [s.command for s in transcript.statements(transcript.parse(stream.lines))]
         self.assertEqual(commands, ["vql plan", "vql run"])
 
+    def test_a_statement_cut_to_its_head_is_read_whole_from_the_command(self):
+        # The tool echoes the first 160 characters of each statement; what a check looks for — the
+        # FROM of a long SELECT — can be past them. An inline run carries the whole text in its command.
+        columns = ", ".join(f"MAX(LEN(c{i})) AS m{i}" for i in range(12))
+        full = f"SELECT {columns} FROM eval_db.return_reasons"
+        head = full[:159] + "…"
+        stream = Stream().bash(f'/r/scripts/denodo vql run --env dev -e "SELECT 1 FROM Dual()" -e "{full}"',
+                               run_doc("<inline>", ("SELECT 1 FROM Dual()", True, None), (head, True, None)))
+        texts = [s.text for s in transcript.statements(transcript.parse(stream.lines))]
+        self.assertEqual(texts, ["SELECT 1 FROM Dual()", full])
+
+    def test_a_statement_cut_to_its_head_is_read_whole_from_its_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            (project / "m").mkdir()
+            long_view = "CREATE OR REPLACE VIEW v AS SELECT " + ", ".join(f"c{i}" for i in range(40)) + " FROM base_view"
+            (project / "m" / "v.vql").write_text(f"CONNECT DATABASE d;\n{long_view};\n", encoding="utf-8")
+            stream = Stream().bash("/r/scripts/denodo vql run --env dev m/v.vql",
+                                   run_doc("m/v.vql", ("CONNECT DATABASE d", True, None),
+                                           (long_view[:159] + "…", True, None)))
+            texts = [s.text for s in transcript.statements(transcript.parse(stream.lines), project=project)]
+        self.assertEqual(texts[1], long_view)
+
     def test_vql_desc_is_a_read_statement(self):
         doc = {"ok": True, "command": "vql desc", "statement": "DESC VIEW v", "rows": [["v", "x"]]}
         stream = Stream().bash("d vql desc --type view v", doc)

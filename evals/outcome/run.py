@@ -231,6 +231,52 @@ def claude_judge(model: str, workdir: Path):
     return judge
 
 
+# --- grading a stored run again --------------------------------------------------------------
+
+# Checks of the server's state, and the paid judge: a stored run keeps their verdicts, since the
+# state they read is gone and the judge would be paid again.
+STORED_KINDS = {"server", "server_api", "final_number", "judge"}
+
+
+def regrade_run(scenario: scenarios.Scenario, run_dir: Path) -> dict:
+    """The checks of one stored run, again: what the trace, the project and the ledger show is
+    recomputed with today's checks; the server's and the judge's verdicts are the stored ones."""
+    traces = sorted(run_dir.glob("trace-*.jsonl"), key=lambda p: int(p.stem.split("-")[1]))
+    merged = transcript.merge([transcript.parse(p.read_text(encoding="utf-8").splitlines(), turn=int(p.stem.split("-")[1]))
+                               for p in traces])
+    stored_file = run_dir / "checks.json"
+    stored = json.loads(stored_file.read_text(encoding="utf-8")) if stored_file.is_file() else {}
+    previous = {c["name"]: c for c in stored.get("checks", [])}
+    ledger_file = run_dir / "ledger.json"
+    ledger = json.loads(ledger_file.read_text(encoding="utf-8")) if ledger_file.is_file() else None
+    evidence = checks.Evidence(transcript=merged, project=(run_dir / "project").resolve(), ledger=ledger,
+                               values=stored.get("values") or {})
+    verdicts = []
+    for spec in scenario.checks:
+        if spec["kind"] in STORED_KINDS:
+            old = previous.get(spec["name"], {"passed": False, "detail": "no stored verdict"})
+            verdicts.append({"name": spec["name"], "kind": spec["kind"], "passed": bool(old.get("passed")),
+                             "detail": f"{old.get('detail', '')} (stored)"})
+        else:
+            verdicts.append(checks.run_check(spec, evidence, None, None))
+    return {**{k: v for k, v in stored.items() if k != "checks"}, "scenario": scenario.name,
+            "run": int(run_dir.name.split("-")[1]), "status": "ran", "checks": verdicts,
+            "cost_usd": merged.cost_usd, "turns": merged.turns}
+
+
+def regrade(results: Path) -> list[dict]:
+    known = {s.name: s for s in scenarios.load_all(HERE)}
+    out = []
+    for run_dir in sorted(results.glob("*/run-*")):
+        scenario = known.get(run_dir.parent.name)
+        if scenario is None or not list(run_dir.glob("trace-*.jsonl")):
+            continue
+        result = regrade_run(scenario, run_dir)
+        (run_dir / "checks.regraded.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
+        out.append(result)
+    return out
+
+
 # --- one scenario ----------------------------------------------------------------------------
 
 def ledger_dir() -> Path:
@@ -347,7 +393,8 @@ def run_scenario(scenario: scenarios.Scenario, *, args, tool: Tool, server: Scri
                     if suffix == ".json":
                         shutil.copy(path, run_out / "ledger.json")
                     path.unlink()
-            result = {**base, "status": "ran", "checks": verdicts, "error": error, "cost_usd": merged.cost_usd,
+            result = {**base, "status": "ran", "checks": verdicts, "values": evidence.values, "error": error,
+                      "cost_usd": merged.cost_usd,
                       "turns": merged.turns, "seconds": round(time.monotonic() - started),
                       "final": merged.final_text}
             (run_out / "checks.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
@@ -374,7 +421,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--with-marketplace", action="store_true", help="also marketplace-tag: the shared catalog")
     parser.add_argument("--keep", action="store_true", help="leave the last run's fixture and objects on the server")
     parser.add_argument("--results", default=str(HERE / "results"), help="where the results go")
+    parser.add_argument("--regrade", metavar="DIR",
+                        help="grade the runs stored in DIR again with today's checks, running no agent: the "
+                             "server's and the judge's verdicts are kept as stored")
     args = parser.parse_args(argv)
+    if args.regrade:
+        table, code = summarise(regrade(Path(args.regrade)))
+        print(table)
+        return code
     if not args.env:
         parser.error("no profile: pass --env or set DENODO_ENV")
     all_scenarios = scenarios.load_all(HERE)
