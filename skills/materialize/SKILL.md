@@ -162,9 +162,8 @@ FROM iv_household_income;
 - `will_load` is the number `inserted_rows` must equal — and the number you tell the human
   before a big load: every row passes through Denodo unless the query runs entirely in the
   target data source.
-- The target the human named is the data source **and** the schema. A data source's default
-  target (`DATA_LOAD_CONFIGURATION … TARGET_SCHEMA` in its `DESC VQL`) is not a name the human
-  gave.
+- The target the human named is the data source **and** the schema. A data source's default target
+  (`DATA_LOAD_CONFIGURATION … TARGET_SCHEMA` in its `DESC VQL`) is not a name the human gave.
 
 ### A remote table
 
@@ -211,7 +210,8 @@ WHERE remote_table_name = 'household_income'
   never REFRESH" at the top. A second period is a second table. The procedure still beats the
   command here — the count, a base view to compare the copy with, a clean drop — but its base
   view is a `REFRESH` handle and writable: put "frozen, never REFRESH" in its `DESCRIPTION`,
-  and tell the human that only the database's owner can make the table read-only (a `DENY`).
+  and tell the human that only the database's owner can make the table read-only (a `DENY` on
+  SQL Server, a `REVOKE` of the write privileges elsewhere).
 - When the query runs entirely in the target data source, the copy happens inside the database
   (measured once: sixty thousand rows in under a second); otherwise every row passes through
   Denodo.
@@ -293,8 +293,8 @@ WHERE input_query = 'SELECT income_band_sk, COUNT(*) AS households FROM iv_house
   re-appliable while the summary is unloaded and refuses once a table of that name exists —
   anyone's, the summary's own after its load included. A change to a loaded summary is `… IF
   RELATION EXISTS REPLACE` and a load, both for the human's yes.
-- Summaries are created by a server administrator only, on the Enterprise Plus bundle
-  (*documentation*).
+- Summaries are created by a server administrator only; they are not available in the Denodo
+  Professional or Standard bundles (*documentation*).
 
 **Load it — on the human's yes**, and check it against the views themselves:
 
@@ -316,10 +316,10 @@ ORDER BY income_band_sk
 CONTEXT ('summary_rewrite' = 'off');
 ```
 
-- **The two answers must be equal, row for row.** The first comes from the summary, the second
-  from the sources. Run the same pair after every change upstream: a difference is a stale
-  summary, and every rewritten query in the meantime returned it. Sums from the summary come
-  back with many decimals (`numeric(38,20)`) — compare values, not text.
+- **The two answers must be equal, row for row.** The first comes from the summary, the second from
+  the sources. Run the same pair after every change upstream: a difference is a stale summary, and
+  every rewritten query in the meantime returned it. Sums from the summary may come back with more
+  decimals than through the views (`numeric(38,20)` on SQL Server): compare values, not text.
 - **A failed `REFRESH` leaves the summary empty and in use**: every query sent to it answers
   0 rows, a total `NULL` and `0`, while the sources are fine. The job that loads it checks the
   pair above after each run and, when the load failed, runs `ALTER SUMMARY VIEW

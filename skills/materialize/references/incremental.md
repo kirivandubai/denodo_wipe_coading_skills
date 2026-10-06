@@ -79,12 +79,16 @@ WHERE e.changed_at >= ( SELECT COALESCE(MAX(d.changed_at), TIMESTAMP '1900-01-01
   `INSERT … WHERE changed_at > <watermark>` added the changed rows a second time — the copy then
   had more rows than keys, no error — and missed the rows at the watermark and without a date
   (measured). A table `CREATE_REMOTE_TABLE` made has no primary key in its database, so nothing
-  refuses the duplicate; `ON DUPLICATE KEY ( shipment_id )` names the key, declared or not.
+  refuses the duplicate; `ON DUPLICATE KEY ( shipment_id )` names the key, declared or not —
+  measured on SQL Server. On MySQL and PostgreSQL the documentation requires these columns to be
+  the view's primary key or a unique index: declare the key on the base view first —
+  `ALTER TABLE bv_dwh_shipments ADD PRIMARY KEY ( 'shipment_id' )` (`SKILL.md`).
 - **The watermark is the copy's own latest `changed_at`**, read in the same statement: a failed
   run leaves it where it was, and the next one picks up from there. `COALESCE` makes the run over
   an empty copy a full load — `MAX` over no rows is `NULL`, and `>= NULL` loads nothing, without an
-  error. Not `@LAST_REFRESH_DATE`: that is the cache's load time, not the data's — and in a
-  Scheduler job `@` starts a variable (`\@`, `/denodo:scheduler`).
+  error. Not `'@LAST_REFRESH_DATE'`: in an `INSERT` it is the time of the last successful insert
+  into the view — Denodo's clock, not the data's — and in a Scheduler job `@` starts a variable
+  (`\@`, `/denodo:scheduler`).
 - **Run twice, the same result**: a second run right after the first rewrites only the rows at the
   watermark and the undated ones, and changes no count — measured with the source and the copy in
   one SQL Server database.

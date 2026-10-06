@@ -55,7 +55,9 @@ source enables it.
 **Privileges** (documentation): `CONNECT` on the data source's database and `EXECUTE` on the data
 source, `CONNECT` and `CREATE VIEW` on the base view's database (`CREATE FOLDER` for a new
 folder), `EXECUTE` on the views in the query; `WRITE` on the data source for a custom template.
-The data source's database account must be able to create tables in the schema.
+The data source's database account must be able to create tables in the schema. The server's
+*Data Movement* optimization must be on (*Server configuration → Queries optimization*), or
+creating a remote table fails.
 
 ## The command
 
@@ -80,10 +82,12 @@ column that was gone failed at run time with `Invalid column name '<column>'`. A
 way is taken over for dropping with `CREATE_REMOTE_TABLE` and `replace_remote_table_if_exist =
 true`, then `DROP_REMOTE_TABLE` — a replacement, so the human's yes when it is not yours.
 
-**Table creation templates.** `@{internal_parameter_table_name}`, `@{internal_parameter_columns}`
-and `@{internal_parameter_restrictions}` are filled by the server; anything else is a parameter
-with a `DEFAULT`. On the command a template that declares extra columns next to
-`@{internal_parameter_columns}` worked (an identity key, measured on SQL Server); on the procedure, a template holding only the placeholders failed with a bare
+**Table creation templates.** `@{internal_parameter_…}` placeholders (table name, columns,
+restrictions and others per database) are filled by the server; `@{<column>}` names a column of
+the query (`PRIMARY KEY(@{<column>})`); any other parameter takes its value from `DEFAULT`
+(`create_table_template_parameters` on the procedure). On the command a template that declares
+extra columns next to `@{internal_parameter_columns}` worked (an identity key, measured on
+SQL Server); on the procedure, a template holding only the placeholders failed with a bare
 error and left an empty table (*measured*, twice). Widen a text column with
 `CAST(<text> AS varchar(<n>))` in the query instead (*measured*: `varchar(8000)` held 5,000
 characters).
