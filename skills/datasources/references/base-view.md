@@ -49,7 +49,7 @@ CREATE [ OR REPLACE ] TABLE [<database>.]<name> I18N <map>
 -- verified: 9.5.1 (live, 2026-10-06)
 CREATE OR REPLACE TABLE bv_crm_customers I18N us_pst (
         cust_id:text,
-        created_dt:date
+        created_dt:localdate
     )
     FOLDER = '/01 - connectivity'
     CACHE OFF
@@ -62,8 +62,8 @@ CREATE OR REPLACE TABLE bv_crm_customers I18N us_pst (
 
 | Element | Required? |
 |---|---|
-| `I18N <map>` after the name | **yes** — the parser needs it, and it decides the zone and language dates are read in. The one the database's other base views declare, or the project's; `us_pst` (US Pacific) only when there is nothing to follow. `LIST MAPS I18N` lists them |
-| `CACHE OFF` | no, but explicit is better than a server default that may differ per environment |
+| `I18N <map>` after the name | **yes** — the parser needs it, and it decides the zone and language dates are read in. The one the database's other base views declare, or the project's; with nothing to follow, `GETSESSION('i18n')` of the connected database. `LIST MAPS I18N` lists them |
+| `CACHE OFF` | no, but keep it explicit |
 | `TIMETOLIVEINCACHE DEFAULT` | **yes when `CACHE OFF` is followed by `ADD SEARCHMETHOD`** — otherwise `Syntax error … near 'ADD'`. *verified: 9.5.1 (live, 2026-09-09)* |
 | `ADD SEARCHMETHOD … WRAPPER (…)` | **yes** — without it the view has no source |
 | `I18N` *inside* the search method | no |
@@ -87,8 +87,10 @@ vector<double> vector<float> vector<int> vector<long>
 plus every user-defined type (`CREATE TYPE … AS REGISTER OF (…)` / `ARRAY OF …`) —
 `references/json.md`.
 
+- `date` is deprecated (a timestamp with a zone offset): declare `localdate`, `timestamp` or
+  `timestamptz`.
 - The base view's declared type is what Denodo *parses the source value into*. Over a text
-  file, `created_dt:date` on `2021-04-12` works; a type that does not match returns `NULL`
+  file, `created_dt:localdate` on `2021-04-12` works; a type that does not match returns `NULL`
   for that column, with **no error**. *verified: 9.5.1 (live, 2026-09-09)*
 - Over JDBC, introspection picks the type from the source: Oracle `NUMBER(10)` → `long`,
   `NVARCHAR2` → `text`, PostgreSQL `date` → `localdate`, SQL Server `bigint` → `long`.
@@ -142,18 +144,17 @@ refreshed in Design Studio (**Source Refresh**, `SKILL.md`), not rewritten by ha
 - `ALTER TABLE` exists for base views but is an `ALTER`: it needs the human's yes
   (`/denodo:vql`). Re-applying the file with `CREATE OR REPLACE` is the normal path, and it
   keeps dependent views working as long as the change is additive.
-- `DROP VIEW <name>` removes a base view (there is no `DROP TABLE` for it — and `DESC
-  TABLE` does not exist either; it is `DESC VIEW`). Dropping the data source with `CASCADE`
-  takes wrappers and base views with it.
+- `DROP VIEW <name>` or `DROP TABLE <name>` removes a base view; `DESC TABLE` does not
+  exist — it is `DESC VIEW` (both measured on a 9.5.1 server). Dropping the data source with
+  `CASCADE` takes wrappers and base views with it.
 - **`LIST VIEWS` does not list base views** — it answers with the derived ones only, and
   returns an empty set in a database that holds nothing but base views. `LIST TABLES` does
   not exist. The listing that shows them is
   `SELECT name, subtype, folder FROM GET_ELEMENTS() WHERE input_database_name = '<db>' AND
-  type = 'view'` (`subtype` is `base` / `derived` / `interface`).
+  type = 'view'` (`subtype = 'base'` picks the base views).
   *verified: 9.5.1 (live, 2026-09-09)*
-- Replacing a base view whose column a derived view selects, with that column removed or
-  retyped, breaks the dependent view. Check dependents first:
-  `SELECT view_name, dependency_name, dependency_type, depth FROM
-  GET_PUBLIC_VIEW_DEPENDENCIES() WHERE input_view_database_name = '<db>' AND
-  input_view_name = '<bv>'` — the parameter is `input_view_database_name`, not
-  `input_database_name`. *verified: 9.5.1 (live, 2026-09-09)*
+- Before a column of an existing base view is dropped or retyped, find who uses it:
+  `SELECT view_name, used_by_database_name, used_by_name, depth FROM USED_BY() WHERE
+  input_view_database_name = '<db>' AND input_view_name = '<bv>'` (`/denodo:views`, *Before
+  a column changes*). `GET_PUBLIC_VIEW_DEPENDENCIES()` answers the opposite question — what
+  the view is built on: for a base view, only its data source (measured on a 9.5.1 server).

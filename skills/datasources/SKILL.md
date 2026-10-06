@@ -174,7 +174,7 @@ CREATE OR REPLACE TABLE bv_crm_customers I18N us_pst (
         email:text,
         country:text,
         city:text,
-        created_dt:date,
+        created_dt:localdate,
         segment_cd:text
     )
     FOLDER = '/01 - connectivity'
@@ -202,7 +202,7 @@ CREATE OR REPLACE TABLE bv_crm_customers I18N us_pst (
 - The wrapper carries **names only**. A type there (`created_dt = 'created_dt' :
   'java.util.Date'`) is `Syntax error … near '''` in any spelling — DF wrappers do not
   take types. Types are declared in `CREATE TABLE`, and Denodo parses the text into them:
-  `created_dt:date` over `2021-04-12` works.
+  `created_dt:localdate` over `2021-04-12` works.
 - `NULLVALUE ''` is for **text** columns only, and it is a decision, not boilerplate:
   without it an empty field stays an empty string, with it becomes `NULL`. Numeric and date
   columns need nothing — an empty field is already `NULL` there.
@@ -221,8 +221,9 @@ CREATE OR REPLACE TABLE bv_crm_customers I18N us_pst (
   delimited file whose base view mirrors the wrapper — the DF wrapper does filter what the
   server hands it — and so is `I18N` inside `ADD SEARCHMETHOD`. For a JSON file it is not optional (**JSON file** below). `I18N <map>` after the view name is not
   — it is the zone and the language dates and timestamps are read in. Take the one the
-  database's other base views declare (`DESC VQL VIEW`), or the human's; the templates'
-  `us_pst` (US Pacific time) only when there is nothing to follow. `LIST MAPS I18N` lists them.
+  database's other base views declare (`DESC VQL VIEW`), or the human's; with nothing to follow,
+  the connected database's (`SELECT GETSESSION('i18n') FROM Dual()`), named in the message —
+  the templates' `us_pst` is a placeholder. `LIST MAPS I18N` lists them.
 - The path is **on the Denodo server**, not on your machine. If it points to a directory,
   every file in it is read as one table — add `FILENAMEPATTERN = '.*\.csv'` and keep the
   files' schema identical.
@@ -337,22 +338,23 @@ defaults already filled in, then assemble the string from the table below.
 
 | Source | `DRIVERCLASSNAME` | `DATABASEURI` | `CLASSPATH` | `DATABASENAME` |
 |---|---|---|---|---|
-| PostgreSQL | `org.postgresql.Driver` | `jdbc:postgresql://<host>:5432/<database>` | `postgresql-16` | `postgresql` |
-| Oracle, service name | `oracle.jdbc.OracleDriver` | `jdbc:oracle:thin:@<host>:1521/<service>` | `oracle-21c` | `oracle` |
-| Oracle, SID | `oracle.jdbc.OracleDriver` | `jdbc:oracle:thin:@<host>:1521:<sid>` | `oracle-21c` | `oracle` |
+| PostgreSQL | `org.postgresql.Driver` | `jdbc:postgresql://<host>:5432/<database>` | `postgresql-<major>` | `postgresql` |
+| Oracle, service name | `oracle.jdbc.OracleDriver` | `jdbc:oracle:thin:@<host>:1521/<service>` | `oracle-<release>` | `oracle` |
+| Oracle, SID | `oracle.jdbc.OracleDriver` | `jdbc:oracle:thin:@<host>:1521:<sid>` | `oracle-<release>` | `oracle` |
 | SQL Server | `com.microsoft.sqlserver.jdbc.SQLServerDriver` | `jdbc:sqlserver://<host>:1433;databaseName=<database>` | `mssql-jdbc` | `sqlserver` |
-| MySQL / MariaDB | `org.mariadb.jdbc.Driver` | `jdbc:mariadb://<host>:3306/<database>` | `mariadb` | `mysql` |
 | Snowflake | `net.snowflake.client.jdbc.SnowflakeDriver` | `jdbc:snowflake://<account>.snowflakecomputing.com/?db=<db>&warehouse=<wh>` | `snowflake-1.x` | `snowflake` |
 | Databricks | `com.databricks.client.jdbc.Driver` | `jdbc:databricks://<host>:443/default;httpPath=<path>` | `databricks-3` | `databricks` |
-| Another Denodo server | `com.denodo.vdp.jdbc.Driver` | `jdbc:vdb://<host>:9999/<database>` | `vdp-9` | `denodo` |
+| Another Denodo server | `com.denodo.vdp.jdbc.Driver` | `jdbc:denodo://<host>:9999/<database>` | `vdp-9` | `denodo` |
 
 *verified: 9.5.1 (live, 2026-09-09) — PostgreSQL, Oracle (service name) and SQL Server;
 the rest of the rows come from the driver directories the server ships and are unverified.*
-`DATABASEVERSION` is the source's own version as a string (`'16'`, `'19c'`, `'2022'`) —
-ask for it, do not assume the newest. The full driver list is in `references/jdbc.md`.
+`DATABASEVERSION` is the source's own version as a string (`'16'`, `'19c'`, `'2022'`) — ask
+for it, do not assume the newest — and `CLASSPATH` the directory matching it (`postgresql-16`,
+`oracle-19c`; `oracle` for 23 and newer). MySQL and the other databases whose driver Denodo does
+not ship need the official one imported by an administrator first: `references/jdbc.md`, *Driver directories*.
 
-Certificate and TLS options ride in the URI, not in a separate clause — SQL Server on a
-self-signed certificate needs `;trustServerCertificate=true` appended, and that is a
+Certificate and TLS options are driver properties: in the URI or in `PROPERTIES ( … )` —
+SQL Server on a self-signed certificate needs `trustServerCertificate=true`, and that is a
 question for the human, not a default you add silently.
 
 ```sql
@@ -365,7 +367,7 @@ CREATE OR REPLACE DATASOURCE JDBC ds_orders_db
     DATABASEURI = 'jdbc:oracle:thin:@oracle-edw.internal:1521/ORDERSPDB'
     USERNAME = 'appuser'
     USERPASSWORD = '<ciphertext — see Passwords below; fill it in before applying>' ENCRYPTED
-    CLASSPATH = 'oracle-21c'
+    CLASSPATH = 'oracle-19c'
     DATABASENAME = 'oracle'
     DATABASEVERSION = '19c'
     DESCRIPTION = 'Order management database, read-only account';
@@ -407,8 +409,8 @@ query, the check per view: `references/jdbc.md`, *Every table of a schema*.
   authentication error (credentials).
 - Two listing procedures, not equivalent: `GET_JDBC_DATASOURCE_TABLES` takes
   `input_catalog_name` / `input_schema_name` / `input_table_name` as **input** and is the one
-  to use; `LIST_JDBC_DATASOURCE_TABLES` takes only the data source and walks everything — fine
-  on Oracle and PostgreSQL, but on SQL Server it fails, and a `WHERE` does not help.
+  to use; `LIST_JDBC_DATASOURCE_TABLES` is deprecated and walks everything (it failed on the
+  SQL Server measured, and a `WHERE` does not help).
 - A database that doubles as Denodo's cache store is full of the server's own cache tables
   (`C_…`); the real tables sit in the business schemas. Show the human the schema list
   before picking.
@@ -492,15 +494,15 @@ no shell. Three ways to get it, in order of preference:
    `OUTPUTSCHEMA` in file order, and the `CREATE TABLE` types that are known to work.
    The same call **on the source** returns only the source — no wrapper and no column list,
    which is the one thing you came for. Reading other databases is allowed anywhere;
-   changing them is not.
+   changing them waits for the human's yes (`/denodo:vql`).
 
    Two things not to copy from the donor. It is a source of **grammar, not of defaults**:
    server-generated sources carry no `IGNOREMATCHINGERRORS` and often no `CHARSET`, so you
    add `IGNOREMATCHINGERRORS = FALSE` yourself — inheriting the donor's silence is exactly
-   the failure the template protects you from. And its mappings are written
-   `hd_demo_sk = '"HD_DEMO_SK"'`, quoted and upper-case, where the template writes
-   `hd_demo_sk = 'hd_demo_sk'`: both work, because the mapping is positional either way
-   (*verified: 9.5.1 (live, 2026-09-12)*). Do not conclude the template is stale.
+   the failure the template protects you from. And its mappings may be spelled unlike the
+   template's — a file whose header is quoted and upper-case gives `hd_demo_sk = '"HD_DEMO_SK"'`
+   where the template writes `hd_demo_sk = 'hd_demo_sk'`: both work, because the mapping is
+   positional either way (*verified: 9.5.1 (live, 2026-09-12)*). Do not conclude the template is stale.
 
    Mind the truncation: `GET_ELEMENTS()` on a populated server returns more rows than
    `--max-rows` keeps (a well-populated server easily has more sources than the default of
@@ -558,16 +560,15 @@ proof the string was decrypted and used. *verified: 9.5.1 (live, 2026-09-12)*
 a temp file written by `printf`: both put the plaintext into a Bash argument, and Bash
 arguments are kept in the session transcript.
 
-- **The ciphertext is server-specific.** `--env` names the environment the file will be
-  applied to; moving a data source to another environment means encrypting again there.
+- **The ciphertext is tied to the installation's encryption key.** `--env` names the
+  environment the file goes to; another one means encrypting again, unless the two share the key.
 - **A source to the same database may already exist — then you need no password at all.**
   `vql desc --env dev --database <db> <existing_ds> --type "datasource jdbc" --vql`
   prints `USERNAME` and `USERPASSWORD '…' ENCRYPTED`, and both work verbatim in your own
   data source. The donor may live in **any database on that server** — look for it with
   `SELECT database_name, name FROM GET_ELEMENTS() WHERE type = 'datasource' AND subtype = 'jdbc'`
-  and compare `DATABASEURI`. Reading another database is allowed; changing it is not.
-  *verified: 9.5.1 (live, 2026-09-09)* — this is the first thing to try when the human
-  says the password is not theirs to give.
+  and compare `DATABASEURI`. *verified: 9.5.1 (live, 2026-09-09)* — this is the first thing
+  to try when the human says the password is not theirs to give.
 - **A plaintext password is accepted too** (the server stores it encrypted regardless), so
   a `.vql` with a plaintext password *works* — which is exactly why it is easy to commit
   one by accident. Encrypt before writing the file, not after.
@@ -658,8 +659,7 @@ prints the server's own `CREATE` statement for any existing object of that type 
 a detail: it is Design Studio's (**What you build** above), whatever a donor shows. For a file already onboarded, ask its
 **base view** rather than its source: that answer carries the route, the parse clauses, the
 column list and the working types together (**When you cannot see the file** above, which
-also says what not to copy from it). All of this is read-only and allowed anywhere,
-production included.
+also says what not to copy from it).
 
 ## Common mistakes
 

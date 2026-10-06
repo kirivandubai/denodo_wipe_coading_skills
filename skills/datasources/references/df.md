@@ -32,7 +32,7 @@ existing object, so `/denodo:vql` applies — prefer `CREATE OR REPLACE`.
 | Clause | Notes |
 |---|---|
 | `COLUMNDELIMITER` | `\t` for tab. More than one character means *any of them* separates values (`,\|` = comma or pipe) unless `MULTI_CHARACTER_DELIMITER = true`, which makes the whole string one delimiter |
-| `ENDOFLINEDELIMITER` | default `\n`; set it for files with `\r\n` that must not be trimmed |
+| `ENDOFLINEDELIMITER` | default `\n` — keep it for Windows (`\r\n`) files too: the Administration Guide says to use `\n`, "not `\r` nor `\r\n`, regardless of the operating system" |
 | Quoted values | handled without any clause: a file whose header and values are wrapped in `"` comes back unquoted. *verified: 9.5.1 (live, 2026-09-09)*. A delimiter **inside** the quotes stays in the value — `4,"R4","Runs small, ordered my usual size"` is three columns — *verified: 9.5.1 (live, 2026-10-06)*. A line break inside the quotes is not verified — such a file is Design Studio's |
 | `HEADER` | `TRUE` = first tuple of the data area holds field names. It does **not** make the server introspect the file — you still write `OUTPUTSCHEMA` yourself. *verified: 9.5.1 (live, 2026-09-09)* |
 | `IGNOREMATCHINGERRORS` | default `TRUE`: rows whose column count does not match the wrapper's schema are skipped **silently** — that is the whole mechanism behind "the base view returns zero rows". `FALSE` makes the same case fail loudly with `[DF ROUTE] [PARSE_ERROR] Invalid line found at data file. Different number of columns`. Put `FALSE` in every source you onboard. *verified: 9.5.1 (live, 2026-09-09)* |
@@ -109,16 +109,17 @@ path fails with `[DF ROUTE] [PARSE_ERROR] … Error getting input Stream`.
 The wrapper hands text to the base view; the types are declared in `CREATE TABLE`
 (`references/base-view.md`). Denodo parses the text into the declared type at query time:
 
-- `created_dt:date` over `2021-04-12` → a real date. *verified: 9.5.1 (live, 2026-09-09)*
+- `created_dt:localdate` over `2021-04-12` → a date. *verified: 9.5.1 (live, 2026-09-09)*
 - a type that does not match returns `NULL` for the whole column, with no error at all —
   `cust_id:int` over `C-10472`. *verified: 9.5.1 (live, 2026-09-09)*
 
 Non-ISO formats (`31/12/2026`) do not parse this way. Keep the column `text` in the base
-view and convert it in a derived view with `TO_DATE` (`/denodo:views`), so the base view
-stays a faithful mirror of the file.
+view and convert it in a derived view with `TO_LOCALDATE('dd/MM/yyyy', <col>)`
+(`TO_TIMESTAMP` for date-times; `/denodo:views`), so the base view stays a faithful mirror
+of the file.
 
 ## Optimizing
 
-The Administration Guide's *Optimizing DF Data Sources* covers parallel processing of
-large files and `TRANSFER_RATE_FACTOR` — Design Studio's, not these skills': performance work
-starts after the source reads correctly.
+The Administration Guide's *Optimizing DF Data Sources* (a tuple pattern can parse faster
+than a column delimiter) is performance work, Design Studio's: it starts after the source
+reads correctly.
