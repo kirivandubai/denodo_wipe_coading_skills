@@ -214,8 +214,19 @@ class ScriptServer:
         return bool(doc.get("ok")) and status < 400, json.dumps(body) if not isinstance(body, str) else body
 
 
-def claude_judge(model: str, workdir: Path):
+def majority(votes: list[tuple[bool, str]]) -> tuple[bool, str]:
+    """A judge's verdict from several votes: more than half decide, and say so with one reason."""
+    yes = [v for v in votes if v[0]]
+    passed = len(yes) * 2 > len(votes)
+    reason = next(detail for verdict, detail in votes if verdict == passed)
+    return passed, f"{len(yes)}/{len(votes)} PASS — {reason}"
+
+
+def claude_judge(model: str, workdir: Path, votes: int = 3):
     def judge(criterion: str, message: str) -> tuple[bool, str]:
+        return majority([one(criterion, message) for _ in range(votes)])
+
+    def one(criterion: str, message: str) -> tuple[bool, str]:
         command = ["claude", "-p", "--output-format", "json", "--max-turns", "1", "--permission-mode", "dontAsk",
                    "--setting-sources", "project", "--strict-mcp-config", "--mcp-config",
                    json.dumps({"mcpServers": {}}), "--model", model]

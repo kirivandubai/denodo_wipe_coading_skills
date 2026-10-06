@@ -54,14 +54,18 @@ CREATE OR REPLACE DATASOURCE DF ds_rows
 CREATE OR REPLACE WRAPPER DF wr_rows
     FOLDER = '/01 - connectivity'
     DATASOURCENAME = ds_rows
-    OUTPUTSCHEMA ( n = '"IB_INCOME_BAND_SK"' );
+    OUTPUTSCHEMA (
+        n = '"IB_INCOME_BAND_SK"',
+        lower_bound = '"IB_LOWER_BOUND"',
+        upper_bound = '"IB_UPPER_BOUND"'
+    );
 
-CREATE OR REPLACE TABLE bv_rows I18N us_pst ( n:int )
+CREATE OR REPLACE TABLE bv_rows I18N us_pst ( n:int, lower_bound:int, upper_bound:int )
     FOLDER = '/01 - connectivity'
     CACHE OFF
     TIMETOLIVEINCACHE DEFAULT
     ADD SEARCHMETHOD wr_rows (
-        OUTPUTLIST ( n )
+        OUTPUTLIST ( n, lower_bound, upper_bound )
         WRAPPER (df wr_rows)
     );
 

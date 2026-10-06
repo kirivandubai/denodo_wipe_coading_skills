@@ -119,6 +119,17 @@ class SummaryTest(unittest.TestCase):
         self.assertIn("c1", table)
 
 
+class JudgeVotesTest(unittest.TestCase):
+    def test_the_majority_decides_and_says_the_count(self):
+        passed, detail = run.majority([(True, "PASS a"), (False, "FAIL b"), (True, "PASS c")])
+        self.assertTrue(passed)
+        self.assertIn("2/3", detail)
+        self.assertIn("PASS a", detail)
+        passed, detail = run.majority([(False, "FAIL x"), (False, "FAIL y"), (True, "PASS z")])
+        self.assertFalse(passed)
+        self.assertIn("FAIL x", detail)
+
+
 class TeardownLookupTest(unittest.TestCase):
     def test_the_exact_name_only(self):
         body = {"elements": [{"id": 1, "name": "eval_returns_old"}, {"id": 7, "name": "eval_returns"},

@@ -286,5 +286,8 @@ and exits `1` when a check failed, `2` when a fixture could not be built.
 
 A failed check is one of two things, as in the routing suite: the plugin (a skill that lets the
 agent skip a step), or the check (a pattern too narrow for a legitimate way of doing it). Read the
-trace before changing either.
+trace before changing either. A changed check is tried on the runs already stored, without paying
+for an agent: `python3 evals/outcome/run.py --regrade evals/outcome/results/<time>` grades them
+again — what the traces, the projects and the ledgers show with today's checks, the server's and
+the judge's verdicts as they were stored (the state they read is gone).
 
