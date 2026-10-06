@@ -31,7 +31,7 @@ rounding. After a parse or a cast over real rows, count the `NULL`s it produced 
 | `SUBSTRING(s, 1, 3)` for the first three characters | the comma form is **0-based and takes an end index**, not a length: `'abcdef'` → `'bc'`; `SUBSTRING(s, 1, 1)` → `''` | `SUBSTR(s, 1, 3)`, `SUBSTRING(s FROM 1 FOR 3)` (SQL-92, 1-based, length) or `LEFT(s, 3)` → `'abc'` |
 | `SUBSTRING(s, POSITION('@' IN s) + 1)` for what follows `@` | `POSITION` is 1-based, the comma `SUBSTRING` 0-based: `'a.b@example.org'` → `'xample.org'`. The opposite mix, `SUBSTR(s, INSTR(s, '@') + 1)`, keeps the `@` → `'@example.org'` | one family per expression: `SUBSTR` with `POSITION` (1-based), or `SUBSTRING` with `INSTR` (0-based) → `'example.org'`. Guard the separator: with no `@`, `POSITION` is `0` and `SUBSTR(s, 1)` returns the whole string — add `WHERE POSITION('@' IN s) > 0` |
 | `INSTR(s, x)` | **0-based, `-1` when absent**: `INSTR('abcabc', 'c')` → `2`. `POSITION('c' IN 'abcabc')` and `STRPOS('abc', 'c')` are 1-based, `0` when absent | test for presence with `POSITION(x IN s) > 0` |
-| `s = 'abc'`, `GROUP BY s` | exact: case **and trailing spaces** count, in comparisons, `GROUP BY` and `DISTINCT` alike. `'abc' = 'abc  '` is false; a file source that pads its fields to a fixed width matches nothing, and a piece cut from a padded field keeps a different amount of padding on every row, so grouping on it splits every group | `TRIM` first, then cut: `SUBSTR(TRIM(s), …)`. `UPPER(TRIM(s)) = 'ABC'` or `GROUP BY LOWER(…)` when case must not matter (e-mail domains). `LIKE 'abc%'` survives the padding |
+| `s = 'abc'`, `GROUP BY s` | exact: case **and trailing spaces** count, in comparisons, `GROUP BY` and `DISTINCT` alike. `'abc' = 'abc  '` is false; a value padded to a fixed width (a `CHAR(n)` column, a fixed-width file or a file exported from one) matches nothing, and a piece cut from a padded field keeps a different amount of padding on every row, so grouping on it splits every group | `TRIM` first, then cut: `SUBSTR(TRIM(s), …)`. `UPPER(TRIM(s)) = 'ABC'` or `GROUP BY LOWER(…)` when case must not matter (e-mail domains). `LIKE 'abc%'` survives the padding |
 | `number_col > '9'`, `text_col > 900` | a comparison that mixes text and a number compares **as text**, in both directions: `day_of_month > '9'` returns no rows at all, because `'10'` to `'31'` sort below `'9'` as text; a text column of street numbers `> 900` counts `'95'` above 900 and `'1000'` below it. `=` and `IN` still convert | compare numbers as numbers: a number literal, or `CAST(text_col AS integer)` after checking the text |
 | `s LIKE 'US$%'` | **`$` is the default escape character**: `$%` means a literal `%`, so `'US$5' LIKE 'US$%'` is false | add `ESCAPE '!'` (any character not in the pattern) to every pattern that contains `$` |
 | `s LIKE 'a\_b'` | backslash is an ordinary character — the PostgreSQL escape matches nothing | `LIKE 'a$_b'`, or `ESCAPE` |
@@ -40,8 +40,8 @@ rounding. After a parse or a cast over real rows, count the `NULL`s it produced 
 | `REPLACE(s, '.', '-')` | literal, as expected. `REGEXP(s, '.', '-')` is the regex one — `'a.b.c'` → `'-----'` | pick by intent; escape regex metacharacters in `REGEXP`, `SPLIT` and `REGEXP_LIKE` |
 | `SPLIT_PART(s, ',', 2)` | does not exist. `SPLIT(',', s)` takes the **regex first** and returns an array, indexed from **0** | parse with `SUBSTR` and `POSITION`, or see `/denodo:views` for arrays |
 | `TRIM(BOTH 'xy' FROM s)` | only the **first** character of the trim set is used: `'xxabcyy'` → `'abcyy'` | a regex, below |
-| `CONCAT('abc', NULL)`, and the operator form below | `NULL` — as in PostgreSQL, unlike Oracle | `COALESCE(x, '')` around each nullable part |
-| `'' IS NULL`, `COUNT(s)` to find missing values | `''` is a value, unlike Oracle. A file source may write a missing field as `''` — some also pad text to the column width; `LEN(s)` shows which — so `COUNT(s)` counts it as a value, and a `NULL` count reports nothing missing | `COUNT(NULLIF(TRIM(s), ''))` counts the values actually there |
+| `CONCAT('abc', NULL)`, and the operator form below | `NULL` — like PostgreSQL's `\|\|`, unlike its `concat()`, which skips `NULL`s, and unlike Oracle | `COALESCE(x, '')` around each nullable part |
+| `'' IS NULL`, `COUNT(s)` to find missing values | `''` is a value, unlike Oracle. A file source may write a missing field as `''`, so `COUNT(s)` counts it as a value, and a `NULL` count reports nothing missing | `COUNT(NULLIF(TRIM(s), ''))` counts the values actually there |
 | `ORDER BY name` | by Unicode code point: `A, B, a, b` | `ORDER BY UPPER(name)` when people read the order |
 
 `'abc' || NULL` is `NULL`, like `CONCAT`. A set of trim characters needs a regex:
@@ -131,7 +131,7 @@ Java does.
 | `YEAR(d)`, `MONTH(d)`, `DAY(d)` | `Function 'year' with arity 1 not found` (*verified: 9.5.1 (live, 2026-09-30)*) | `GETYEAR(d)`, `GETMONTH(d)`, `GETDAY(d)`, or `EXTRACT(YEAR FROM d)` |
 | `TIME '10:00' - TIME '08:30'` | milliseconds: `5400000` | divide explicitly |
 
-Two recipes that come up with every customer table, both checked:
+Two recipes, both checked:
 
 - **A date from three integer columns:**
   `TO_LOCALDATE('yyyy-M-d', CAST(y AS varchar) || '-' || CAST(m AS varchar) || '-' || CAST(d AS varchar))`
@@ -161,13 +161,14 @@ i18n the same way (Sunday or Monday). `EXTRACT(WEEK …)` and `GETWEEK` are ISO 
 `EXTRACT(YEAR …)` is the calendar year: `2024-12-30` is week `1` of year `2024`.
 
 **Time zones.** `timestamp` and `localdate` carry none; `timestamptz` and the deprecated
-`date` do. Casting a `timestamptz` to `timestamp` moves it into the **server's** zone
-(`23:30 +00:00` → `16:30` on a server at `-07:00`); `CURRENT_DATE`, `LOCALTIMESTAMP` and `NOW()`
-are the server's clock too. **Formatting a `timestamptz` renders it in the time zone of the
-i18n**, so the day can change with the database you are connected to: `FORMATDATE('yyyy-MM-dd
-HH:mm', …)` of `2024-03-15 23:30 +00:00` is `'2024-03-15 16:30'` under `us_pst` and
-`'2024-03-16 00:30'` under `es_euro`. A monthly label over a `timestamptz` moves the last hours
-of a month into the next one.
+`date` do. **Casting a `timestamptz` to `timestamp` or formatting it uses the time zone of the
+i18n in effect** (above) — not the server's i18n the documentation names — so the day can
+change with the database you are connected to: `2024-03-15 23:30 +00:00` casts to `16:30`
+under `us_pst` and to `00:30` the next day under `es_euro`, and `FORMATDATE('yyyy-MM-dd
+HH:mm', …)` writes the same. `LOCALTIMESTAMP` and `NOW()` are the current time in that zone;
+`CURRENT_DATE` ignored a `CONTEXT` i18n — under `jp` it was the day before `LOCALTIMESTAMP`'s
+(*verified: 9.5.1 (live, 2026-10-06)*). A monthly label over a `timestamptz` moves the last
+hours of a month into the next one.
 
 ## `NULL`, ordering and the shape of a query
 
@@ -181,7 +182,7 @@ of a month into the next one.
 | `GROUP BY 1`, `ORDER BY 1`, `WITH t AS (…)` | work as in PostgreSQL | — |
 | `UNION` | removes duplicates (since 8.0; older examples behave as `UNION ALL`) | `UNION ALL` unless you mean it |
 | `SELECT a, b … UNION ALL SELECT b, a …` | matched by **position**, and the names of the result can come from either branch: queries over it then disagree about which value is `a` — no error | the same columns, in the same order, under the same aliases in every branch (`/denodo:views`, `references/unions.md`) |
-| `ROW_NUMBER() OVER (…)` and every other window function | runs only when delegated to a database that has it; over a file source or `Dual()` — and by the documentation any source that cannot run it — `Function row_number is not executable`, at `SELECT`: a view with one is created and stays `OK`. `QUALIFY` is a syntax error | window functions over JDBC views, the rank filtered around a subquery; otherwise a join — one row per key: `/denodo:views`, `references/one-row-per-key.md` |
+| `ROW_NUMBER() OVER (…)` and every other window function | runs only when delegated to a database that has it; over a file source or `Dual()` — unless the server is set to move the data to an MPP or a database for it (Administration Guide, "Execution of Window Functions") — `Function row_number is not executable`, at `SELECT`: a view with one is created and stays `OK`. `QUALIFY` is a syntax error | window functions over JDBC views, the rank filtered around a subquery; otherwise a join — one row per key: `/denodo:views`, `references/one-row-per-key.md` |
 | `"abc"` for a string | an identifier: `Field not found 'abc'` | single quotes; a quote inside is doubled: `'it''s'` |
 | `x contains 'a'` (old examples) | the `contains` family is removed | `LIKE`, `REGEXP_LIKE` |
 
@@ -200,7 +201,7 @@ source, a cache, or a change of source, the query plan and the answer move toget
 
 | Expression | Denodo computes it | Delegated |
 |---|---|---|
-| `category = 'household'` against `'Household'` | no match — exact | SQL Server: matches, case and trailing spaces ignored (*delegated*) |
+| `category = 'household'` against `'Household'` | no match — exact | SQL Server: matches under its default collation — trailing spaces are ignored under any collation, case only under a case-insensitive one (*delegated*) |
 | `CAST(2.75 AS integer)` | `2` | PostgreSQL: `3` (*delegated*) |
 | `GETDAYOFWEEK`, `EXTRACT(DOW …)`, `FIRSTDAYOFWEEK` | the i18n of the connection | the database's own rule |
 | `SUBSTRING(s, 1, 3)` | `'bc'` | PostgreSQL: `'bc'` too — Denodo translates it (*delegated*) |
@@ -219,8 +220,9 @@ instead of a weekday number.
 - The `date` type and `TO_DATE` are deprecated: `localdate`, `timestamp`, `timestamptz` and
   `TO_LOCALDATE` / `TO_TIMESTAMP` / `TO_TIMESTAMPTZ` replace them. In a `CAST`, the SQL name
   `DATE` means `localdate`: `CAST('2024-03-15' AS date)` → `2024-03-15`.
-- `CATALOG_ELEMENTS`, `CATALOG_VIEWS` and the other `CATALOG_*` procedures are deprecated:
-  `GET_ELEMENTS`, `GET_VIEWS`, `GET_PRIMARY_KEYS`, `GET_FOREIGN_KEYS`.
+- `CATALOG_ELEMENTS`, `CATALOG_VIEWS`, `CATALOG_PKS` and `CATALOG_FKS` are deprecated:
+  `GET_ELEMENTS`, `GET_VIEWS`, `GET_PRIMARY_KEYS`, `GET_FOREIGN_KEYS`. `CATALOG_PERMISSIONS`
+  and `CATALOG_VDP_METADATA_VIEWS` are not.
 - Before 8.0, `UNION` kept duplicates.
 - Type names in declarations and in `CAST` differ (`int` / `integer`, `long` / `bigint`,
   `text` / `varchar`, `double` / `double precision`: `CAST(x AS double)` is a syntax error) —
