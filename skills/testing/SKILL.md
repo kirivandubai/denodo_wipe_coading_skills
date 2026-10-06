@@ -54,7 +54,10 @@ A project whose `.vql` files sit directly in `denodo/` keeps them in `denodo/tes
 - `{ds:vdp}` on every `%EXECUTION`, `%RESULTS[query]`, `%SETUP` and `%TEARDOWN`, and view names
   unqualified: the database is the configuration's (`--database` below), so the same files run
   against every environment. Write the database name only where a procedure takes it
-  (`GET_VIEWS()`, `GET_VIEW_COLUMNS()`).
+  (`GET_VIEWS()`, `GET_VIEW_COLUMNS()`). Such a test reads that database whatever `--database`
+  says: where none of that name exists it fails — the procedure raises an error, it does not
+  answer no rows (measured against 9.5.1) — and where one exists beside the tested one, it
+  checks that one.
 - No `configuration.properties`, no wrapper script and no password in the project. The CI
   pipeline writes its own configuration from its secret store (**Running it**, below).
 
@@ -165,9 +168,11 @@ ordinal_position,column_name,column_vdp_type
 ```
 
 The data tests cannot see a column moved, retyped or added: the tool matches columns by name
-and compares numbers by value. One view per test, with `=`: `input_view_name IN ( … )` answers
-no rows and no error, which a "no rows" test would read as a pass. This one can, and it is the test a rename or a new column fails
+and compares numbers by value. This one can, and it is the test a rename or a new column fails
 first — on purpose: the contract changed, and the human says whether it should.
+`input_view_name` is a `LIKE` pattern (`_` matches any character); one view per test, with `=`:
+`input_view_name IN ( … )` answers no rows and no error, which a "no rows" test would read as a
+pass.
 
 ### The rows the consumer reads
 
@@ -251,7 +256,7 @@ compares them:
 | The value | Write it |
 |---|---|
 | `NULL` | an empty field. The tool cannot tell `NULL` from `''` — select `x IS NULL AS x_is_null` when it matters |
-| text | exactly, case and spaces included; a file source may pad text to the column width — `TRIM` in the query rather than quoting padding an editor will strip |
+| text | exactly, case and spaces included; text may arrive padded to its column width (a `CHAR(n)` column, a file that pads its fields) — `TRIM` in the query rather than quoting padding an editor will strip |
 | text with a comma or a quote, starting with `#` or a space | quoted: `"a, b"`, `"#1"`; a `"` inside doubled. **An unquoted line starting with `#` is a comment and its row is gone** |
 | `${` | `\${` — in the query too |
 | `decimal`, `int`, `long` | as `vql run` prints them; `12.50` equals `12.5` |
@@ -283,7 +288,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/denodo testing run --env dev --database sales_anal
 
 starts **the Denodo Testing Tool itself** on the folder (or one file): the tool parses the tests
 and compares the results, the command only launches it. It writes the tool's configuration from
-the profile into a temporary file readable by you only, runs the launcher from the tool's
+the profile into a temporary file readable by you only, runs `bash denodo-test.sh` in the tool's
 `bin/`, deletes the file, and answers with one JSON document — `exit_code`, `summary` (`run`,
 `ok`, `failed`, `zero_tuple`), each test with its `status` and `message`, `test_files` (the
 `.denodotest` files it found), and on a failure `output_tail`, the last lines the tool printed.
@@ -309,6 +314,9 @@ comes out of the zip without its execute bit:
 ```
 cd "<tool home>/bin" && JAVA_HOME=<java 17+> bash denodo-test.sh file:<path from testing config> file:<absolute path of tests/>
 ```
+
+On Windows, in `cmd`:
+`cd /d "<tool home>\bin" && set "JAVA_HOME=<java 17+>" && denodo-test.bat file:<path from testing config> file:<absolute path of tests>`.
 
 Never open that file and never put its path into a command of yours: run the tests with
 `testing run`. The launcher exits `0` after printing its usage when an argument is missing, so

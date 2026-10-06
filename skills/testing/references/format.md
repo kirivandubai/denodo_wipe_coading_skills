@@ -70,7 +70,7 @@ on the way stops the pass, and the TEARDOWN after it does not run (below).
 | `type:superset` | the opposite: every obtained row must be among the expected ones, which may hold more. Same sorting rule as `subset` |
 | Expected data with only the header line | means "no rows": passes on an empty result, fails with `Obtained 1 rows, but expected 0` otherwise |
 | Numbers | compared as numbers: `12.5` equals `12.50`, `long` equals `int`. A `double` compares by its exact value: `0.1 + 0.2` is `0.30000000000000004`, not `0.3` — `ROUND` it in the query |
-| Text | exact: case, inner and trailing spaces. Text from a file source may be padded to the column width, and an editor strips trailing spaces from the expected line — `TRIM` in the query, or quote the padded value |
+| Text | exact: case, inner and trailing spaces. Text may arrive padded to the column width (a `CHAR(n)` column, a file that pads its fields), and an editor strips trailing spaces from the expected line — `TRIM` in the query, or quote the padded value |
 | Text that looks like a number | under `ordered:false` the two sides are sorted differently (`'10'` before `'9'` as text, after it as a number) and equal data fails. Compare such columns ordered, with an `ORDER BY` |
 | `NULL` | an empty field and the word `NULL` (any case) in expected data both mean `NULL`, and `NULL` equals an empty string. **No test can tell `NULL` from `''`** — compare `x IS NULL` as a column if it matters |
 | `localdate` | `2024-03-05` |
@@ -94,9 +94,9 @@ simple element in single quotes — with `complex_ordered:false` to ignore eleme
 ```
 
 passes when the execution raises an exception whose message (or a cause's) contains the text,
-or whose class (or a cause's) is the one named — `java.sql.SQLException`. *measured*: `SELECT *
-FROM no_such_view` passes with `not found`. An execution that raises nothing fails. Useful for a
-restriction: a query as a user who must be refused.
+or whose class (or a cause's) is, or extends, the one named — `java.sql.SQLException`.
+*measured*: `SELECT * FROM no_such_view` passes with `not found`. An execution that raises
+nothing fails. Useful for a restriction: a query as a user who must be refused.
 
 ## Variables and inheritance
 
@@ -138,7 +138,9 @@ tool ships and with the server's own 9.5.1 driver alike. Check a plan with a que
 ## Running it
 
 `${CLAUDE_PLUGIN_ROOT}/scripts/denodo testing run --env <profile> --database <db> --tool <dir>
---java-home <java> <tests>` does what follows and reads the result for you. By hand:
+--java-home <java> <tests>` does what follows and reads the result for you (it starts
+`bin/denodo-test.sh`, so it needs a Unix shell). By hand (on Windows, the skill's
+`denodo-test.bat` line instead):
 
 ```
 cd "<tool home>/bin" && JAVA_HOME=<java 17+> bash denodo-test.sh file:<config> file:<tests>
@@ -187,8 +189,8 @@ vdp.connectionTestQuery=SELECT * FROM Dual()
   is a folder under the tool's `drivers/`; the default, `denodo-9.0.0`, is the one the release
   measured here ships — another release may ship another. `--db-adapter` names another folder — *measured*: the 9.0.0
   driver the tool ships works against a 9.5.1 server, and so does the server's own driver
-  (`<DENODO_HOME>/tools/client-drivers/jdbc/denodo-vdp-jdbcdriver.jar`) copied into a folder of
-  its own. A driver newer than the server fails (manual).
+  (`<DENODO_HOME>/tools/client-drivers/jdbc/vdp-jdbcdriver-core/denodo-vdp-jdbcdriver.jar`)
+  copied into a folder of its own. A driver newer than the server fails (manual).
 - The tool reads the file as ISO-8859-1 with `java.util.Properties`; the command escapes the
   values for it. A value of the form `ENC(…)` is decrypted with Jasypt, the key coming from
   `DENODO_TEST_ENCRYPTION_PASSWORD` (environment or system property). There is no substitution
