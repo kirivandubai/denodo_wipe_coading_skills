@@ -140,14 +140,18 @@ api --server scheduler get /public/api/projects/<project_id>/jobs --env dev
 
 - **The job by its exact name inside the named project.** A name is unique only in its project:
   the same name in another project is another team's job, and a name that only starts the same
-  (`…_v2`) is another job — take the `id` of the exact match, and check it again right before
-  the `DELETE`.
+  (`…_v2`) is another job — take the `id` of the exact match, and read its `…/status` again right
+  before the `DELETE`: the same name, and not `RUNNING`.
 - **What goes**: the job and every report of it — the only history of its runs. Step 2's answers,
-  saved as `scheduler/<project>/<job>.json` and `<job>.reports.json`, are what is left; the job's
-  `GET` re-creates it, under a new id and without its history.
+  saved as `scheduler/<project>/<job>.json` and `<job>.reports.json` (`count` up to the summary's
+  `total`), are what is left. The saved `GET` re-creates the job with `POST …/jobs` once its `"id"`
+  is removed — with it the `POST` answers `404` — under a new id, without its history, and
+  **enabled if it was**: set `"disabled": true` before the `POST` (measured).
 - **What stays**: the file an export wrote on the Scheduler host — still there after the delete
   (measured); the cache the job loaded and the table it refreshed. A job that waited on this one
-  is disabled (documentation). Say each in the message.
+  is disabled (documentation): in `GET /public/api/jobs` — every project's jobs — a trigger whose
+  `dependencyInfo` names this job's id (*unverified: 9.5 documentation only*). Say each in the
+  message.
 - A job `RUNNING` in `status` is stopped first (`stop`, the skill's "Stop, enable, disable").
   `disable` keeps the job and its reports and is undone by `enable`: offer it beside the delete
   when the human may want the job back.

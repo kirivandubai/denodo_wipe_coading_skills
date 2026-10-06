@@ -47,8 +47,8 @@ api get --env dev /public/api/views/<view_id>/tags
 - **One assignment goes; the tag and the view stay.** Deleting the tag instead takes it off
   every view it is on; `POST /views/{id}/tags` with the rest of the set rewrites the view's tags
   and races anyone tagging it meanwhile. The `DELETE` per assignment is the call.
-- The tag by its **exact** name (`nameFilter` matches substrings — "Deprecated" also finds
-  "Deprecated API"), the view by `databaseName` and `viewName`: the same view name in two
+- The tag by its **exact** name (`nameFilter` matches substrings — `pii` also finds
+  `pii_legacy`), the view by `databaseName` and `viewName`: the same view name in two
   databases is two elements, and the id from step 1 is the only handle.
 - The `DELETE` answers `200` and an empty body whether the assignment existed or not: step 4
   is the answer — the tag gone from the view, the views of step 2 still there.
@@ -56,8 +56,10 @@ api get --env dev /public/api/views/<view_id>/tags
   … REMOVE_FROM`, `/denodo:catalog`) and the marketplace copy follows at the next import of VDP
   tags — the call below, the human's.
 - An assignment someone else made, on a view older than the session, is the human's to remove:
-  show the four calls with what step 2 keeps. One the session made is yours. A "Deprecated" that
-  is not a tag — a deprecation endorsement, `deprecations` in `view-details` — is another object.
+  show the `DELETE` with what step 2 keeps. One your own call made in this conversation is yours —
+  the ledger records no marketplace objects. When the yes comes late, read step 1 and 2 again
+  right before the `DELETE`: ids do not move, assignments do. A label that is not
+  a tag — a deprecation endorsement, `deprecations` in `view-details` — is another object.
 
 ## Importing VDP tags — the most destructive call in this skill
 
