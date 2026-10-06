@@ -83,6 +83,9 @@ RESTRICTION ( FILTER = 'sales_territory = ''EMEA''' REJECT )
 RESTRICTION ( DENY )
 ```
 
+- The condition names **tags**, not columns: `sales_territory` is a tag on the column the rows
+  are filtered by, and a name that is not a tag is refused at creation with `The following tags
+  do not exist: '<name>'`.
 - The filter applies whether or not the query projects the tagged column, and on every view
   built over the tagged one: a `COUNT(*)` grouped two views up counted only the rows the
   filter kept. (A per-role row restriction with a column list and without `ANY` behaves

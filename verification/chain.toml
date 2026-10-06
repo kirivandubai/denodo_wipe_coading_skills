@@ -132,11 +132,15 @@ vql = [
   # the policy first: a tag a policy names cannot be dropped without CASCADE, and CASCADE is
   # exactly what this list avoids
   "DROP GLOBAL_SECURITY_POLICY IF EXISTS {tag_prefix}analyst_masking",
+  "DROP GLOBAL_SECURITY_POLICY IF EXISTS {tag_prefix}masking_ref",
+  "DROP GLOBAL_SECURITY_POLICY IF EXISTS {tag_prefix}filter_emea",
+  "DROP GLOBAL_SECURITY_POLICY IF EXISTS {tag_prefix}deny_all",
   "DROP DATABASE IF EXISTS {database} CASCADE",
   "DROP TAG IF EXISTS {tag_prefix}pii",
   "DROP TAG IF EXISTS {tag_prefix}finance_sensitive",
   "DROP TAG IF EXISTS {tag_prefix}mcp",
   "DROP TAG IF EXISTS {tag_prefix}personal_data",
+  "DROP TAG IF EXISTS {tag_prefix}sales_territory",
   "DROP ROLE IF EXISTS {tag_prefix}sales_analyst",
   "DROP USER IF EXISTS {tag_prefix}reader",
 ]
@@ -751,6 +755,61 @@ substitute = { sales_analytics = "{database}" }
 check = "SELECT band FROM order_size_band() WHERE amount = 12000"
 
 [[step]]
+id = "procedure-execute-ddl"
+kind = "template"
+channel = "vql"
+address = "skills/procedures/references/vql-procedures.md#EXECUTE: DDL from inside a procedure"
+database = "{database}"
+# Called, the procedure creates its view from its parameter and says so.
+check = "SELECT made FROM p_params() WHERE n = 7 AND made = 'v_param_made'"
+
+[[step]]
+id = "procedure-cursor-rows"
+kind = "fixture"
+channel = "vql"
+database = "{database}"
+vql = """
+CONNECT DATABASE {database};
+
+CREATE OR REPLACE VIEW v_rows
+    AS SELECT 1 AS n, 'one' AS label FROM Dual()
+       UNION ALL SELECT 2 AS n, 'two' AS label FROM Dual()
+       UNION ALL SELECT 3 AS n, 'three' AS label FROM Dual();
+"""
+
+[[step]]
+id = "procedure-cursor"
+kind = "template"
+channel = "vql"
+address = "skills/procedures/references/vql-procedures.md#Cursors: walking rows"
+database = "{database}"
+# Every row of the view comes back, the last one included.
+check = "SELECT n FROM p_cursor() WHERE label = 'three'"
+
+[[step]]
+id = "procedure-exceptions"
+kind = "template"
+channel = "vql"
+address = "skills/procedures/references/vql-procedures.md#Exceptions"
+database = "{database}"
+# The message the client would never see comes back as the row.
+check = "SELECT msg FROM p_others() WHERE msg LIKE '%view_that_is_not_there%'"
+
+[[step]]
+id = "predefined-columns"
+kind = "template"
+channel = "vql"
+address = "skills/procedures/references/predefined.md#Calling one"
+database = "{database}"
+
+[[step]]
+id = "predefined-describe"
+kind = "template"
+channel = "vql"
+address = "skills/procedures/references/predefined.md#Calling one[1]"
+database = "{database}"
+
+[[step]]
 id = "predefined-procedure-call"
 kind = "template"
 channel = "vql"
@@ -1170,6 +1229,16 @@ check = "SELECT income_band_sk FROM household_income_by_band WHERE avg_dependent
 expect = "no rows"
 
 [[step]]
+id = "security-read-as-someone"
+kind = "template"
+channel = "vql"
+requires = ["impersonation"]
+address = "skills/security/references/privileges.md#Checking as someone else"
+# The block's two forms, over the chain's interface view, as its person and as its role.
+substitute = { "SELECT … FROM <view>" = "SELECT COUNT(*) AS n FROM household_income", "'<user>'" = "'{tag_prefix}reader'", "'<role>[,<role>…]'" = "'{tag_prefix}sales_analyst'" }
+database = "{database}"
+
+[[step]]
 id = "security-reapply"
 kind = "template"
 channel = "vql"
@@ -1182,6 +1251,94 @@ address = "skills/views/SKILL.md#Derived view"
 substitute = { sales_analytics = "{database}" }
 database = "{database}"
 check = "SELECT household_sk FROM household_income WHERE buy_potential <> '********' LIMIT 1 CONTEXT ('impersonate_user' = '{tag_prefix}reader')"
+
+# The reference blocks of security: whole policies made of the restriction fragments, created
+# disabled in the form of the template above and dropped by name in [cleanup]; the reads; and
+# last the grants and revokes, which take the role away from the run's user.
+
+[[step]]
+id = "security-policy-masking"
+kind = "template"
+channel = "vql"
+requires = ["enterprise_plus"]
+address = "skills/security/references/policies.md#Masking"
+substitute = { "RESTRICTION ( FILTER = '' MASKING ANY ( personal_data )" = "CREATE OR REPLACE GLOBAL_SECURITY_POLICY {tag_prefix}masking_ref\n    ENABLED = FALSE\n    AUDIENCE ( ANY ROLES ( {tag_prefix}sales_analyst ) )\n    ELEMENTS ( VIEW_DATABASES ( {database} ) COLUMNS TAGGED ANY ( {tag_prefix}personal_data ) )\n    RESTRICTION ( FILTER = '' MASKING ANY ( {tag_prefix}personal_data )" }
+database = "{database}"
+check = "SELECT name FROM GET_ELEMENTS() WHERE type = 'globalSecurityPolicy' AND name = '{tag_prefix}masking_ref'"
+
+[[step]]
+id = "security-policy-filter-deny"
+kind = "template"
+channel = "vql"
+requires = ["enterprise_plus"]
+address = "skills/security/references/policies.md#Row filter and deny"
+# The condition names a tag (the server refuses one that is not), so the run's own tag goes in
+# front of the filter policy, under the prefix [cleanup] drops it by.
+substitute = { "RESTRICTION ( FILTER = 'sales_territory = ''EMEA''' REJECT )" = "CREATE OR REPLACE TAG {tag_prefix}sales_territory DESCRIPTION = 'The territory of a row, for the row filter';\nCREATE OR REPLACE GLOBAL_SECURITY_POLICY {tag_prefix}filter_emea\n    ENABLED = FALSE\n    AUDIENCE ( ANY ROLES ( {tag_prefix}sales_analyst ) )\n    ELEMENTS ( VIEW_DATABASES ( {database} ) COLUMNS TAGGED ANY ( {tag_prefix}personal_data ) )\n    RESTRICTION ( FILTER = '{tag_prefix}sales_territory = ''EMEA''' REJECT );", "RESTRICTION ( DENY )" = "CREATE OR REPLACE GLOBAL_SECURITY_POLICY {tag_prefix}deny_all\n    ENABLED = FALSE\n    AUDIENCE ( ANY ROLES ( {tag_prefix}sales_analyst ) )\n    ELEMENTS ( VIEW_DATABASES ( {database} ) COLUMNS TAGGED ANY ( {tag_prefix}personal_data ) )\n    RESTRICTION ( DENY );" }
+database = "{database}"
+check = "SELECT COUNT(*) FROM GET_ELEMENTS() WHERE type = 'globalSecurityPolicy' AND (name = '{tag_prefix}filter_emea' OR name = '{tag_prefix}deny_all') HAVING COUNT(*) = 2"
+
+[[step]]
+id = "security-policies-switch"
+kind = "template"
+channel = "vql"
+requires = ["enterprise_plus"]
+address = "skills/security/references/policies.md#ALTER GLOBAL_SECURITY_POLICIES — enable, disable"
+substitute = { "mask_personal_data" = "{tag_prefix}masking_ref", "filter_emea" = "{tag_prefix}filter_emea" }
+database = "{database}"
+
+[[step]]
+id = "security-policies-status"
+kind = "template"
+channel = "vql"
+requires = ["enterprise_plus"]
+address = "skills/security/references/policies.md#What removes a policy, or switches it off, without saying so"
+database = "{database}"
+check = "SELECT name FROM GET_ELEMENTS() WHERE type = 'globalSecurityPolicy' AND name = '{tag_prefix}analyst_masking' AND element_status = 'OK'"
+
+[[step]]
+id = "security-policies-read"
+kind = "template"
+channel = "vql"
+requires = ["enterprise_plus"]
+address = "skills/security/references/policies.md#Reading"
+substitute = { "<name>" = "{tag_prefix}analyst_masking" }
+database = "{database}"
+check = "SELECT tag_name FROM GET_GLOBAL_SECURITY_POLICIES_TAGS() WHERE global_security_policy_name = '{tag_prefix}analyst_masking' AND tag_name = '{tag_prefix}personal_data'"
+
+[[step]]
+id = "security-audience-grant-path"
+kind = "template"
+channel = "vql"
+address = "skills/security/references/policies.md#Audience and grant path"
+substitute = { sales_analytics = "{database}" }
+database = "{database}"
+
+[[step]]
+id = "security-who-reads"
+kind = "template"
+channel = "vql"
+address = "skills/security/references/privileges.md#Who reads a database, and through what"
+substitute = { sales_analytics = "{database}" }
+database = "{database}"
+check = "SELECT username FROM CATALOG_PERMISSIONS() WHERE dbname = '{database}' AND username = '{tag_prefix}reader' AND userrolename = '{tag_prefix}sales_analyst'"
+
+[[step]]
+id = "security-user-grants"
+kind = "template"
+channel = "vql"
+address = "skills/security/references/privileges.md#Users"
+# The first line names a list of roles in grammar; the step grants the one role.
+substitute = { " [, <role> ]*" = "", "<db>.<view>" = "{database}.household_income", "<name>" = "{tag_prefix}reader", "<role>" = "{tag_prefix}sales_analyst", "<db>" = "{database}" }
+database = "{database}"
+
+[[step]]
+id = "security-database-grants"
+kind = "template"
+channel = "vql"
+address = "skills/security/references/privileges.md#Database grants from the database side"
+substitute = { "<db>" = "{database}", "<role>" = "{tag_prefix}sales_analyst" }
+database = "{database}"
 
 [[step]]
 id = "external-element-vql"
@@ -1913,26 +2070,11 @@ expect_body = { id = "{renamed_view_id}" }
 "skills/marketplace/references/external-elements.md#The contract" = "not yet a step: T40 in progress"
 "skills/marketplace/references/tags.md#Importing VDP tags — the most destructive call in this skill" = "not yet a step: T40 in progress"
 "skills/materialize/references/remote-tables.md#The procedure" = "not yet a step: T40 in progress"
-"skills/procedures/references/java-procedures.md#What has to exist first" = "not yet a step: T40 in progress"
-"skills/procedures/references/predefined.md#Calling one" = "not yet a step: T40 in progress"
-"skills/procedures/references/predefined.md#Calling one[1]" = "not yet a step: T40 in progress"
-"skills/procedures/references/vql-procedures.md#The statement" = "not yet a step: T40 in progress"
-"skills/procedures/references/vql-procedures.md#EXECUTE: DDL from inside a procedure" = "not yet a step: T40 in progress"
-"skills/procedures/references/vql-procedures.md#Cursors: walking rows" = "not yet a step: T40 in progress"
-"skills/procedures/references/vql-procedures.md#Exceptions" = "not yet a step: T40 in progress"
-"skills/security/references/policies.md#CREATE GLOBAL_SECURITY_POLICY" = "not yet a step: T40 in progress"
-"skills/security/references/policies.md#Masking" = "not yet a step: T40 in progress"
-"skills/security/references/policies.md#Row filter and deny" = "not yet a step: T40 in progress"
-"skills/security/references/policies.md#ALTER GLOBAL_SECURITY_POLICIES — enable, disable" = "not yet a step: T40 in progress"
-"skills/security/references/policies.md#DROP" = "not yet a step: T40 in progress"
-"skills/security/references/policies.md#Audience and grant path" = "not yet a step: T40 in progress"
-"skills/security/references/policies.md#What removes a policy, or switches it off, without saying so" = "not yet a step: T40 in progress"
-"skills/security/references/policies.md#Reading" = "not yet a step: T40 in progress"
-"skills/security/references/privileges.md#Roles" = "not yet a step: T40 in progress"
-"skills/security/references/privileges.md#Users" = "not yet a step: T40 in progress"
-"skills/security/references/privileges.md#Database grants from the database side" = "not yet a step: T40 in progress"
-"skills/security/references/privileges.md#Who reads a database, and through what" = "not yet a step: T40 in progress"
-"skills/security/references/privileges.md#Checking as someone else" = "not yet a step: T40 in progress"
+"skills/procedures/references/java-procedures.md#What has to exist first" = "the error the server prints when the class is missing, not a statement; a Java procedure needs a JAR the chain cannot import"
+"skills/procedures/references/vql-procedures.md#The statement" = "grammar ([ … ], <…>), not a statement; the procedure templates run three"
+"skills/security/references/policies.md#CREATE GLOBAL_SECURITY_POLICY" = "grammar ([ … ], <…>), not a statement; the security template and the policy steps run it"
+"skills/security/references/policies.md#DROP" = "grammar ([ … ], <…>), not a statement; the cleanup runs it"
+"skills/security/references/privileges.md#Roles" = "grammar ([ … ], <…>), not a statement; the security template runs a CREATE ROLE"
 "skills/semantics/references/metadata.md#Writing — every form" = "not yet a step: T40 in progress"
 "skills/views/SKILL.md#Interface view — a contract you can re-implement[1]" = "a fragment of the interface view's file; the Field mapping step of interface.md runs the whole statement with these mappings"
 "skills/views/references/arrays.md#FLATTEN: an array to rows" = "grammar ([ … ], <…>), not a statement; the arrays templates run FLATTEN"
