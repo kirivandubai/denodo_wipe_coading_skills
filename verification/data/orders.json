@@ -1,0 +1,68 @@
+[
+  {
+    "order_id": "O-1001",
+    "customer_id": "C-10001",
+    "order_dt": "2026-09-01T10:15:00",
+    "status": "shipped",
+    "total_amount": 96.5,
+    "shipping": {
+      "country": "PT",
+      "city": "Lisbon",
+      "zip": "1100-148"
+    },
+    "lines": [
+      {
+        "line_no": 1,
+        "sku": "SKU-100",
+        "qty": 2,
+        "price": 18.25
+      },
+      {
+        "line_no": 2,
+        "sku": "SKU-200",
+        "qty": 6,
+        "price": 10.0
+      }
+    ]
+  },
+  {
+    "order_id": "O-1002",
+    "customer_id": "C-10002",
+    "order_dt": "2026-09-02T16:40:00",
+    "status": "open",
+    "total_amount": 42.0,
+    "shipping": {
+      "country": "NG",
+      "city": "Lagos",
+      "zip": "100001"
+    },
+    "lines": [
+      {
+        "line_no": 1,
+        "sku": "SKU-300",
+        "qty": 1,
+        "price": 42.0
+      }
+    ]
+  },
+  {
+    "order_id": "O-1003",
+    "customer_id": "C-10003",
+    "order_dt": "2026-09-03T09:05:00",
+    "status": "cancelled",
+    "total_amount": 15.0,
+    "shipping": {
+      "country": "FR",
+      "city": "Lyon",
+      "zip": "69001"
+    },
+    "lines": [
+      {
+        "line_no": 1,
+        "sku": "SKU-100",
+        "qty": 1,
+        "price": 15.0
+      }
+    ]
+  }
+]

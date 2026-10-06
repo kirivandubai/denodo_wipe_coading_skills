@@ -11,6 +11,10 @@ their CHAR width, an empty field for NULL — so one set of wrappers reads eithe
 - reason, store_returns and web_returns are invented under the TPC-DS column names. No check
   reads their exact contents; the returns carry NULL date and reason keys, as the templates over
   them expect.
+- customers.csv and orders.json are the files the data source templates of the skills name
+  (a CRM export and an order export): invented rows in the shape those templates read, so the
+  chain proves the templates read, not only that they parse. orders.json holds 3 orders with
+  4 lines, the numbers the JSON reference states.
 
 Deterministic (a fixed seed, no clock): running it again rewrites the same bytes, and a unit test
 holds the committed files to that. Standard library only:
@@ -20,6 +24,7 @@ holds the committed files to that. Standard library only:
 
 from __future__ import annotations
 
+import json
 import random
 from pathlib import Path
 
@@ -149,7 +154,41 @@ WEB_RETURNS = ["WR_RETURNED_DATE_SK", "WR_RETURNED_TIME_SK", "WR_ITEM_SK", "WR_R
                "WR_REVERSED_CHARGE", "WR_ACCOUNT_CREDIT", "WR_NET_LOSS"]
 
 
-FILES = ("income_band", "household_demographics", "reason", "store_returns", "web_returns")
+FIRST_NAMES = ["Ana", "Ben", "Chloe", "Dev", "Elif", "Farid", "Grace", "Hiro", "Ines", "Jonas"]
+LAST_NAMES = ["Silva", "Okafor", "Martin", "Rao", "Yilmaz", "Haddad", "Kim", "Sato", "Costa", "Berg"]
+PLACES = [("PT", "Lisbon"), ("NG", "Lagos"), ("FR", "Lyon"), ("IN", "Pune"), ("TR", "Izmir"),
+          ("AE", "Dubai"), ("KR", "Busan"), ("JP", "Osaka"), ("BR", "Recife"), ("NO", "Bergen")]
+
+
+def customers(rng: random.Random, count: int = 40):
+    for number in range(1, count + 1):
+        first, last = FIRST_NAMES[number % 10], LAST_NAMES[number * 7 % 10]
+        country, city = PLACES[number * 3 % 10]
+        email = "" if number % 9 == 0 else f"{first.lower()}.{last.lower()}{number}@example.com"
+        created = f"20{21 + number % 5}-{1 + number % 12:02d}-{1 + number % 28:02d}"
+        yield f"C-{10000 + number}", first, last, email, country, city, created, rng.choice("ABC")
+
+
+ORDERS = [
+    {"order_id": "O-1001", "customer_id": "C-10001", "order_dt": "2026-09-01T10:15:00", "status": "shipped",
+     "total_amount": 96.5, "shipping": {"country": "PT", "city": "Lisbon", "zip": "1100-148"},
+     "lines": [{"line_no": 1, "sku": "SKU-100", "qty": 2, "price": 18.25},
+               {"line_no": 2, "sku": "SKU-200", "qty": 6, "price": 10.0}]},
+    {"order_id": "O-1002", "customer_id": "C-10002", "order_dt": "2026-09-02T16:40:00", "status": "open",
+     "total_amount": 42.0, "shipping": {"country": "NG", "city": "Lagos", "zip": "100001"},
+     "lines": [{"line_no": 1, "sku": "SKU-300", "qty": 1, "price": 42.0}]},
+    {"order_id": "O-1003", "customer_id": "C-10003", "order_dt": "2026-09-03T09:05:00", "status": "cancelled",
+     "total_amount": 15.0, "shipping": {"country": "FR", "city": "Lyon", "zip": "69001"},
+     "lines": [{"line_no": 1, "sku": "SKU-100", "qty": 1, "price": 15.0}]},
+]
+
+
+def _write_orders(folder: Path) -> None:
+    (folder / "orders.json").write_text(json.dumps(ORDERS, indent=2) + "\n", encoding="utf-8", newline="\n")
+
+
+FILES = ("income_band", "household_demographics", "reason", "store_returns", "web_returns", "customers",
+         "orders")
 
 
 def main(folder: Path = HERE) -> None:
@@ -160,6 +199,9 @@ def main(folder: Path = HERE) -> None:
     _write(folder, "reason", ["R_REASON_SK", "R_REASON_ID", "R_REASON_DESC"], reason())
     _write(folder, "store_returns", STORE_RETURNS, store_returns(rng))
     _write(folder, "web_returns", WEB_RETURNS, web_returns(rng))
+    _write(folder, "customers", ["cust_id", "first_name", "last_name", "email", "country", "city", "created_dt",
+                                 "segment_cd"], customers(rng))
+    _write_orders(folder)
 
 
 if __name__ == "__main__":
