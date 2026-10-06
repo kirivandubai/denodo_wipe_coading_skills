@@ -235,8 +235,9 @@ CREATE OR REPLACE VIEW household_share_by_band
 year with the coverage of each year, to date against the same days of last year, a running total
 — and what decides them:
 
-- **A partial period makes its change meaningless**: data that starts in March or stops on the 6th
-  gives a first and a last year of a few months, and every total check still passes. Show the
+- **A partial period makes its change meaningless**: data that starts or stops in the middle of a
+  period gives a first and a last period shorter than the others, and every total check still
+  passes. Show the
   first and last date with data per period, and say it.
 - **A coarser period adds up only sums and counts** — months of a `COUNT(DISTINCT …)` summed into a
   year count a customer once per month. The period is a dimension of the metric view.
