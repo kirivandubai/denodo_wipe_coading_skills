@@ -81,10 +81,95 @@ the bottlenecks in trust on another server, in rules kept as prose, and in bulk 
 *T43 is done — under «Сделано» below. The development the review recommended is complete.*
 
 **The final review (2026-10-06).** [The verdict on the owner's five points](superpowers/specs/2026-10-06-final-review.md)
-and [every finding that survived verification](superpowers/specs/2026-10-06-final-review-findings.md).
-It proposes one closing task before development moves to session-driven changes only; the task is
-queued when the owner agrees on its order and on three decisions — the brownfield recipe (the open
-question below), the plugin's `version`, and whether `vql` keeps a map of the skills.
+and [every finding that survived verification](superpowers/specs/2026-10-06-final-review-findings.md)
+— ids below are that appendix's. The owner's decisions (2026-10-06): the brownfield recipe goes
+into `views`; `version` leaves the manifests, so users track commits; `vql` keeps a short map of
+the skills. Three tasks in this order; after them, development is driven by sessions only — no new
+object skill until a session asks for one. Low findings are made in the same passes, file by file.
+
+- **T44. What an agent would get wrong on another server** (points 1 and 4, the version, `verify`).
+  - **The version:** remove `version` from `.claude-plugin/plugin.json` and `metadata.version`
+    from `marketplace.json` (repo-3, scope-maintainer-8): by the Claude Code plugin reference a set
+    `version` "keeps users on that version until you change it". README: one note that existing
+    installs reinstall once, and a launcher path that cannot match an orphaned old version
+    (repo-13).
+  - **The five high findings of point 4 and the two of point 1:** the dependants check
+    (datasources-B1, datasources-A13 — `USED_BY`); `date` → `localdate`, `TO_DATE` →
+    `TO_LOCALDATE` (datasources-B2, datasources-B6, execute-B1, and the open question below);
+    procedure parameters under their own names, not `input_…` (procedures-B1); summaries outside
+    Professional and Standard (materialize-B1); the marketplace types — only Report is native,
+    plus `direction`, the Semantics FeaturePack, the Visualize permission and the stray id `7446`
+    (marketplace-A1, -A8, -A9, -B1, -B2, -B3, -B4, sweep-2); the time zone of writes (dml-A1,
+    -A2, -B2, -B3, sweep-1).
+  - **The medium findings of points 1 and 4** (the main document lists them by kind), with
+    side-3, side-4 and side-12; the low ones of the same files in the same pass, side-1 included.
+    To measure or settle against a manual: side-6 (the cursor loop's row count), side-7 (the MCP
+    Server's user), side-11 (`GET_VIEWS()` with a missing database).
+  - **Outside `skills/`, low:** CLI help texts that trail the code (repo-10), PyPI access on the
+    first run (repo-14), the fixture README (repo-15), task ids in `chain.toml` comments
+    (repo-16), fixtures from `main` against an older installed chain (repo-19), the fixed
+    `verify_` names on a shared server (repo-20).
+  - **`safety.py`:** `GET_STATS_FOR_FIELDS` and `CHECK_METADATA` join the state-changing
+    procedures, with the unit test that compares the two lists (procedures-B2, procedures-B3).
+  - **`verify`:** `--with-marketplace` reads both `changes` before the tail and before cleanup and
+    skips the synchronise pair when anything foreign is pending, as the outcome runner does
+    (repo-1); `jdbc-generate-schema` after `cache-load` (repo-4); README's production and
+    Scheduler-export statements (repo-11, repo-12); one figure for the AI tail (side-13).
+  - **Done when:** unit tests and lint pass; every changed template is a green chain step on the
+    test server (`--update-marks` rewrites the marks); the routing suite runs if a description
+    changed.
+- **T45. The drifted duplicates, then the cuts** (point 3).
+  - **First the ten duplicates that now contradict each other:** catalog-A2, catalog-A3,
+    catalog-A4, catalog-A5, views-A13, marketplace-A4, procedures-A2 (with procedures-B4),
+    execute-A12 (with side-5), datasources-A13, the `dml`/`vql` zone pair (done in T44).
+  - **Core side:** `vql`'s marketplace section to `marketplace` (vql-A1, cross-1); the long rows of
+    the core table (cross-6); the short map of the skills, one row per skill (vql-A2, cross-5 —
+    decided); `execute`'s `verify` and `testing run` rows, the data-source password procedure and
+    the list of flagged statements (execute-A4, execute-A5, execute-A7, execute-A9, execute-A10,
+    execute-A13, cross-2, cross-3, cross-7, scope-maintainer-10).
+  - **Domain bodies:** `marketplace` renames to `references/renames.md`, out of `LONG_SKILLS`
+    (marketplace-A2, -A3); the facts tables of `materialize` and `dml` (materialize-A4, dml-A5,
+    dml-A6); `datasources` (A6, A8–A12); `metrics` (A7, A8, A11, A12); `views` (A5–A8, cross-8,
+    cross-9); error texts quoted in prose and again in Common mistakes (ai-A5, cache-A5,
+    catalog-A1, procedures-A1, views-A8, scheduler-A9); the remaining point-3 findings, and the
+    wording ones found on the side (side-2, side-8, side-9, side-10).
+  - **Keep:** the domain copies of the safety rules, the Silent failures and Common mistakes
+    tables, "Many objects at once" in `vql`.
+  - **Done when:** the characters of the sixteen `SKILL.md` files, before and after, are in the
+    report; chain addresses and lint lists follow every move; the outcome scenarios
+    `marketplace-tag` and `drop-under-pressure` pass again; the routing suite runs if a
+    description changed (cross-14, execute-A18, semantics-A10).
+- **T46. The scope conditions and the experience loop** (point 5, and point 2 outside `skills/`).
+  - **Brownfield** (decided): one recipe in `views` for starting the file of a view that exists only
+    on the server — `DESC VQL VIEW <v> ('includeDependencies' = 'no', 'dropElements' = 'no')`, the
+    parts to remove, `vql plan`, apply — with RED/GREEN runs and a chain step (scope-maintainer-5).
+  - **The boundary:** a row in `vql`'s map for what is outside the plugin (publishing web services,
+    listeners, Java extensions, users and LDAP, promotion, dbt); `CREATE … WEBSERVICE`, `DEPLOY`,
+    `REDEPLOY`, `UNDEPLOY` in the confirmation column and as a plan kind; a routing case where
+    nothing is created (scope-user-2, scope-maintainer-6).
+  - **Features and version:** the skills read `features` and `vdp.server_version` from `env check`
+    before a tag, a policy, a summary, an AI path, and before 9.5 syntax (scope-maintainer-9,
+    scope-user-11).
+  - **An existing database's conventions:** its own folders and prefixes come before the
+    defaults when there is no `.denodo/conventions.md` (scope-user-3); a file only on the human's
+    machine (scope-user-4).
+  - **The loop:** an issue template for "the agent got it wrong in my session" and "verify failed
+    on my server" — what to attach, how to strip client names (scope-maintainer-1, scope-user-5);
+    `CONTRIBUTING.md` — "from a session to a skill change" (redact, reproduce on a synthetic
+    fixture, RED, change, GREEN, keep a scenario), what is accepted, the outcome scenarios among
+    the checks, the server-wide rules for contributors (scope-maintainer-2, scope-maintainer-7,
+    scope-user-7, repo-5, repo-17); `evals/README.md` in English and in the lint (repo-2, repo-7,
+    scope-user-8, scope-maintainer-13); `spikes/` removed or translated, `.gitignore` comments
+    (repo-8, repo-9); README's out-of-scope list, skills table and supported systems
+    (scope-maintainer-15, scope-maintainer-16, repo-18). `docs/` and `CLAUDE.md` stay the owner's
+    working files (repo-21, no action).
+  - **Experience already gathered:** the questions five mart runs each answered alone — a full
+    grid or only the cells with data, which key — and the naming of a lone file (scope-user-9).
+    The next outcome scenarios — changing a view others use, granting access, a JDBC schema — are
+    written when sessions show them failing (scope-maintainer-4).
+  - **Done when:** the brownfield recipe and the boundary row pass RED/GREEN; CI lints
+    `evals/README.md`; no Russian is left in files that ship with the plugin outside `docs/` and
+    `CLAUDE.md`.
 
 ---
 
@@ -104,7 +189,8 @@ question below), the plugin's `version`, and whether `vql` keeps a map of the sk
   whether a remote table's upsert runs as a `MERGE` (`GET_QUERY_EXECUTION_PLAN` refuses an
   `INSERT`).
 - **The DF template declares `created_dt:date`** (`datasources`), a type `dialect.md` calls
-  deprecated — `localdate` reads the same file (T43, noticed by a GREEN review).
+  deprecated — `localdate` reads the same file (T43, noticed by a GREEN review). Confirmed by the
+  final review against the documentation ("should not be used anymore") — fixed in T44.
 - **A matched-rename synchronisation is still the human's yes — should it be?** (T30, for the
   owner.) **Decided 2026-10-05:** a matched-rename synchronisation of the session's own view is
   the agent's; for a view older than the session, one yes covers the rename and the
@@ -420,7 +506,8 @@ question below), the plugin's `version`, and whether `vql` keeps a map of the sk
   ordinary vibe-coding; `views` forbids re-applying `DESC VQL` output but never says how to start
   the file (`DESC VQL VIEW v ('includeDependencies'='no','dropElements'='no')`, then the parts to
   remove). The roadmap review dropped exporting server objects into the project together with
-  `deploy`; whether this one recipe in `views` comes back is the owner's call.
+  `deploy`; whether this one recipe in `views` comes back is the owner's call. **Decided
+  2026-10-06:** yes, one recipe in `views` — T46.
 
 ---
 

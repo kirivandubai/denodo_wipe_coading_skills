@@ -10,7 +10,8 @@ The owner asked for a final review of the repository on five points:
    vibe-coding experience on the platform.
 
 This document is the verdict. Every finding behind it, with its location and fix, is in
-[2026-10-06-final-review-findings.md](2026-10-06-final-review-findings.md).
+[2026-10-06-final-review-findings.md](2026-10-06-final-review-findings.md); the fixes are tasks
+T44–T46 in [TASKS.md](../../TASKS.md).
 
 **Base commit:** `2fa6fbd` (after T43). Line numbers are as of that commit.
 
@@ -346,7 +347,7 @@ repository supports it only for its owner today. The tools exist (outcome runner
 
 ## Recommendation
 
-One closing task, then the freeze the owner proposes. In order:
+The closing work, then the freeze the owner proposes. In order (split into T44–T46 below):
 
 1. **The version** — the owner's choice between no `version` and a bump rule; one notice to existing
    users to reinstall.
@@ -366,10 +367,14 @@ One closing task, then the freeze the owner proposes. In order:
 6. **`verify --with-marketplace`** guarded like the outcome runner, and `jdbc-generate-schema`
    moved after the cache load.
 
-**For the owner to decide:** the brownfield recipe (condition 1); the version policy; whether
-`vql` keeps a short map of skills (the design spec makes the core that map) or none. The ~270 low
-findings are one-line edits best made skill by skill in the same pass, or left — none of them makes
-the agent fail.
+**Decided by the owner (2026-10-06):** the brownfield recipe goes into `views` (condition 1);
+`version` is removed from the manifests, so users track commits; `vql` keeps a short map of the
+skills. The work is three tasks instead of one — T44 (what an agent would get wrong: points 1 and
+4, the version, `verify`), T45 (the drifted duplicates and the cuts of point 3), T46 (the scope
+conditions and the experience loop) — in `TASKS.md`. The ~270 low findings are one-line edits made
+in the same passes, file by file. Thirteen side observations the reviewers noted outside their
+own point were checked afterwards and added to the appendix (three medium: side-3, side-4,
+side-12).
 
 After that, the claim of point 5 holds without conditions: no new object skill until a session
 asks for it.
