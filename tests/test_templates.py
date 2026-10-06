@@ -169,17 +169,20 @@ class RealSkillFileTest(unittest.TestCase):
 
     def test_when_you_cannot_see_the_file_section_resolves_and_marks_are_read(self):
         root = Path(__file__).resolve().parents[1]
+        # The dates move: since T40 the chain runs these blocks and `--update-marks` re-dates
+        # them, so the form of the mark is what is held here, not the day.
+        live = r"^verified: 9\.5\.1 \(live, \d{4}-\d{2}-\d{2}\)$"
         # the donor search: unmarked until the review of 2026-10-05 asked for a mark on it
         first = load_block(root, "skills/datasources/SKILL.md#When you cannot see the file")
-        self.assertEqual(first.mark, "verified: 9.5.1 (live, 2026-10-05)")
+        self.assertRegex(first.mark, live)
 
         # the donor read-back: a bash fence, so its mark is a `#` comment
         second = load_block(root, "skills/datasources/SKILL.md#When you cannot see the file[1]")
-        self.assertEqual(second.mark, "verified: 9.5.1 (live, 2026-09-12)")
+        self.assertRegex(second.mark, live)
         self.assertIn("vql desc", second.body)
 
         third = load_block(root, "skills/datasources/SKILL.md#When you cannot see the file[2]")
-        self.assertEqual(third.mark, "verified: 9.5.1 (live, 2026-09-09)")
+        self.assertRegex(third.mark, live)
         self.assertIn("CREATE OR REPLACE DATASOURCE DF ds_crm", third.body)
         # dedented: the raw file indents this fence by three spaces (it lives inside a
         # numbered list), so an un-dedented body would still carry that indentation here
