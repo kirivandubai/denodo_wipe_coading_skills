@@ -79,7 +79,7 @@ SELECT e.name, e.subtype, e.folder,
  WHERE e.input_database_name = 'sales_analytics' AND e.input_type = 'views'
  ORDER BY subtype, name;
 
-SELECT view_name, column_name, column_is_primary_key, column_is_nullable, column_remarks
+SELECT view_name, column_name, column_vdp_type, column_is_primary_key, column_is_nullable, column_remarks
   FROM GET_VIEW_COLUMNS()
  WHERE input_database_name = 'sales_analytics';
 
