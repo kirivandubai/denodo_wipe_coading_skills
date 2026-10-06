@@ -45,7 +45,7 @@ any view.
 | Part | What it must be | Check |
 |---|---|---|
 | **Fact view** | the one view every metric reads — metrics over two views are refused | its grain: `SELECT COUNT(*), COUNT(DISTINCT <key>) FROM <fact>` |
-| **Dimension views** | one row per key, and that key declared as the view's `PRIMARY KEY` — a duplicated key multiplies every metric under it; an undeclared one empties every `HAVING` grouped by it (Silent failures, 12) | `SELECT COUNT(*), COUNT(DISTINCT <key>) FROM <dimension>` — equal; `column_is_primary_key` in `GET_VIEW_COLUMNS()` |
+| **Dimension views** | one row per key, and that key declared as the view's `PRIMARY KEY` — a duplicated key multiplies every metric under it; an undeclared one can empty every `HAVING` grouped by it over a file source (Silent failures, 12) | `SELECT COUNT(*), COUNT(DISTINCT <key>) FROM <dimension>` — equal; `column_is_primary_key` in `GET_VIEW_COLUMNS()` |
 | **Associations** | one per dimension, from the fact (or from the dimension a snowflake hangs on), a tree with no second path | `SELECT association_name, mappings, valid FROM GET_ASSOCIATIONS() WHERE input_database_name = '<db>' AND input_type = 'views' AND input_name = '<fact>'` |
 | **Fact rows without a dimension row** | decide: kept in a `NULL` group, or dropped | `SELECT COUNT(*), COUNT(<fk>) FROM <fact>`, and orphans: `… LEFT OUTER JOIN <dimension> … WHERE <fk> IS NOT NULL AND <dimension key> IS NULL` |
 
@@ -58,16 +58,16 @@ The checks in the table — *verified: 9.5.1 (live, 2026-10-05)*.
 |---|---|---|
 | `RIGHT`, dimension endpoint `(0,1)` or `PRINCIPAL (0,1)` | kept, in a `NULL` group of that dimension | absent |
 | `LEFT` | **dropped** | present, metrics `NULL` (`COUNT` 0) |
-| `INNER`, or any type over a `(1)` endpoint | **dropped** | absent |
+| `INNER`, or `RIGHT` over a `(1)` endpoint | **dropped** | absent |
 | nothing | from the association: dimension endpoint `(1)` → as `INNER`; `PRINCIPAL (0,1)` → as `LEFT` | |
 
 - **`RIGHT` keeps the fact's rows only when the dimension endpoint of the association is
-  `(0,1)`.** With `(1)` — "every fact row has exactly one" — the server runs `INNER`
-  whatever you write, and the facts without a match vanish from every grouped query. The
-  association template in `/denodo:views` declares `(1)`: right when the check above finds
-  no `NULL` key and no orphan, wrong otherwise — then the association says `(0,1)`:
-  `ENDPOINT <role> <fact view> (0,*)` and `ENDPOINT <role> <dimension view> PRINCIPAL (0,1)`,
-  the rest of the template unchanged.
+  `(0,1)`.** With `(1)` — "every fact row has exactly one" — the server runs `RIGHT` as
+  `INNER` (a `LEFT` keeps the members), and the facts without a match vanish from every
+  grouped query. The association template in `/denodo:views` declares `(1)`: right when the
+  check above finds no `NULL` key and no orphan, wrong otherwise — then the association says
+  `(0,1)`: `ENDPOINT <role> <fact view> (0,*)` and
+  `ENDPOINT <role> <dimension view> PRINCIPAL (0,1)`, the rest of the template unchanged.
 - The order of the two aliases does not matter; the type is read against the fact.
 - A query without any dimension of a group applies no join for it: the grand total always
   counts every fact row, which is why a model that drops rows still shows the right total.
@@ -244,8 +244,9 @@ year with the coverage of each year, to date against the same days of last year,
 - **"Today" is the server's clock, not the data's**: over data loaded weeks ago a to-date view
   answers `0` and a fall of 100 %. Read the last date with data, and check the view at dates you
   choose.
-- The year before is a join on `<year> - 1`, not `LAG`; a window runs only where the metric view's
-  sources are in one database.
+- The year before is a join on `<year> - 1`, not `LAG`; a window runs where it is delegated — the
+  metric view's sources in one database — or where the server is set up to move the data to an MPP
+  or the cache; elsewhere `Function <name> is not executable`.
 
 ### Query it ad hoc
 
@@ -367,8 +368,8 @@ Each runs without an error — *verified: 9.5.1 (live, 2026-10-01)*.
 | 9. the sum of a selection's rows as a total | an average of averages; distinct counts counted twice | the metric with no dimension |
 | 10. `evaluate_metric(x)` over a selection view | `NULL` | `x` — `evaluate_metric` belongs to the metric view only |
 | 11. a share as `SUM(CASE … 1 ELSE 0 END) / COUNT(x)` | `0` — integer division | `1.0 * SUM(…) / COUNT(x)` |
-| 12. `HAVING evaluate_metric(m) > …` grouped by the key of a dimension view that declares no `PRIMARY KEY`, over a file source | no rows: the plan is `INCOMPATIBLE_QUERY_VIEW`, `VOID PLAN` (the same query delegated to a database answered) | declare the key in the dimension view's file; or filter the selection view's column in a view above |
-| 13. `COALESCE(<dim>, '…') AS d`, `UPPER(<dim>) AS d`, `GETYEAR(<date>)` or a `CASE` in a query, grouped by it or by its alias, over sources in a database | every `COUNT(DISTINCT …)` metric missing from the result — the plan already projects without it; sums, counts and averages stay (over file sources it stayed) — the expression grouped as itself: *verified: 9.5.1 (live, 2026-10-06)* | the expression in the dimension's definition, or `GROUP BY <dim>` and the label in the view above |
+| 12. `HAVING evaluate_metric(m) > …` grouped by the key of a dimension view that declares no `PRIMARY KEY`, over a file source | no rows: the plan is `INCOMPATIBLE_QUERY_VIEW`, `VOID PLAN` (the same query delegated to SQL Server answered) | declare the key in the dimension view's file; or filter the selection view's column in a view above |
+| 13. `COALESCE(<dim>, '…') AS d`, `UPPER(<dim>) AS d`, `GETYEAR(<date>)` or a `CASE` in a query, grouped by it or by its alias, over sources delegated to a database (measured on SQL Server) | every `COUNT(DISTINCT …)` metric missing from the result — the plan already projects without it; sums, counts and averages stay (over file sources it stayed) — the expression grouped as itself: *verified: 9.5.1 (live, 2026-10-06)* | the expression in the dimension's definition, or `GROUP BY <dim>` and the label in the view above |
 | 14. a query over a selection view that reads none of its metric columns — `SELECT MIN(<date>)`, a `COUNT(*)` | every member of the dimension view, with facts or without: a calendar's every day — *verified: 9.5.1 (live, 2026-10-06)* | read the metric in the same query: `WHERE <metric column> > 0` |
 
 ## Common mistakes
