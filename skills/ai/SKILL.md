@@ -6,17 +6,19 @@ description: Use when a Denodo 9.5 query or view should call the LLM or the embe
 # AI functions: the server's LLM in a query
 
 Every `…_AI` function sends **one request per row it is evaluated on** to the LLM the
-administrator configured for the server: about a second each, one after another, billed by
-the provider, and the row's text travels with it. `EMBED_AI`, and `VECTOR_DISTANCE` with a
-text, do the same against the embedding model. Nothing marks such a query: it reads like a
-`SELECT`, the tool flags nothing, and `--max-rows` does not stop it.
+administrator configured for the server, one after another, each as long as the model takes
+to answer, billed by the provider when it is a hosted service; the row's text goes wherever
+the model runs. `EMBED_AI`, and `VECTOR_DISTANCE` with a text, do the same against the
+embedding model. Nothing in such a query marks it: it reads like a `SELECT`, `vql run` flags
+nothing — `vql plan` does — and `--max-rows` does not stop it.
 
 This skill covers: the six text functions over rows; a view that keeps their answers so
 readers do not pay again; semantic search over a vector column a database already stores, and
 a search view an application passes a sentence to. Configuring the LLM, the embedding model
 or the vector database, and the Enterprise Plus licence the functions need, are the
 administrator's, in Design Studio — say so and stop. Embeddings for a whole table belong in a
-vector-capable database, generated outside Denodo: a full cache cannot hold a vector column.
+vector-capable database, generated outside Denodo: a full cache of a vector column failed
+(`references/vectors.md`).
 `ENRICH_AI_BINARY` (images, PDF) is in `references/functions.md`, documentation only.
 Descriptions drafted by the Denodo Assistant are `/denodo:semantics`; the full cache itself is
 `/denodo:cache`; the view around the expressions is `/denodo:views`; applying files is
@@ -44,14 +46,15 @@ took 0.7–2 s on the server it was measured on:
   every row the query returns. Only a `LIMIT` in the query bounds the work.
 - A filter on source columns runs first — delegated to the database when the source can —
   so only the rows that pass it are sent.
-- At one to two seconds a request, 1,000 rows are 15–30 minutes. A file source may give `''`,
-  not `NULL`, for an empty field — count both.
+- Time the `Dual()` tries — a text from the rows, the function you will run — and multiply:
+  at the 0.7–2 s measured, 1,000 rows are 12–33 minutes. A file source may give `''`, not
+  `NULL`, for an empty field — count both.
 
 ## The rule: the human's number
 
 **An AI function runs over the rows of a view or a table only up to a number the human
-agreed to.** Every row is a paid request, and the text of every row goes to the provider.
-The number counts requests: rows × the AI functions evaluated per row.
+agreed to.** Every row is a paid request, and the text of every row goes to the configured
+model. The number counts requests: rows × the AI functions evaluated per row.
 
 | You run it yourself | Only with the human's number |
 |---|---|
@@ -90,7 +93,7 @@ stored run is what the dashboard will show.
 
 | Rationalization | Reality |
 |---|---|
-| "They asked for every ticket — that is the number" | They asked for an outcome before seeing the count, the time, and that every text leaves for an outside provider. The number is the one they say after yours. |
+| "They asked for every ticket — that is the number" | They asked for an outcome before seeing the count, the time, and that every text goes to the configured model. The number is the one they say after yours. |
 | "It is only a few hundred rows, a few cents" | You know neither the provider's price nor what else runs on that key, and the same load file runs nightly on a table that grows. The rule is the number, not your estimate of the bill. |
 | "I deduplicated / filtered first — it is far fewer calls" | Still a run over rows. Show the number you will actually run; that is the one they agree to. |
 | "They need the counts for the deck in 30 minutes" | Files, `Dual()` tries, the message. A guess run under a deadline is still a run nobody agreed to. |
@@ -167,8 +170,9 @@ LIMIT 5;
   things gets one of them.
 - **The `CASE` sends no request for an empty text.** `NULL` costs nothing anyway; `''` would be
   a request and a confident `neutral` or label.
-- `SENTIMENT_AI` answers `negative`, `neutral`, `mixed` or `positive` in lower case (the
-  documentation's screenshots show `Positive`).
+- `SENTIMENT_AI` answers `negative`, `neutral`, `mixed` or `positive`: lower case where
+  measured, capitalised in the documentation's screenshots. Read the case off the `Dual()`
+  call, or wrap the call in `LOWER(…)` before anything filters on it.
 - Two runs over the same rows are not the same: one of nine short texts changed its sentiment
   between two runs at the default temperature 0. What people read should come from a stored
   run — next template.
@@ -275,9 +279,11 @@ LIMIT 5;
   AND column_vdp_type LIKE 'vector%'` → `[embeddingmodel <model> ]` — *verified: 9.5.1 (live, 2026-10-05)*. A column without it is
   compared with the server's default model, and vectors made by another model of the same
   size give distances that look real and mean nothing (documentation).
-- **`WHERE review_vector IS NOT NULL`** — a row with a `NULL` vector fails the whole query as
-  soon as it would be in the result: `Error executing query`, and in `error.raw` `Invalid
-  parameter types for vector_cosine_distance() function`.
+- **`WHERE review_vector IS NOT NULL`** — computed in Denodo, a row with a `NULL` vector fails
+  the whole query as soon as it would be in the result (Common mistakes); delegated to
+  PostgreSQL, it gave a `NULL` distance. Filter it either way. On SQL Server and Databricks a
+  `WHERE` also stops the rewrite to the source's approximate `VECTOR_SEARCH`
+  (`references/vectors.md`, "Approximate search").
 - **Five rows come back for any text**, related or not. Give the reader a threshold, or the
   distances, and say that they depend on the model and the metric.
 - Where the distance is computed: `references/vectors.md`, "Delegation". With the data
@@ -381,10 +387,10 @@ Each runs without an error — *verified: 9.5.1 (live, 2026-10-02)*.
 | labels with different fields | `classify_ai: invalid classification scales.` | the same fields in every `ROW` |
 | any AI function, as a user without the role | `Error executing query`; `error.raw`: `The current user does not have the required privileges to execute this function.` | the role `use_large_language_model` — `/denodo:security`, a yes; or read from a cached view |
 | `EMBED_AI(text, '<model>')` with a model the server is not configured with | `Cannot execute embed_ai() function: the model '…' specified in the query does not match the configured` | the configured model — or the column's vectors need another embedding model, the administrator's |
-| a `NULL` vector reaching the result | `Error executing query`; `error.raw`: `Invalid parameter types for vector_cosine_distance() function` | `WHERE <vector> IS NOT NULL` |
+| a `NULL` vector reaching the result, the distance computed in Denodo | `Error executing query`; `error.raw`: `Invalid parameter types for vector_cosine_distance() function` | `WHERE <vector> IS NOT NULL` |
 | vectors of different sizes | `Error executing query` | the same model, the same dimension |
 | `VECTOR_INNER_PRODUCT_DISTANCE` (the documentation's example) | `Function 'vector_inner_product_distance' with arity 2 not found` | `VECTOR_NEGATIVE_INNER_PRODUCT` |
-| `ALTER VIEW … CACHE FULL` on a view with a vector column | `Error executing ALTER operation: Cannot invoke "java.lang.Integer.toString()" … getSourceTypeSize() is null` | a full cache cannot hold vectors; store them in a vector database |
+| `ALTER VIEW … CACHE FULL` on a view with a vector column | `Error executing ALTER operation: Cannot invoke "java.lang.Integer.toString()" … getSourceTypeSize() is null` | store them in a vector database (`references/vectors.md`) |
 | the search view without its parameter | `View without search methods: The following obligatory fields cannot be removed: search_text` | `WHERE search_text = '…'` |
 | `GET_QUERY_EXECUTION_PLAN` of a query with `LIMIT` | `Error executing query` | plan it without the `LIMIT` |
 
