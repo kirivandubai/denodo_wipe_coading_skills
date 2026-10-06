@@ -22,9 +22,9 @@
 # (http channel). Bodies of the
 # "template" steps come from the skills themselves (address = file#section); "fixture"
 # steps carry their own body and verify nothing — they only make the next template
-# reachable. Design spec, section 11.1.
+# reachable.
 #
-# Any server runs it (T40). What belongs to an installation is not written here: a value marked
+# Any server runs it. What belongs to an installation is not written here: a value marked
 # "@server" is read from the server before the first step (scripts/denodo_cli/features.py), one
 # marked "@dialect" comes from the [dialects] table of the write data source's product, and the
 # values file beside the profiles (verify.toml, one table per profile) overrides any value. A step
@@ -35,7 +35,7 @@
 # The three file/database source steps share one predicate: the source they name does not
 # exist and is not meant to. A CSV path that is not on the server, a JSON file that is not
 # either, a JDBC host that does not resolve — the parser accepts all three, and only a
-# SELECT would fail (spec 11.1). What the chain proves about them is that the DDL is
+# SELECT would fail. What the chain proves about them is that the DDL is
 # right; that data reads through them is what the fixtures and the derived views prove, over
 # the chain's own files (verification/data), which any server can reach.
 #
@@ -48,7 +48,10 @@
 # synchronize calls once VDP no longer has them — which is why they are repeated at the end
 # of [cleanup] http, after DROP DATABASE ... CASCADE. Without that, every run left its
 # database and views behind in a catalog everyone shares, as orphans (localElements in
-# .../changes), while reporting itself green.
+# .../changes), while reporting itself green. A synchronize cannot be narrowed to one database,
+# so the run reads both changes before the tail and again before that pair: anything pending
+# besides its own database skips the tail, or keeps the pair back and leaves the run's entries
+# as orphans, and the report says which (commands/verify.py, catalog_pending).
 
 # The literal values an installation may replace in its values file: where the fixtures read
 # their files from. Every other literal value is the chain's own — the test database and the
@@ -356,20 +359,6 @@ address = "skills/datasources/references/jdbc.md#Every table of a schema[0]"
 substitute = { sales_analytics = "{database}" }
 database = "{database}"
 check = "SELECT source_table_name FROM GET_SOURCE_TABLE() WHERE input_database_name = '{database}' AND input_view_name = 'bv_orders_db_orders' AND source_schema_name = 'public' AND source_table_name = 'orders'"
-
-[[step]]
-id = "jdbc-generate-schema"
-kind = "template"
-channel = "vql"
-# The whole-schema generator needs a database that answers, with a real credential: the chain has
-# one — the server's cache data source (write_datasource_*, read from the server), which it only
-# reads here. Its schema holds whatever tables the cache made; the claim checked is that the join
-# generates wrappers already renamed to wr_.
-requires = ["cache"]
-address = "skills/datasources/references/jdbc.md#Every table of a schema[1]"
-substitute = { "'sales_analytics'" = "'{write_datasource_database}'", "'ds_erp'" = "'{write_datasource_name}'", "t.input_catalog_name = 'erp' AND t.schema_name IN ('sales', 'billing')" = "t.input_catalog_name = '{write_catalog}' AND t.schema_name IN ('{write_schema}')" }
-database = "{database}"
-check = "SELECT COUNT(*) FROM GET_JDBC_DATASOURCE_TABLES() AS t INNER JOIN GENERATE_VQL_TO_CREATE_JDBC_BASE_VIEW() AS g ON (g.catalog_name = t.catalog_name AND g.schema_name = t.schema_name AND g.table_name = t.table_name AND g.base_view_name = CONCAT('bv_erp_', t.schema_name, '_', t.table_name)) WHERE t.input_database_name = '{write_datasource_database}' AND t.input_datasource_name = '{write_datasource_name}' AND t.input_catalog_name = '{write_catalog}' AND t.input_schema_name = '{write_schema}' AND t.type = 'TABLE' AND g.database_name = '{write_datasource_database}' AND g.data_source_name = '{write_datasource_name}' AND g.folder = '/01 - connectivity' AND REPLACE(g.creation_vql, 'WRAPPER JDBC bv_', 'WRAPPER JDBC wr_') LIKE 'CREATE OR REPLACE WRAPPER JDBC wr_erp_%' HAVING COUNT(*) > 0"
 
 [[step]]
 id = "fixture-base-views"
@@ -699,7 +688,7 @@ database = "{database}"
 
 # --- testing: .denodotest templates, run by the Denodo Testing Tool ---------------------
 #
-# Only with --testing-tool <its install directory> (T35): the tool is a separate download from
+# Only with --testing-tool <its install directory>: the tool is a separate download from
 # the Denodo support site and needs Java, so a default run skips these steps and says why. Each
 # block is written as the only file of a temporary folder, the tool's configuration is written
 # beside it from the run's profile (the code of `testing config`, pointed at the test database)
@@ -1045,6 +1034,23 @@ database = "{database}"
 # up to the households of the base view, which is not cached.
 check = "SELECT b.n FROM (SELECT SUM(household_count) AS n FROM household_income_by_band) b, (SELECT COUNT(*) AS m FROM bv_household_demographics) s WHERE b.n = s.m AND b.n > 0"
 
+[[step]]
+id = "jdbc-generate-schema"
+kind = "template"
+channel = "vql"
+# The whole-schema generator needs a database that answers, with a real credential: the chain has
+# one — the server's cache data source (write_datasource_*, read from the server), which it only
+# reads here. It runs after the load above because the cache table of iv_household_income that the
+# load made is the one table the generator is sure to find in that schema: a server whose cache was
+# never used has none before. The claim checked is that the join generates wrappers already renamed
+# to wr_.
+requires = ["cache"]
+needs = ["cache-load"]
+address = "skills/datasources/references/jdbc.md#Every table of a schema[1]"
+substitute = { "'sales_analytics'" = "'{write_datasource_database}'", "'ds_erp'" = "'{write_datasource_name}'", "t.input_catalog_name = 'erp' AND t.schema_name IN ('sales', 'billing')" = "t.input_catalog_name = '{write_catalog}' AND t.schema_name IN ('{write_schema}')" }
+database = "{database}"
+check = "SELECT COUNT(*) FROM GET_JDBC_DATASOURCE_TABLES() AS t INNER JOIN GENERATE_VQL_TO_CREATE_JDBC_BASE_VIEW() AS g ON (g.catalog_name = t.catalog_name AND g.schema_name = t.schema_name AND g.table_name = t.table_name AND g.base_view_name = CONCAT('bv_erp_', t.schema_name, '_', t.table_name)) WHERE t.input_database_name = '{write_datasource_database}' AND t.input_datasource_name = '{write_datasource_name}' AND t.input_catalog_name = '{write_catalog}' AND t.input_schema_name = '{write_schema}' AND t.type = 'TABLE' AND g.database_name = '{write_datasource_database}' AND g.data_source_name = '{write_datasource_name}' AND g.folder = '/01 - connectivity' AND REPLACE(g.creation_vql, 'WRAPPER JDBC bv_', 'WRAPPER JDBC wr_') LIKE 'CREATE OR REPLACE WRAPPER JDBC wr_erp_%' HAVING COUNT(*) > 0"
+
 # --- Scheduler tail: http channel, gated behind --with-scheduler -----------------------
 #
 # Between the load above and the clear below, while iv_household_income has a full cache: the
@@ -1376,8 +1382,8 @@ check = "SELECT s.t FROM (SELECT SUM(x.household_count) AS t FROM (SELECT income
 # by name; the policy is limited to {database} by VIEW_DATABASES, so no view outside this run
 # is ever restricted. The user is EXTERNAL: there is no password anywhere, and the checks read
 # as that user through CONTEXT ('impersonate_user' = …). That needs the profile's user to hold
-# the role impersonator — `env check` reports it as vdp.impersonation; without it these checks
-# fail with "This user cannot impersonate", which is the answer, not a bug in the template.
+# the role impersonator — `env check` reports it as vdp.impersonation; without it the steps that
+# check as the user (requires = ["impersonation"]) are skipped and say why.
 
 
 # --- Periods: skills/metrics/references/periods.md --------------------------------------------
@@ -1836,7 +1842,7 @@ check = "SELECT association_name FROM GET_ASSOCIATIONS() WHERE input_database_na
 # Enterprise Plus bundle) fails them — so they carry ai = true and run only with --with-ai, and
 # require what env check reports as enterprise_plus, llm and embedding.
 # The fixture keeps every run small and bounded: product_review is the first six return
-# reasons of the fixture file, so the whole tail sends about 40 requests. product_review_vector
+# reasons of the fixture file, so the whole tail sends about 50 requests. product_review_vector
 # embeds those six rows on every read (EMBED_AI in the view): the chain has no vector table of
 # its own in this database, and a full cache cannot store a vector column (skills/ai,
 # "Common mistakes"). The search blocks read it as if it were a stored column; what they
@@ -2575,7 +2581,7 @@ expect = "no rows"
 # --with-marketplace run against a marketplace that still holds the previous run's objects
 # — the state a --keep run leaves behind — fails loudly on 409 (duplicate name) at the
 # create call, exactly as the skill's own "common mistakes" table predicts; that failure is
-# honest, not a bug, and since T17 it explains itself in the report: a 409 arrives with an
+# honest, not a bug, and it explains itself in the report: a 409 arrives with an
 # empty body, so the step's error carries the hint HTTP_HINTS supplies
 # (denodo_cli/commands/verify.py) instead of a bare status. The fix stays operational, not
 # code: either let a normal (non --keep) run finish so its own cleanup removes what it
@@ -2637,8 +2643,8 @@ substitute = { "\"name\":\"Consumer marts\"" = "\"name\":\"{tag_prefix}Consumer 
 
 # --- External element: the http half of the chain above ------------------------------
 #
-# T12 left this template out on the grounds that its VQL comes from a marketplace response
-# (GET .../vql-metadata), which no step can feed to another. That turned out to be one
+# An earlier chain left this template out on the grounds that its VQL comes from a marketplace
+# response (GET .../vql-metadata), which no step can feed to another. That turned out to be one
 # reading too many: the skill carries the VQL half as its own block (the step above runs it
 # verbatim), and vql-metadata is a call to make, not a body to run — the marketplace answers
 # with the contract it expects, and the block already matches it. What the chain does need is
@@ -2646,8 +2652,8 @@ substitute = { "\"name\":\"Consumer marts\"" = "\"name\":\"{tag_prefix}Consumer 
 # the tag step. So: three steps, one per id boundary.
 #
 # Together the three steps below run all four of the block's calls, but each of them runs a
-# subset, and --update-marks asks that question per step (design spec 11.1) — so none of
-# them re-dates the block's mark. The same price the tag and category steps pay, for a
+# subset, and --update-marks asks that question per step — so none of them re-dates the
+# block's mark. The same price the tag and category steps pay, for a
 # slightly different reason: there the calls really are left out, here they are merely
 # split across steps because each id has to be captured before the next call can use it.
 #
