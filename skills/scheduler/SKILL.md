@@ -1,6 +1,6 @@
 ---
 name: scheduler
-description: Use when something in Denodo 9.5 has to happen on a schedule, or a scheduled run misbehaves — refreshing the cache of a view every night or every hour, running REFRESH of a remote table or a procedure at a set time, exporting a view to a CSV file every week or month, running a Denodo Scheduler job now, stopping, pausing or enabling it, reading what last night's run did or why it failed, "the cache doubles after every refresh", "the job fires at the wrong hour", "the export file is missing or has no header". Denodo Scheduler projects, jobs, cron triggers and reports, through the REST API of the Scheduler administration tool. Not for switching a cache on or loading it once (/denodo:cache), not for creating the remote table or summary itself (/denodo:materialize).
+description: Use when something in Denodo 9.5 has to happen on a schedule, or a scheduled run misbehaves — refreshing the cache of a view every night or every hour, running REFRESH of a remote table or a procedure at a set time, exporting a view to a CSV file every week or month, running a Denodo Scheduler job now, stopping, pausing, enabling or deleting it, reading what last night's run did or why it failed, "the cache doubles after every refresh", "the job fires at the wrong hour", "the export file is missing or has no header". Denodo Scheduler projects, jobs, cron triggers and reports, through the REST API of the Scheduler administration tool. Not for switching a cache on or loading it once (/denodo:cache), not for creating the remote table or summary itself (/denodo:materialize).
 ---
 
 # Scheduled work: Denodo Scheduler jobs
@@ -302,7 +302,9 @@ reads the sources instead.
 
 The same file as the export, without exporters (`"exportationSection": {}`) and with the
 statement as `parameterizedQuery` — `REFRESH sales_analytics.rt_household_income`, `CALL
-<procedure>(…)`:
+<procedure>(…)`, an incremental load (`/denodo:materialize`, `references/incremental.md`). A run
+of a write reports `COMPLETE` and `extractedDocs: 0`, never the rows written — count the table
+after it (*verified: 9.5.1 (live, 2026-10-06)*). The rules:
 
 - **One statement per job.** Two separated by `;` fail every run: `Syntax error: Exception
   parsing query near 'SELECT'`.
@@ -387,7 +389,7 @@ api --server scheduler get /public/api/projects/<project_id>/jobs/<job_id>/repor
 The summary lists the runs with their counts; `reports` with `start` and `count` (both
 required) has each run, newest first — `reports[]` inside a run holds the detail of its load
 processes or queries when there is any (`hasIndividualDetails` in the summary). Deleting a job
-deletes its reports.
+deletes its reports — the steps before and after a delete: `references/rest-api.md`.
 
 ### A cache that doubles, a job that does nothing
 

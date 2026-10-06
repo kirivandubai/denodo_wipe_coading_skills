@@ -127,7 +127,9 @@ CHOWN <user> DATASOURCE JDBC <name>;
 The owner of an element can change and drop it. Changing an owner needs a global
 administrator or a local administrator of the database. `GET_ELEMENTS()` shows the creator
 and last modifier; `DESC VQL VIEW <view> ('includeUserPrivileges' = 'yes')` includes the
-`CHOWN` line.
+`CHOWN` line — and a `# USER CREATION` section with a `CREATE USER` for every user holding a
+privilege on the view or below it, which for a local user is where `DESC VQL USER` prints the
+password hash: filter its output down to the `CHOWN` lines before it reaches the transcript.
 
 ## Checking as someone else
 

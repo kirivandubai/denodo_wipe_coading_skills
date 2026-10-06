@@ -173,7 +173,7 @@ of a month into the next one.
 
 | You write | Denodo does | Write instead |
 |---|---|---|
-| `ORDER BY x DESC` | `NULL`s last **in both directions** — PostgreSQL and Oracle put them first on `DESC`. `NULLS FIRST/LAST` is a syntax error | `ORDER BY CASE WHEN x IS NULL THEN 0 ELSE 1 END, x DESC` |
+| `ORDER BY x DESC` | Denodo's own sort puts `NULL`s last **in both directions**; a sort the database runs puts them where the database does — PostgreSQL and Oracle first on `DESC`, SQL Server last. `NULLS FIRST`/`NULLS LAST` after `ASC`/`DESC` is accepted and does nothing: Denodo's sort ignores it and the SQL sent to the database leaves it out (a window's `ORDER BY` too); without `ASC`/`DESC` it is a syntax error — *verified: 9.5.1 (live, 2026-10-06)* | a flag first: `ORDER BY CASE WHEN x IS NULL THEN 1 ELSE 0 END, x DESC` puts them last everywhere |
 | `LIMIT 10 OFFSET 20` | syntax error | `OFFSET 20 LIMIT 10`, or `OFFSET 20 ROWS FETCH NEXT 10 ROWS ONLY` |
 | `TOP 10`, `DISTINCT ON (…)`, `IS DISTINCT FROM` | syntax errors | `LIMIT`; a window function (below) or a `GROUP BY`; spell the `NULL` case out |
 | `NVL(a, b)`, `IFNULL(a, b)` | do not exist | `COALESCE(a, b)` |
@@ -181,7 +181,7 @@ of a month into the next one.
 | `GROUP BY 1`, `ORDER BY 1`, `WITH t AS (…)` | work as in PostgreSQL | — |
 | `UNION` | removes duplicates (since 8.0; older examples behave as `UNION ALL`) | `UNION ALL` unless you mean it |
 | `SELECT a, b … UNION ALL SELECT b, a …` | matched by **position**, and the names of the result can come from either branch: queries over it then disagree about which value is `a` — no error | the same columns, in the same order, under the same aliases in every branch (`/denodo:views`, `references/unions.md`) |
-| `ROW_NUMBER() OVER (…)` and every other window function | runs only when delegated to a database that has it; over a file source or `Dual()` — and by the documentation any source that cannot run it — `Function row_number is not executable` | window functions over JDBC views; otherwise aggregate and join back |
+| `ROW_NUMBER() OVER (…)` and every other window function | runs only when delegated to a database that has it; over a file source or `Dual()` — and by the documentation any source that cannot run it — `Function row_number is not executable`, at `SELECT`: a view with one is created and stays `OK`. `QUALIFY` is a syntax error | window functions over JDBC views, the rank filtered around a subquery; otherwise a join — one row per key: `/denodo:views`, `references/one-row-per-key.md` |
 | `"abc"` for a string | an identifier: `Field not found 'abc'` | single quotes; a quote inside is doubled: `'it''s'` |
 | `x contains 'a'` (old examples) | the `contains` family is removed | `LIKE`, `REGEXP_LIKE` |
 

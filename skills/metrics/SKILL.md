@@ -1,6 +1,6 @@
 ---
 name: metrics
-description: Use when business metrics or KPIs have to be defined once in Denodo 9.5 and reused by BI tools and AI agents — a metric view over a fact view and its dimension views — and whenever a metric view is queried or built on: EVALUATE_METRIC, a view over a metric view, metrics of two metric views side by side, a percent of total or a ratio of two metrics. Also for "a semantic layer of KPIs", "governed metrics", "one definition of revenue for every tool", and for the symptoms — AVG or SUM over a metric returns the metric's own value, SELECT * from a metric view returns no rows, a query joining a metric view runs until it times out, the totals by a dimension do not add up to the grand total, "Error applying metric transformation". Not for a mart of fixed grain that one consumer reads — /denodo:views; not for descriptions, keys and tags of views that already exist — /denodo:semantics.
+description: Use when business metrics or KPIs have to be defined once in Denodo 9.5 and reused by BI tools and AI agents — a metric view over a fact view and its dimension views — and whenever a metric view is queried or built on: EVALUATE_METRIC, a view over a metric view, metrics of two metric views side by side, a share, a ratio, year over year, to date, a running total. Also for "a semantic layer of KPIs", "one definition of revenue for every tool", and for the symptoms — AVG or SUM over a metric returns the metric's own value, SELECT * from a metric view returns no rows, a query joining a metric view runs until it times out, the totals by a dimension do not add up to the grand total, "Error applying metric transformation". Not for a mart of fixed grain that one consumer reads — /denodo:views; not for descriptions, keys and tags of views that already exist — /denodo:semantics.
 ---
 
 # Metric views: KPIs defined once, sliced by any dimension
@@ -229,6 +229,24 @@ CREATE OR REPLACE VIEW household_share_by_band
 - **When nothing may be created** — a question to answer, not a view to build — the same
   views are subqueries: `SELECT … FROM (<selection>) b CROSS JOIN (<total>) t`.
 
+### Periods: year over year, to date, running totals
+
+`references/periods.md` has the templates — the periods as dimensions over a calendar, year over
+year with the coverage of each year, to date against the same days of last year, a running total
+— and what decides them:
+
+- **A partial period makes its change meaningless**: data that starts or stops in the middle of a
+  period gives a first and a last period shorter than the others, and every total check still
+  passes. Show the
+  first and last date with data per period, and say it.
+- **A coarser period adds up only sums and counts** — months of a `COUNT(DISTINCT …)` summed into a
+  year count a customer once per month. The period is a dimension of the metric view.
+- **"Today" is the server's clock, not the data's**: over data loaded weeks ago a to-date view
+  answers `0` and a fall of 100 %. Read the last date with data, and check the view at dates you
+  choose.
+- The year before is a join on `<year> - 1`, not `LAG`; a window runs only where the metric view's
+  sources are in one database.
+
 ### Query it ad hoc
 
 ```sql
@@ -350,7 +368,8 @@ Each runs without an error — *verified: 9.5.1 (live, 2026-10-01)*.
 | 10. `evaluate_metric(x)` over a selection view | `NULL` | `x` — `evaluate_metric` belongs to the metric view only |
 | 11. a share as `SUM(CASE … 1 ELSE 0 END) / COUNT(x)` | `0` — integer division | `1.0 * SUM(…) / COUNT(x)` |
 | 12. `HAVING evaluate_metric(m) > …` grouped by the key of a dimension view that declares no `PRIMARY KEY`, over a file source | no rows: the plan is `INCOMPATIBLE_QUERY_VIEW`, `VOID PLAN` (the same query delegated to a database answered) | declare the key in the dimension view's file; or filter the selection view's column in a view above |
-| 13. `COALESCE(<dim>, '…') AS d`, `UPPER(<dim>) AS d` or a `CASE` in a query, `GROUP BY d`, over sources in a database | every `COUNT(DISTINCT …)` metric missing from the result — the plan already projects without it; sums, counts and averages stay (over file sources it stayed) | the expression in the dimension's definition, or `GROUP BY <dim>` and the label in the view above |
+| 13. `COALESCE(<dim>, '…') AS d`, `UPPER(<dim>) AS d`, `GETYEAR(<date>)` or a `CASE` in a query, grouped by it or by its alias, over sources in a database | every `COUNT(DISTINCT …)` metric missing from the result — the plan already projects without it; sums, counts and averages stay (over file sources it stayed) — the expression grouped as itself: *verified: 9.5.1 (live, 2026-10-06)* | the expression in the dimension's definition, or `GROUP BY <dim>` and the label in the view above |
+| 14. a query over a selection view that reads none of its metric columns — `SELECT MIN(<date>)`, a `COUNT(*)` | every member of the dimension view, with facts or without: a calendar's every day — *verified: 9.5.1 (live, 2026-10-06)* | read the metric in the same query: `WHERE <metric column> > 0` |
 
 ## Common mistakes
 
@@ -371,3 +390,5 @@ Each runs without an error — *verified: 9.5.1 (live, 2026-10-01)*.
 - `references/metric-views.md` — the full `CREATE METRIC VIEW` grammar, the join types
   measured case by case, the `FILTER` clause, what a metric view refuses (cache, row
   restrictions), how consumers read it, summaries, and the procedures that describe it.
+- `references/periods.md` — periods as dimensions, year over year with coverage, to date against
+  the same days of last year, running totals, and their checks.

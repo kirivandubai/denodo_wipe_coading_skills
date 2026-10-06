@@ -77,7 +77,7 @@ changes the answers of queries you did not write, waits for the human's yes.
 |---|---|
 | the reads: is the name free, how many rows, what reads the target, the query plan — and `vql plan`, whose `own` says which tables you created in this session (`/denodo:vql`) | `replace_remote_table_if_exist = true`, `CREATE OR REPLACE REMOTE TABLE` — whatever the name holds |
 | a **new** remote table: `CREATE_REMOTE_TABLE` with `replace_remote_table_if_exist = false`, in the data source and schema the human named, under a name the reads show free, after stating the row count | a remote table in a data source or schema the human did not name |
-| `REFRESH` of a remote table you created in this session, and `replace_remote_table_if_exist = true` over one — the empty table a failed load left included | `REFRESH` of any table older than this session — it is emptied first |
+| `REFRESH` of a remote table you created in this session, and `replace_remote_table_if_exist = true` over one — the empty table a failed load left included; an incremental load into one (`references/incremental.md`) | `REFRESH` of any table older than this session — it is emptied first; an incremental load into one — every run writes into it |
 | a summary created **unloaded** (`DATA_LOAD_IMMEDIATE = FALSE`) and its plan checked: unloaded, it writes nothing and the optimizer never uses it — the data source and schema it names become part of the yes for its load. When the human named none, propose the data source the big table already lives in and its data-load schema, and say it is a proposal | **every load of a summary** — the first `REFRESH`, a `CREATE` that loads, every reload: from that moment it answers queries you did not write |
 | data movement in a view you created in this session | data movement added to a view that existed before this session: every query of it then creates a table in the target database |
 | a new materialized table in your project's database, and inserting into one you created in this session | `CREATE OR REPLACE MATERIALIZED TABLE` over one that exists — it empties it |
@@ -250,7 +250,7 @@ FROM bv_dwh_household_income;
 - **Who runs it:** a Denodo Scheduler job (`/denodo:scheduler`) or the human's own scheduler,
   after the sources are loaded, with an alert on failure — the file and the time go into the
   message. A job that refreshes a table older than this session is that `REFRESH`, every night:
-  the same yes.
+  the same yes. A reload grown too slow becomes an incremental load: `references/incremental.md`.
 
 ### A summary — created unloaded, proved by the plan, then loaded
 
@@ -492,9 +492,9 @@ target database on SQL Server — another database maps types and compares text 
 
 ## Reference
 
-- `references/remote-tables.md` — the procedure and the command in full (options, templates,
-  indexes), every result and status, types per Denodo type as measured, `REFRESH`, finding the
-  readers of a table, materialized and temporary tables.
+- `references/remote-tables.md` — the procedure and the command in full, every result and status,
+  types per Denodo type as measured, `REFRESH`, the readers of a table, materialized tables.
+- `references/incremental.md` — loading only what is new or changed: the upsert, its checks, a job.
 - `references/summaries.md` — the `CREATE` and `ALTER SUMMARY VIEW` grammar, which queries are
   rewritten (measured), the plan lines, staleness, incremental loads (documentation), the
   switches per server, database and query, and data movement in full.

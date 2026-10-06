@@ -83,6 +83,12 @@ def api_call(
     return doc, EXIT_OK if result.ok else EXIT_EXECUTION
 
 
+# The marketplace's unassignments: a tag or category taken off views, web services or external
+# elements — one by its id in the path, or several named in the body or the query; the tag or
+# category itself stays (/denodo:marketplace).
+_UNASSIGN = re.compile(r"^/public/api/(tags|category-management/categories)/\d+/(views|webservices|external-elements)(/\d+)?$")
+
+
 def _plan_call(profile: Profile, method: str, path: str, body: Any, base: dict, *, transport_factory: Callable,
                server: str, ledger, timeout: float) -> tuple[dict, int]:
     """``api … --plan``: the call is not sent. Whether the core's table puts it under the human's yes,
@@ -109,6 +115,13 @@ def _plan_call(profile: Profile, method: str, path: str, body: Any, base: dict, 
     if sync and method == "POST":
         return _plan_radius(profile, body, doc, decide, transport_factory=transport_factory, ledger=ledger,
                             timeout=timeout)
+    unassign = _UNASSIGN.match(route) if destructive == "delete" else None
+    if unassign and unassign.group(3) and not urllib.parse.urlsplit(path).query and body is None:
+        return decide(True, "it removes one assignment — the tag or the category and the element stay "
+                            "(/denodo:marketplace)")
+    if unassign:
+        return decide(True, "it removes every assignment it names, in the body or the query — the tag or the "
+                            "category and the elements stay (/denodo:marketplace)")
     if destructive == "delete":
         return decide(True, "a DELETE removes the object and everything attached to it (/denodo:vql)")
     if destructive == "replace":

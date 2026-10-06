@@ -160,6 +160,19 @@ class OtherStatementsTest(unittest.TestCase):
         self.assertFalse(p("SELECT CLASSIFY_AI('x', 'a,b') FROM Dual()").ai_over_rows)
         self.assertFalse(p("CREATE OR REPLACE VIEW t AS SELECT CLASSIFY_AI(txt, 'a') AS c FROM tickets").ai_over_rows)
 
+    def test_ai_over_rows_in_statements_that_write_them(self):
+        # The query runs now, one paid request per row, whatever the rows are written into.
+        for text in ("INSERT INTO bv_rt SELECT CLASSIFY_AI(txt, 'a,b') AS c FROM tickets",
+                     "INSERT INTO bv_rt ON DUPLICATE KEY ( id ) UPDATE SELECT id, SUMMARIZE_AI(txt) AS s FROM tickets",
+                     "UPDATE tickets SET c = CLASSIFY_AI(txt, 'a,b')",
+                     "DELETE FROM tickets WHERE CLASSIFY_AI(txt, 'spam,ham') = 'spam'",
+                     "CREATE OR REPLACE REMOTE TABLE rt INTO ds AS SELECT EMBED_AI(txt) AS v FROM tickets",
+                     "CREATE MATERIALIZED TABLE m AS SELECT CLASSIFY_AI(txt, 'a') AS c FROM tickets",
+                     "SELECT * FROM CREATE_REMOTE_TABLE( remote_table_name => 'rt', data_source_name => 'ds', "
+                     "query => 'SELECT CLASSIFY_AI(txt, ''a'') AS c FROM tickets', base_view_name => 'bv_rt')"):
+            self.assertTrue(p(text).ai_over_rows, text)
+        self.assertFalse(p("INSERT INTO bv_rt SELECT id FROM tickets").ai_over_rows)
+
     def test_security_statement_references(self):
         s = p("CREATE OR REPLACE GLOBAL_SECURITY_POLICY m ENABLED = TRUE AUDIENCE ( ANY ROLES ( sales_analyst ) ) "
               "ELEMENTS ( VIEW_DATABASES ( sales_analytics ) COLUMNS TAGGED ANY ( personal_data ) )")

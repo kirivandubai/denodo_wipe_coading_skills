@@ -1,6 +1,6 @@
 """Write the fixture files of the verification chain: synthetic rows under the TPC-DS names.
 
-The chain's fixtures read five delimited files through a DF data source; any server can reach
+The chain's fixtures read seven delimited files through a DF data source; any server can reach
 them over HTTP from the repository, or from a folder they were copied into (see README.md here).
 They are laid out like the TPC-DS files — the header quoted and upper case, text columns padded to
 their CHAR width, an empty field for NULL — so one set of wrappers reads either.
@@ -11,6 +11,13 @@ their CHAR width, an empty field for NULL — so one set of wrappers reads eithe
 - reason, store_returns and web_returns are invented under the TPC-DS column names. No check
   reads their exact contents; the returns carry NULL date and reason keys, as the templates over
   them expect.
+- store is the TPC-DS store dimension's layout with an invented history: twelve stores as versions
+  with validity dates, one closed, one with two versions starting the same day — what the one row
+  per key templates of the views skill choose among. Written without random(), so the files above
+  keep their bytes.
+- date_dim is the TPC-DS calendar's layout for 2014 to 2018, the years the returns' date keys fall in:
+  one row per day, keyed by the julian day number as those keys are. The period templates of the
+  metrics skill read it.
 - customers.csv and orders.json are the files the data source templates of the skills name
   (a CRM export and an order export): invented rows in the shape those templates read, so the
   chain proves the templates read, not only that they parse. orders.json holds 3 orders with
@@ -27,6 +34,7 @@ from __future__ import annotations
 
 import json
 import random
+from datetime import date, timedelta
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -160,6 +168,94 @@ WEB_RETURNS = ["WR_RETURNED_DATE_SK", "WR_RETURNED_TIME_SK", "WR_ITEM_SK", "WR_R
                "WR_REVERSED_CHARGE", "WR_ACCOUNT_CREDIT", "WR_NET_LOSS"]
 
 
+STORE = ["S_STORE_SK", "S_STORE_ID", "S_REC_START_DATE", "S_REC_END_DATE", "S_CLOSED_DATE_SK", "S_STORE_NAME",
+         "S_NUMBER_EMPLOYEES", "S_FLOOR_SPACE", "S_HOURS", "S_MANAGER", "S_MARKET_ID", "S_GEOGRAPHY_CLASS",
+         "S_MARKET_DESC", "S_MARKET_MANAGER", "S_DIVISION_ID", "S_DIVISION_NAME", "S_COMPANY_ID", "S_COMPANY_NAME",
+         "S_STREET_NUMBER", "S_STREET_NAME", "S_STREET_TYPE", "S_SUITE_NUMBER", "S_CITY", "S_COUNTY", "S_STATE",
+         "S_ZIP", "S_COUNTRY", "S_GMT_OFFSET", "S_TAX_PRECENTAGE"]
+# Versions per store id, as (start, end) — TPC-DS keeps the history of a store as rows with validity
+# dates, the open one with no end. Store 5 is closed: its last version has an end and a closed date.
+# Store 7 has two versions that start on the same day (a correction): the later surrogate key is the
+# newer one, and the earlier is closed the day it opened.
+STORE_VERSIONS = {
+    1: [("2013-03-13", None)],
+    2: [("2013-03-13", "2015-03-12"), ("2015-03-13", None)],
+    3: [("2013-03-13", "2014-03-12"), ("2014-03-13", "2016-03-12"), ("2016-03-13", None)],
+    4: [("2013-03-13", None)],
+    5: [("2013-03-13", "2015-03-12"), ("2015-03-13", "2017-06-30")],
+    6: [("2013-03-13", None)],
+    7: [("2013-03-13", "2016-03-12"), ("2016-03-13", "2016-03-13"), ("2016-03-13", None)],
+    8: [("2013-03-13", "2017-03-12"), ("2017-03-13", None)],
+    9: [("2013-03-13", None)],
+    10: [("2013-03-13", "2014-09-30"), ("2014-10-01", None)],
+    11: [("2013-03-13", None)],
+    12: [("2013-03-13", "2016-03-12"), ("2016-03-13", None)],
+}
+STORE_NAMES = ["ought", "able", "pri", "ese", "anti", "cally", "ation", "eing", "bar", "n st"]
+STORE_PLACES = [("Midway", "Williamson County", "TN", "31904"), ("Fairview", "Ziebach County", "SD", "35709"),
+                ("Oak Grove", "Walker County", "AL", "38370")]
+
+
+def _store_id(number: int) -> str:
+    """A TPC-DS business key: 16 letters, the number in the shape TPC-DS gives it."""
+    return "AAAAAAAA" + "".join("ABCDEFGHIJKLMNOP"[int(digit)] for digit in f"{number:04d}") + "AAAA"
+
+
+def store():
+    surrogate = 0
+    for number, versions in STORE_VERSIONS.items():
+        city, county, state, zip_code = STORE_PLACES[number % 3]
+        for version, (start, end) in enumerate(versions):
+            surrogate += 1
+            closed = 2458300 if number == 5 and end is not None and version == len(versions) - 1 else None
+            yield (surrogate, _store_id(number), start, end, closed,
+                   _text(STORE_NAMES[(number + version) % 10], 50), 200 + number * 10 + version,
+                   5000000 + number * 1000, _text("8AM-10PM", 20), _text(f"Manager {number}-{version + 1}", 40),
+                   number % 10 + 1, _text("Unknown", 100), _text(f"Market of store {number}", 100),
+                   _text(f"Market manager {number % 4 + 1}", 40), 1, _text("Unknown", 50), 1,
+                   _text("Unknown", 50), _text(str(100 + number), 10), _text("Main", 60), _text("Street", 15),
+                   _text("Suite 100", 10), _text(city, 60), _text(county, 30), _text(state, 2),
+                   _text(zip_code, 10), _text("United States", 20), -5, f"{0.01 + number / 1000:.2f}")
+
+
+DATE_DIM = ["D_DATE_SK", "D_DATE_ID", "D_DATE", "D_MONTH_SEQ", "D_WEEK_SEQ", "D_QUARTER_SEQ", "D_YEAR", "D_DOW",
+            "D_MOY", "D_DOM", "D_QOY", "D_FY_YEAR", "D_FY_QUARTER_SEQ", "D_FY_WEEK_SEQ", "D_DAY_NAME",
+            "D_QUARTER_NAME", "D_HOLIDAY", "D_WEEKEND", "D_FOLLOWING_HOLIDAY", "D_FIRST_DOM", "D_LAST_DOM",
+            "D_SAME_DAY_LY", "D_SAME_DAY_LQ", "D_CURRENT_DAY", "D_CURRENT_WEEK", "D_CURRENT_MONTH",
+            "D_CURRENT_QUARTER", "D_CURRENT_YEAR"]
+DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+JULIAN_2000_01_01 = 2451545
+
+
+def _julian(day: date) -> int:
+    return JULIAN_2000_01_01 + (day - date(2000, 1, 1)).days
+
+
+def date_dim():
+    """Every day of the five calendar years the returns' date keys fall in, keyed as TPC-DS keys it:
+    the julian day number. The sequences count from January 1900, as TPC-DS counts them."""
+    day = date(2014, 1, 1)
+    while day <= date(2018, 12, 31):
+        month_seq = (day.year - 1900) * 12 + day.month - 1
+        quarter = (day.month - 1) // 3 + 1
+        first_dom = day.replace(day=1)
+        last_dom = (first_dom.replace(year=day.year + day.month // 12, month=day.month % 12 + 1)
+                    - timedelta(days=1))
+        try:
+            same_day_ly = day.replace(year=day.year - 1)
+        except ValueError:                      # 29 February: the 28th of the year before
+            same_day_ly = day.replace(year=day.year - 1, day=28)
+        dow = (day.weekday() + 1) % 7           # TPC-DS: 0 is Sunday
+        week_seq = (day - date(1900, 1, 1)).days // 7 + 1
+        yield (_julian(day), _text(f"{_julian(day):016d}", 16), day.isoformat(), month_seq, week_seq,
+               (day.year - 1900) * 4 + quarter - 1, day.year, dow, day.month, day.day, quarter, day.year,
+               (day.year - 1900) * 4 + quarter - 1, week_seq, _text(DAY_NAMES[day.weekday()], 9),
+               _text(f"{day.year}Q{quarter}", 6), _text("N", 1), _text("Y" if dow in (0, 6) else "N", 1),
+               _text("N", 1), _julian(first_dom), _julian(last_dom), _julian(same_day_ly),
+               _julian(day) - 91, _text("N", 1), _text("N", 1), _text("N", 1), _text("N", 1), _text("N", 1))
+        day += timedelta(days=1)
+
+
 FIRST_NAMES = ["Ana", "Ben", "Chloe", "Dev", "Elif", "Farid", "Grace", "Hiro", "Ines", "Jonas"]
 LAST_NAMES = ["Silva", "Okafor", "Martin", "Rao", "Yilmaz", "Haddad", "Kim", "Sato", "Costa", "Berg"]
 PLACES = [("PT", "Lisbon"), ("NG", "Lagos"), ("FR", "Lyon"), ("IN", "Pune"), ("TR", "Izmir"),
@@ -194,7 +290,7 @@ def _write_orders(folder: Path) -> None:
 
 
 FILES = ("income_band", "household_demographics", "reason", "store_returns", "web_returns", "customers",
-         "orders")
+         "orders", "store", "date_dim")
 
 
 def main(folder: Path = HERE) -> None:
@@ -208,6 +304,8 @@ def main(folder: Path = HERE) -> None:
     _write(folder, "customers", ["cust_id", "first_name", "last_name", "email", "country", "city", "created_dt",
                                  "segment_cd"], customers(rng))
     _write_orders(folder)
+    _write(folder, "store", STORE, store())
+    _write(folder, "date_dim", DATE_DIM, date_dim())
 
 
 if __name__ == "__main__":

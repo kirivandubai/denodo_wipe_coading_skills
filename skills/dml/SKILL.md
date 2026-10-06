@@ -42,19 +42,23 @@ such a table.
 
 **Every `INSERT`, `UPDATE` and `DELETE` waits for the human's yes** — `/denodo:vql`'s safety
 table, unchanged: a write lands in a database other people's systems read, and over this
-connection it cannot be rolled back. The yes is to the exact statements, after you have shown
+connection it cannot be rolled back. The one exception is an `INSERT` or upsert into a table you
+created in this session — a materialized or remote table, its incremental load included
+(`/denodo:materialize`); an `UPDATE` or `DELETE` of it waits too, and so does any write whose
+query calls an AI function over rows (`/denodo:ai`). The yes is to the exact statements, after you have shown
 them with what each will change; "fix these records", "the business signed the file off", "just
 get it done" are the task, not the yes.
 
 | You do it yourself | Only after the human's yes |
 |---|---|
-| reading the view, its definition, its wrapper, its columns and what is built on it | any `INSERT`, `UPDATE`, `DELETE`, `INSERT … SELECT`, upsert — a one-row test write included |
+| reading the view, its definition, its wrapper, its columns and what is built on it | any `INSERT`, `UPDATE`, `DELETE`, `INSERT … SELECT`, upsert — a one-row test write included — but the `INSERT` or upsert into a table you created in this session |
 | the preview `SELECT` and the before-image | a second run of a write, a "fix-up" after a surprise, the undo file |
 | writing the statements and the undo into files | the load of a cache the write left stale, on a view you did not create in this session (`/denodo:cache`) |
 | creating a new view for writers in your project's database — a `CREATE` | the first write through it |
 
-`vql plan` marks every write `needs_yes: true` but one: an `INSERT` into a materialized table
-the session created (`/denodo:vql`).
+`vql plan` marks every write `needs_yes: true` but one: an `INSERT` or upsert into a
+materialized or remote table the session created, with no AI function over rows in its query
+(`/denodo:vql`).
 
 Show it in this shape, after the reads and before any write:
 

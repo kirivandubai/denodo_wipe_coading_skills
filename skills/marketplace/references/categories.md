@@ -23,7 +23,7 @@ profile adds is ignored.
 | Delete several | `DELETE /public/api/category-management/categories` + `categoryIds` | | |
 | Assign views (**adds**) | `POST /public/api/category-management/categories/{id}/views` | `[viewId, …]` | `200` + ids **not** assigned |
 | What is in a category | `GET /public/api/category-management/categories/{id}/views` | `offset` and `limit` **mandatory** | `400 MISSING_REQUEST_PARAMETER` without them |
-| Unassign | `DELETE /public/api/category-management/categories/{id}/views/{viewId}` or `…/views?elementIds=` | | |
+| Unassign | `DELETE /public/api/category-management/categories/{id}/views/{viewId}` or `…/views?elementIds=` | | `200`, empty, whether it was assigned or not (the first form, *verified: 9.5.1 (live, 2026-10-06)*) |
 | A view's categories | `GET /public/api/category-management/views/{viewId}/categories` | | |
 | Replace a view's categories (**replaces**) | `POST /public/api/category-management/views/{id}/categories` | | wipes the others |
 | Add to a view's categories (**adds**) | `POST /public/api/category-management/add/views/{id}/categories` | | |
@@ -33,6 +33,26 @@ profile adds is ignored.
 
 Creation, the child, duplicate `409`, assignment, cascade and repeated delete are
 *verified: 9.5.1 (live, 2026-09-10)*; the rest is *unverified: 9.5 documentation only* (the server's OpenAPI).
+
+## Taking a view out of a category
+
+```bash
+# verified: 9.5.1 (live, 2026-10-06)
+api get --env dev /public/api/category-management/views/<view_id>/categories
+api delete --env dev /public/api/category-management/categories/<category_id>/views/<view_id>
+api get --env dev /public/api/category-management/views/<view_id>/categories
+```
+
+- One assignment goes; the category, its children and its other views stay. `DELETE` of the
+  category instead takes its children and all their assignments; `POST
+  category-management/views/{id}/categories` replaces the view's whole set.
+- The view in a child category is not in the parent: take it out of the category the first
+  call lists, by id. The `<view_id>` comes from `view-details` with the database
+  (`references/tags.md`, the same steps).
+- `200` and an empty body either way; the third call is the answer. Read from the category's
+  side, `…/categories/{id}/views` nests the database as `database.databaseName`, where
+  `tags/{id}/elements` has `databaseName` flat.
+- The yes: as for a tag — every unassignment waits for it, one your own call made too.
 
 ## What differs from tags
 

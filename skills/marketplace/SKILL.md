@@ -492,10 +492,10 @@ marketplace features with their own screens, not part of creating these objects.
 
 ## Reference
 
-- `references/tags.md` — the full tag surface, importing VDP tags into the marketplace and
-  why that call is the most destructive one here, webservice targets, `delete-multiple`.
-- `references/categories.md` — the tree endpoints, moving a category, assignment from the
-  view's side, what cascades.
+- `references/tags.md` — the full tag surface, taking a tag off one view, importing VDP tags
+  and why that call is the most destructive one here, webservice targets, `delete-multiple`.
+- `references/categories.md` — the tree endpoints, moving a category, taking a view out of one,
+  assignment from the view's side, what cascades.
 - `references/external-elements.md` — the element and provider type surface, the association
   record in detail, element-to-element associations, what synchronisation adds, updates and
   deletes, and how to read `/details`.
@@ -552,11 +552,11 @@ other side where there is one. Every read-back below — *verified: 9.5.1 (live,
 | match a view moved to another database | `200`, the pair in neither `inserted` nor `removed` | ignored, not applied: nothing happened. Re-apply from the saved `view-details` after a plain synchronisation |
 | `POST /property-management/views/{id}/groups` to add one group | `200` | it **replaces** the view's groups, and the values of the ones left out are gone |
 
-Destructive here is decided by method and path, not by the word in it: `DELETE` of a
-category (with its children), `DELETE` of a tool server (with its elements),
-`POST /tags/vdp/synchronize` (see `references/tags.md`), every catalog `POST …/synchronize`
-— `"SERVER"` mode and a rename with the pair left unmatched worst of all — and
-`POST /views/{id}/tags` and `POST /property-management/views/{id}/groups`, which replace rather
+Destructive here is decided by method and path, not by the word in it: `DELETE` of a category
+(with its children), of a tool server (with its elements), of an assignment (a tag or a category
+off a view), `POST /tags/vdp/synchronize` (`references/tags.md`), every catalog `POST …/synchronize`
+— `"SERVER"` mode and a rename with the pair left unmatched worst of all — and `POST
+/views/{id}/tags` and `POST /property-management/views/{id}/groups`, which replace rather
 than add. All of them are the human's call — `/denodo:vql` — except a catalog synchronisation
 whose radius is yours (Who sends it) and the first import on a tool server you created in this
 session.

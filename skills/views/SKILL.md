@@ -115,11 +115,10 @@ Clause order: `FOLDER` → `DESCRIPTION` → `PRIMARY KEY` → `TAGS` → `( fie
     them, or the label is a lie;
   - they do not → keep `INNER JOIN`, and put the number of rows you dropped in the
     `DESCRIPTION`, measured, not guessed.
-- **Naming.** In `/02 - integration` the prefix is `iv_` and the name says what the view
-  does; in `/03 - business entities` there is no prefix and the name says what the
-  consumer gets (`household_income_by_band`). `iv_` means *integration view*, not
-  *interface view* — the interface view is the one below, and it is the one that gets the
-  bare business name.
+- **Naming.** In `/02 - integration` the prefix is `iv_` and the name says what the view does;
+  in `/03 - business entities` there is no prefix and the name says what the consumer gets
+  (`household_income_by_band`). `iv_` means *integration view*, not *interface view* — the
+  interface view is the one below, and it is the one that gets the bare business name.
 - **Types an aggregate produces**, which you need the moment an interface view is declared
   over the mart: `COUNT` gives `long` (`DESC` prints it as `BIGINT`) and `AVG` over an
   integer gives `double` — *verified: 9.5.1 (live, 2026-09-10)*; and **`SUM` over an `int`
@@ -134,10 +133,9 @@ Clause order: `FOLDER` → `DESCRIPTION` → `PRIMARY KEY` → `TAGS` → `( fie
   rejected outright (see Common mistakes).
 - **What does work under `GROUP BY`**, so you do not route around it: `COUNT(DISTINCT x)`,
   `SUM(CAST('long', x))`, and expressions over the grouped columns in the projection —
-  `COALESCE(reason_sk, -1)`, `TRIM(reason_desc)` — *verified: 9.5.1 (live, 2026-09-12)*.
-  Of the casts, only `AVG` over one (`AVG(TO_DECIMAL(x))`) is refused. A mart that needs
-  "returns" as well as "return lines" wants both `COUNT(DISTINCT ticket_number)` and
-  `COUNT(*)`.
+  `COALESCE(reason_sk, -1)`, `TRIM(reason_desc)` — *verified: 9.5.1 (live, 2026-09-12)*. Of the
+  casts, only `AVG` over one (`AVG(TO_DECIMAL(x))`) is refused. A mart that needs "returns" as
+  well as "return lines" wants both `COUNT(DISTINCT ticket_number)` and `COUNT(*)`.
 - Attaching tags: `TAGS ( pii )` before the field properties for the whole view,
   `( email ( description = '…' ) TAGS ( pii ) )` for one column — both
   *verified: 9.5.1 (live, 2026-09-10)*. The tag itself is `/denodo:catalog` and must
@@ -247,10 +245,9 @@ CREATE OR REPLACE VIEW iv_customer_orders
   `NULL`.** A view of elements needs the template's `WHERE <element field> IS NOT NULL`, on a
   field no real element leaves empty; without it `COUNT(*)` counts an order without lines as
   a line.
-- **The parent's measures repeat on every element row.** `SUM(total_amount)` over the
-  flattened rows adds each order once per line. Aggregate the parent's measures from the
-  unflattened view and the element's from the flattened one, and join the two at the grain of
-  the result.
+- **The parent's measures repeat on every element row.** `SUM(total_amount)` over the flattened
+  rows adds each order once per line. Aggregate the parent's measures from the unflattened view
+  and the element's from the flattened one, and join the two at the grain of the result.
 - **Names.** The element's fields come out without a prefix and the array column is gone. An
   element field named like a parent column is renamed `<array>_<field>` — a line's `status`
   comes out as `lines_status`, while plain `status` is still the order's. Look at
@@ -429,7 +426,7 @@ can then be written in VQL names. Unchanged either way: `decimal`, `float`, `boo
 | Slot | Where it comes from |
 |---|---|
 | The views underneath | read them, do not assume: `vql desc --env dev --database <db> <view>` gives the exact column names and types. A misremembered column is the most common failure of the whole skill. A view of another database is read by its qualified name, `FROM other_db.bv_x` — *verified: 9.5.1 (live, 2026-09-30)* |
-| Grain of the result | the human — "per customer" or "per band" decides whether there is a `GROUP BY` and what the primary key is |
+| Grain of the result | the human — "per customer" or "per band" decides whether there is a `GROUP BY` and what the primary key is. **One row per key among several** — the latest version, the current row of a history, a feed loaded twice — is `references/one-row-per-key.md`: a window runs only in a database, and the usual `MAX(<date>)` joined back keeps ties and drops undated keys, without an error |
 | Which columns the consumer needs | the human. When the answer is "everything", say what everything is at the moment and let them cut |
 | Folder | `/02 - integration` for the joining and transforming layer, `/03 - business entities` for what consumers read, `/06 - associations` for associations — or `.denodo/conventions.md` if the project has one |
 | Name | conventions in `/denodo:vql`; the `iv_` / bare-name split above |
@@ -600,6 +597,8 @@ along.
 - `references/delegation.md` — reading the plan for delegation, the causes measured on SQL
   Server and PostgreSQL, why the answer is per query, why `GET_DELEGATED_SQLSENTENCE` is not
   the check, and the options to put in front of the human.
+- `references/one-row-per-key.md` — the current row of a history, the latest version per key in
+  a database and from a file, ties, `NULL` dates, a feed loaded twice, and the checks.
 
 ## Verify
 
@@ -707,6 +706,7 @@ Denodo Testing Tool. A mart that will be rewritten later gets them before the re
 | union branches listing the same columns in a different order | nothing — accepted; queries then disagree about which value is which | same columns, same order, same aliases in every branch |
 | `SELECT 'web' AS channel, … FROM x UNION ALL …` with no `WHERE` per branch | nothing — `WHERE channel = 'web'` still reads every source | wrap each branch: `SELECT * FROM ( … ) w WHERE channel = 'web'` |
 | `SELECT 'web' AS channel … WHERE channel = 'web'` | `Field not found 'channel' in view with schema …` | the `WHERE` outside, around a subquery |
+| `QUALIFY ROW_NUMBER() OVER (…) = 1`; or `ROW_NUMBER()` in a view over a file | `Syntax error … near 'ROW_NUMBER'`; or `OK` at create, then `Function row_number is not executable` on `SELECT` | the rank in a subquery, `WHERE <rank> = 1` outside; over a file, the anti-join — `references/one-row-per-key.md` |
 | `( col ( description = '…' ) )` on a union | `The field properties can only be specified for derived fields` | on a view over the union |
 | `UNION DISTINCT`, `EXTENDED UNION` | `Syntax error … near 'DISTINCT'` / `near 'SELECT'` | `UNION`; the extended union exists only as `EXTENDED UNION ALL` |
 | `COUNT(*)` over `FLATTEN` as the number of lines | nothing — each order without lines counts as a line | `COUNT(<element field>)`, or the template's `IS NOT NULL` |

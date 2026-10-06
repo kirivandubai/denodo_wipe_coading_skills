@@ -130,9 +130,9 @@ error. Re-declaring the base view works — its `DESC VQL ('includeDependencies'
 `DATA_LOAD_QUERY = '…'` at its end — and leaves the table as it is; the next `REFRESH` loads by
 the new query. `ALTER TABLE … ADD PRIMARY KEY ( 'a', 'b' )` keeps the load query too.
 
-**Incremental loads** are not `REFRESH`: they are `INSERT INTO <base view> SELECT … WHERE
-<newer than the last load>` through the base view (`/denodo:dml`) — or a Scheduler data loader
-job (documentation).
+**Incremental loads** are not `REFRESH`: they are an upsert through the base view, `INSERT INTO
+<base view> ON DUPLICATE KEY ( <key> ) UPDATE SELECT … WHERE <newer than the last load>` — the
+watermark, the rows it cannot see and the checks are `references/incremental.md`.
 
 ## Who reads a table, and what a view feeds
 

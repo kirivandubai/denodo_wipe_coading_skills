@@ -330,7 +330,10 @@ TABLE` and `SELECT … INTO` refuse a name that exists and pass. The rule the sk
 owner's: a **new** table, by a statement that cannot overwrite one (`CREATE_REMOTE_TABLE` with
 `replace_remote_table_if_exist = false`), in the data source and schema the human named, under a
 name checked free, is the agent's own, and so is a `REFRESH` or a replacement of that table in
-the same session; replacing, emptying or dropping a table older than the session waits for the
+the same session — and an `INSERT` or an upsert into it, an incremental load (T43: it changes less
+than the `REFRESH` the rule already gave; `vql plan` says so for a remote table and a materialized
+table the ledger records — not an `UPDATE` or `DELETE` of it, nor a load whose query calls an AI
+function over rows); replacing, emptying or dropping a table older than the session waits for the
 yes, and so does every load of a summary, because from then on the optimizer answers other
 people's queries from it. A summary created with `DATA_LOAD_IMMEDIATE = FALSE` changes no
 answer and is the agent's; data movement added to a view older than the session is the yes —
@@ -990,7 +993,8 @@ top-level field of the last call's body with a value rendered from `[values]` (i
 what earlier steps captured) and fails the step, naming both, when they differ or the field
 is missing. It is a comparison, not a branch: the step model still cannot "read, then
 decide", for the reason given below. It is refused on a vql step, which has no response body
-to compare.
+to compare. The value `<absent>` asserts the opposite — the field must not be there (T43): a
+removal is proved by what is gone, `"0" = "<absent>"` on a list the step emptied.
 
 **Хвост маркетплейса не идемпотентен, и это принятое свойство, а не пробел.** Шаг тега
 исполняет lookup и create безусловно, у шага категории lookup-вызова нет вовсе, а модель
