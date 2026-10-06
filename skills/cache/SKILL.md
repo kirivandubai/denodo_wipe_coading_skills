@@ -33,15 +33,17 @@ with a check, and why the human sees the consequences before you apply them.
 ## Before you touch a cache
 
 1. **Is the cache on for the database?**
-   `SELECT status, adapter_database_name, maintainer_period FROM GET_CACHE_CONFIGURATION() WHERE database_name = '<db>'`.
+   `SELECT status, adapter_database_name, maintenance, maintainer_period FROM GET_CACHE_CONFIGURATION() WHERE database_name = '<db>'`.
    `OFF` → stop: `ALTER VIEW … CACHE FULL` is still accepted, but the view keeps reading its
    sources and every load fails with `Operation not allowed because the cache is disabled or
    not correctly configured` — *verified: 9.5.1 (live, 2026-09-30)*. Enabling it is the
-   administrator's job in Design Studio. `adapter_database_name` is the database the cached
-   queries will run in.
+   administrator's job in Design Studio. `adapter_database_name` is the cache data source's
+   adapter — the kind of database the cached queries will run in.
 2. **Who reads the view?** `SELECT used_by_database_name, used_by_name, depth FROM USED_BY() WHERE input_view_database_name = '<db>' AND input_view_name = '<view>'`
    — every view built on it reads the cache too, and runs its own `GROUP BY` and joins in the
    cache database. (`view_name` in that answer is the view you asked about, not a reader.)
+   It lists only the dependants the profile's user may see: when that user is not an
+   administrator (`env check` → `vdp.admin`), tell the human the list may be incomplete.
    Consumers outside Denodo (a dashboard, a report) are the human's to name.
 3. **What is loaded now, and how?** `SELECT expirationdate FROM CACHE_CONTENT('<db>', '<view>')`:
    for a full cache it is the time of the last successful load; `NULL` means nothing is
@@ -112,11 +114,11 @@ ALTER VIEW iv_household_income CACHE FULL WITH_STATUS;
   no `CACHE` clause; `ALTER VIEW` is the only way for a derived view.
 - **Always `WITH_STATUS`.** With `NO_STATUS` every load with `'all_rows'` builds a new cache
   table and drops the old one, and every view above that had already been queried keeps
-  reading the dropped table — `Invalid object name '<catalog>.<schema>.C_<VIEW>…'` with the
-  cache database on SQL Server, another database's own words for a missing table — until its own
-  `CREATE OR REPLACE VIEW` is re-applied — not after minutes, not after the next load.
-  With `WITH_STATUS` the table stays and loads are atomic. A bare `CACHE FULL` is
-  `WITH_STATUS` on some servers and `NO_STATUS` on others (the documentation says the latter
+  reading the dropped table — `Invalid object name '<catalog>.<schema>.C_<VIEW>…'` on a SQL
+  Server cache database (measured; the documentation says a database that can rename tables
+  keeps the name) — until its own `CREATE OR REPLACE VIEW` is re-applied — not after
+  minutes, not after the next load. With `WITH_STATUS` the table stays and loads are
+  atomic. A bare `CACHE FULL` is `WITH_STATUS` on some servers and `NO_STATUS` on others (the documentation says the latter
   is the default since 9.4) — write it out. *verified: 9.5.1 (live, 2026-09-30)*
 - From this statement until a load finishes, the view returns **0 rows** to everyone.
 - **A base view** carries it in its own `CREATE OR REPLACE TABLE`: `CACHE FULL WITH_STATUS`
@@ -142,9 +144,9 @@ CONTEXT ('cache_preload' = 'true',
 
 The file is what a refresh job runs, and what you run again after the view's columns change.
 Keep it out of the view's file: that one is applied on every change, a load only when the
-data should move. The tool marks it `destructive: cache`. In a Scheduler cache job the same
-choice is its *Invalidate* option, `cacheInvalidationMode`: `ALL_ROWS`. Its default is `NONE`,
-whatever the documentation says — every scheduled run appends, the first row of the table
+data should move. The tool marks it `destructive: cache`. In a Scheduler *Simple Cache
+Management* job the same choice is its *Invalidate* option, `cacheInvalidationMode`:
+`ALL_ROWS`. Its default is `NONE`, whatever the documentation says — every scheduled run appends, the first row of the table
 below, every night — *verified: 9.5.1 (live, 2026-10-05)* (`/denodo:scheduler`).
 
 Each of the four parameters prevents a silent failure:
@@ -202,15 +204,18 @@ ALTER VIEW iv_household_income CACHE OFF;
 
 - **This order — each step works only while the cache is on.** `INVALIDATE` empties it: the
   view returns 0 rows and `CACHE_CONTENT.expirationdate` becomes `NULL`; the rows are
-  marked, not deleted. `CLEAN_CACHE_DATABASE` deletes the marked rows of that one view now
-  (its answer has a row for the view with `deleted_tuples`). `OFF` then makes the view read
+  marked, not deleted (on a `NO_STATUS` table they are deleted at once — documentation).
+  `CLEAN_CACHE_DATABASE` deletes the marked rows of that one view now (its answer has a
+  row for the view with `deleted_tuples`). `OFF` then makes the view read
   its sources. After `OFF`, both are accepted and do nothing: `INVALIDATE` leaves the loaded
   rows valid, to be served again by the next `CACHE FULL`, and `CLEAN_CACHE_DATABASE`
   answers without a row for the view.
 - `CLEAN_CACHE_DATABASE` takes **both arguments**: without the view it cleans the whole
-  database. Leave it out when space does not matter — the cache maintenance task deletes
-  marked rows every `maintainer_period` seconds (`GET_CACHE_CONFIGURATION`). It is a
-  state-changing procedure for administrators (`/denodo:procedures`).
+  database. Leave it out when space does not matter and `maintenance` is `true`
+  (`GET_CACHE_CONFIGURATION`, step 1): the cache maintenance task deletes marked rows every
+  `maintainer_period` seconds. With it `false` — the documentation's advice for production —
+  only a `CLEAN_CACHE_DATABASE` run does. It is a state-changing procedure for
+  administrators (`/denodo:procedures`).
 - Only clearing, the cache staying on: `INVALIDATE` alone. The view returns 0 rows until the
   next load.
 - Switching off for good: also delete the `ALTER VIEW … CACHE FULL` line from the view's
@@ -248,7 +253,9 @@ After switching on, loading or clearing — every row of this table, not the fir
 | Served from the cache | `SELECT execution_plan FROM GET_QUERY_EXECUTION_PLAN() WHERE input_query = 'SELECT COUNT(*) FROM <view>'` | the SQL names a `C_<VIEW>…` table |
 
 `CONTEXT ('cache' = 'off')` reads the sources for one query without touching the cache — the
-comparison for every check above, on any view, on any profile. `CONTEXT` closes the query:
+comparison for every check above, a read allowed on any profile, but only on a view you hold
+WRITE on or with the `disable_cache_query` role: otherwise the server ignores it and reads the
+cache (documentation), so say the comparison could not be made. `CONTEXT` closes the query:
 after `ORDER BY` and `LIMIT`, never before them.
 
 ## Silent failures
@@ -265,7 +272,7 @@ Each runs without an error — *verified: 9.5.1 (live, 2026-09-30)*.
 | 6. re-applied a `CREATE OR REPLACE VIEW` without the `ALTER VIEW … CACHE` line | the sources again, slowly; the loaded rows wait to come back stale | the line stays in the view's file |
 | 7. the load over a view built on the cached one | nothing loaded, `ok` | the load names the cached view itself |
 | 8. `'cache_wait_for_load' = 'false'` | the old content, while the load reported `ok` | `'true'` |
-| 9. switched a view on | its queries, and the filters, `GROUP BY`, `DISTINCT`, joins and `ORDER BY` of every view on it, now run in the cache database with that database's rules. A case-insensitive SQL Server collation matched `reason = 'did not fit'` against `'Did not fit'` — no rows from the files, every such row from the cache — and a trailing space in a literal stopped mattering; `NULL`s sorted first; `decimal` came back with 20 decimal places. Switching off reverses all of it | before switching: `SELECT UPPER(TRIM(<col>)), COUNT(DISTINCT <col>) FROM <view> GROUP BY UPPER(TRIM(<col>)) HAVING COUNT(DISTINCT <col>) > 1` finds the values a case-insensitive database would merge; after: the readers' filters against `CONTEXT ('cache' = 'off')`. `CAST(<expression> AS decimal(12,2))` around the final value in the view that reads it gives the scale back — an `AVG` over an already-cast column still came back as `1.890000`. Tell the human what differs — the adapter's name does not say the collation |
+| 9. switched a view on | its queries, and the filters, `GROUP BY`, `DISTINCT`, joins and `ORDER BY` of every view on it, now run in the cache database with that database's rules: its collation, trailing spaces, `NULL` ordering, numeric scale. On a SQL Server cache database (measured): a case-insensitive collation made `= 'did not fit'` match `'Did not fit'` (rows the sources did not return), trailing spaces stopped counting, `NULL`s sorted first, and `decimal` came back with 20 decimal places. Switching off reverses all of it | before switching: `SELECT UPPER(TRIM(<col>)), COUNT(DISTINCT <col>) FROM <view> GROUP BY UPPER(TRIM(<col>)) HAVING COUNT(DISTINCT <col>) > 1` finds the values a case-insensitive database would merge; after: the readers' filters against `CONTEXT ('cache' = 'off')`. `CAST(<expression> AS decimal(12,2))` around the final value in the view that reads it gives the scale back (an `AVG` over a cast column does not). Tell the human what differs — the adapter's name does not say the collation |
 | 10. a load over a view whose cache is off — a refresh job left running | nothing loaded, `ok` | stop the job when you switch the cache off |
 
 ## Common mistakes
