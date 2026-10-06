@@ -83,8 +83,9 @@ def api_call(
     return doc, EXIT_OK if result.ok else EXIT_EXECUTION
 
 
-# The marketplace's unassignments: one tag or category taken off a view, a web service or an
-# external element — the tag or category itself stays (/denodo:marketplace).
+# The marketplace's unassignments: a tag or category taken off views, web services or external
+# elements — one by its id in the path, or several named in the body or the query; the tag or
+# category itself stays (/denodo:marketplace).
 _UNASSIGN = re.compile(r"^/public/api/(tags|category-management/categories)/\d+/(views|webservices|external-elements)(/\d+)?$")
 
 
@@ -114,11 +115,13 @@ def _plan_call(profile: Profile, method: str, path: str, body: Any, base: dict, 
     if sync and method == "POST":
         return _plan_radius(profile, body, doc, decide, transport_factory=transport_factory, ledger=ledger,
                             timeout=timeout)
-    if destructive == "delete" and _UNASSIGN.match(route):
-        return decide(True, "it removes one assignment — the tag or the category and the element stay; one "
-                            "the session did not make is the human's (/denodo:marketplace)",
-                      ["an assignment you made in this session is yours to remove — the ledger records no "
-                       "marketplace objects"])
+    unassign = _UNASSIGN.match(route) if destructive == "delete" else None
+    if unassign and unassign.group(3) and not urllib.parse.urlsplit(path).query and body is None:
+        return decide(True, "it removes one assignment — the tag or the category and the element stay "
+                            "(/denodo:marketplace)")
+    if unassign:
+        return decide(True, "it removes every assignment it names, in the body or the query — the tag or the "
+                            "category and the elements stay (/denodo:marketplace)")
     if destructive == "delete":
         return decide(True, "a DELETE removes the object and everything attached to it (/denodo:vql)")
     if destructive == "replace":

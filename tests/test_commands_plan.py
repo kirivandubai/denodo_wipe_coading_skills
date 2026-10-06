@@ -305,13 +305,24 @@ class ApiPlanTest(LedgerCase):
         self.assertEqual(rest.calls, [])
 
     def test_an_unassignment_is_not_a_deletion_of_the_object(self):
+        # Every unassignment waits for the yes, one the session made too: the core's table has two
+        # named exceptions, and this is not one of them.
         rest = FakeRest({})
-        for path in ("/public/api/tags/648/views/7757", "/public/api/category-management/categories/365/views/7757",
-                     "/public/api/tags/648/views"):
+        for path in ("/public/api/tags/648/views/7757", "/public/api/category-management/categories/365/views/7757"):
             doc, _ = api_call(profile(), "delete", path, transport_factory=rest, plan=True, ledger=None)
             self.assertTrue(doc["needs_yes"])
             self.assertIn("one assignment", doc["why"])
             self.assertNotIn("everything attached", doc["why"])
+            self.assertEqual(doc["conditions"], [])
+        for path, body in (("/public/api/tags/648/views", [7757, 7758]),
+                           ("/public/api/tags/648/views?elementIds=7757,7758", None),
+                           ("/public/api/category-management/categories/365/webservices", [12, 13])):
+            doc, _ = api_call(profile(), "delete", path, transport_factory=rest, json_body=body, plan=True,
+                              ledger=None)
+            self.assertTrue(doc["needs_yes"])
+            self.assertIn("every assignment it names", doc["why"])
+            self.assertNotIn("one assignment", doc["why"])
+            self.assertEqual(doc["conditions"], [])
         tag, _ = api_call(profile(), "delete", "/public/api/tags/648", transport_factory=rest, plan=True, ledger=None)
         self.assertIn("everything attached", tag["why"])
 

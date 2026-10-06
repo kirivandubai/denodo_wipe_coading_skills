@@ -82,7 +82,9 @@ says what was not recorded.
 creation date; `DROP` and `CREATE` give a new one. An object is the session's own when the
 ledger has it and the server's `internal_id` under that name is the recorded one. Databases,
 roles and users carry no id: for them the name decides, together with a `DROP` the session
-did not run being invisible — a limit, stated in the answer as `identity: "name"`.
+did not run being invisible — a limit, stated in the answer as `identity: "name"`. An entry
+recorded without an id for an object that has one now (the `CREATE REMOTE TABLE` command makes
+no view) vouches for nothing, and nor does a server that could not be read (T43).
 
 ## `vql plan`
 
@@ -147,16 +149,17 @@ On a profile with `production: true`, every statement but a read or a session se
 | `CREATE OR REPLACE METRIC VIEW` over one that exists | it is `own` | a changed join, filter or metric changes every figure built on it — a project file does not help |
 | `ALTER`, `ALTER … RENAME` | the object is `own` and nothing that is not `own` reads it | it existed before this session, or something you did not create reads it |
 | `DROP` | never | a `DROP` needs the yes whatever it hits |
-| `INSERT` | the target is a materialized table that is `own` | the rows land in the source at once |
+| `INSERT`, upsert (`INSERT … ON DUPLICATE KEY UPDATE`) | the target is a materialized or remote table that is `own` (T43) | the rows land in the source at once |
+| any statement that runs its query now (`SELECT`, a write, `CREATE_REMOTE_TABLE`, `CREATE … REMOTE` / `MATERIALIZED TABLE`) with an AI function over rows | never — checked before every row above and below (T43) | every row is a paid request to the provider |
 | `UPDATE`, `DELETE` | never | the rows change in the source at once |
 | `SET '<property>' = …`, `WEBCONTAINER` | never | the whole server's configuration |
 | a `CONTEXT` that loads or invalidates a cache | the view read is `own` | someone else's cache |
 | a state-changing procedure | `CREATE_REMOTE_TABLE` with `replace_remote_table_if_exist = false` (conditions: the data source and schema are the ones the human named; the name is free in the source), `CLEAN_CACHE_DATABASE` of an `own` view | the procedure changes state outside the session's objects |
-| `CREATE REMOTE TABLE` (the command) of a new name | conditions as for `CREATE_REMOTE_TABLE` | — |
+| `CREATE REMOTE TABLE` (the command) of a new name | conditions as for `CREATE_REMOTE_TABLE`; with `OR REPLACE`, only a name this session created — the command makes no view, so the ledger's entry for it has no `internal_id` and vouches for no view of that name (T43) | `OR REPLACE` drops a table of that name in the source, whoever made it |
 | `CREATE OR REPLACE REMOTE TABLE`, `… SUMMARY VIEW`, `… MATERIALIZED TABLE` | the object is `own`, or does not exist (a materialized table only) | `OR REPLACE` drops or empties a table that existed before this session |
 | `CREATE SUMMARY VIEW` | `DATA_LOAD_IMMEDIATE = FALSE` | every load of a summary changes other people's answers |
 | `REFRESH` | a remote table that is `own` | a summary's load, or a table older than this session emptied first |
-| a security statement — role, user, policy, `CHOWN`, a grant in `CREATE DATABASE`, `ALTER ROLE` / `USER` | the object is `own` or new, it is not a user, and every existing object it names (`touches`) is `own` | it changes who may read what, and touches what existed before this session; a user is a person |
+| a security statement — role, user, policy, `CHOWN`, a grant in `CREATE` / `ALTER DATABASE`, `ALTER ROLE` / `USER` | the object is `own` or new, it is not a user, and every existing object it names (`touches`) is `own` | it changes who may read what, and touches what existed before this session; a user is a person |
 | a tag put on or taken off a column or view (`TAGS ( … )`, `ADD_TO`, `REMOVE_FROM`) | every view it names is `own`, and no global security policy names the tag unless the tag is `own` | the metadata of a view you did not create, or a policy changes who reads what |
 | `CREATE [OR REPLACE] ASSOCIATION` — new, or the session's own re-declared (T41) | every view its `ENDPOINT`s name is `own` or new | it becomes a dependant of a view you did not create — their owner's `DROP VIEW` then needs `CASCADE` (`/denodo:semantics`); an endpoint that could not be read counts as not yours |
 | `ALTER` of an object that does not exist at that point of the input (T41) | never | the server would refuse it now, and whose it is — and whose the views it names are — can be read only once it exists: the condition says to create it first and plan again. A waiting `ALTER TAG` file planned before its tag's file must not read as the agent's |

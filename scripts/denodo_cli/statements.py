@@ -307,6 +307,22 @@ def _procedure(toks: list[_Tok]) -> tuple[str | None, list[str]]:
 
 def parse_statement(text: str, database: str | None) -> Statement:
     """What ``text`` does, read in the context of the current ``database``."""
+    st = _parse(text, database)
+    if _runs_its_query(st) and _AI_CALL.search(text) and not _over_dual(_tokens(text)):
+        st.ai_over_rows = True
+    return st
+
+
+def _runs_its_query(st: Statement) -> bool:
+    """The statement evaluates its query now, row by row — not a definition kept for later."""
+    if st.action in ("read", "cache", "insert", "update", "delete"):
+        return True
+    if st.action == "call":
+        return st.procedure == "CREATE_REMOTE_TABLE"
+    return st.action == "create" and st.obj is not None and st.obj.kind in ("remote table", "materialized table")
+
+
+def _parse(text: str, database: str | None) -> Statement:
     toks = _tokens(text)
     if not toks:
         return Statement(text, "other")
@@ -406,8 +422,6 @@ def parse_statement(text: str, database: str | None) -> Statement:
             st.cache_view = _from_target(toks, database)
             if st.action == "read" and st.cache_view:
                 st.action = "cache"
-        if head == "SELECT" and _AI_CALL.search(text) and not _over_dual(toks):
-            st.ai_over_rows = True
         return st
 
     return Statement(text, "other")

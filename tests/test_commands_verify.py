@@ -1221,7 +1221,15 @@ class ExpectBodyTest(unittest.TestCase):
             "### Tag\n\n```bash\n" + BASH_BLOCK + "```\n", encoding="utf-8")
         self.manifest = self.root / "chain.toml"
 
-    def _run(self, expect_body: str, values: str = ""):
+    def _run(self, expect_body: str, values: str = "", last_body=None):
+        if last_body is not None:
+            class Answering(HttpStepTest.FakeRest):
+                def call(self, method, path, **kw):
+                    from denodo_cli.transports.base import HttpResult
+                    return HttpResult(status=200, body=last_body)
+            factory = Answering
+        else:
+            factory = HttpStepTest.FakeRest
         self.manifest.write_text(f"""
 [values]
 database = "denodo_skills_test"
@@ -1237,7 +1245,7 @@ expect_body = {expect_body}
 """, encoding="utf-8")
         return run_chain(profile(marketplace_url="http://x/y"), load_chain(self.manifest),
                          root=self.root, vql_factory=FakeVql,
-                         rest_factory=HttpStepTest.FakeRest, with_marketplace=True)
+                         rest_factory=factory, with_marketplace=True)
 
     def test_a_matching_field_passes(self):
         doc, code = self._run('{ id = "4242" }')
@@ -1266,6 +1274,19 @@ expect_body = {expect_body}
         doc, code = self._run('{ id = "<absent>" }')
         self.assertEqual(code, 1)
         self.assertIn("expected it absent", doc["steps"][0]["error"]["message"])
+
+    def test_absent_needs_the_place_it_is_missing_from(self):
+        # An empty answer, a text, an object read by index or a misspelled parent prove no removal.
+        for body, expect, ok in (([], '{ "0" = "<absent>" }', True),
+                                 ([{"id": 1}], '{ "1" = "<absent>" }', True),
+                                 ({"views": []}, '{ "views.0" = "<absent>" }', True),
+                                 ({"id": 1}, '{ "0" = "<absent>" }', False),
+                                 ({"views": []}, '{ "viewz.0" = "<absent>" }', False),
+                                 ([], '{ "name" = "<absent>" }', False),
+                                 ("", '{ "0" = "<absent>" }', False),
+                                 ("not json", '{ "0" = "<absent>" }', False)):
+            doc, code = self._run(expect, last_body=body)
+            self.assertEqual(code == 0, ok, (body, expect, doc["steps"][0]["error"]))
 
     def test_a_missing_field_fails_the_step(self):
         doc, code = self._run('{ nope = "x" }')

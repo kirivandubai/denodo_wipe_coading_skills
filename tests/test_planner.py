@@ -253,6 +253,34 @@ class PlannerTest(unittest.TestCase):
         self.assertTrue(self.one("INSERT INTO theirs SELECT a FROM mine")["needs_yes"])
         self.assertTrue(self.one("UPDATE bv_rt SET a = 2")["needs_yes"])
 
+    def test_an_insert_when_the_server_cannot_be_read_waits(self):
+        class Blind(FakeCatalog):
+            def lookup(self, ref):
+                from denodo_cli.catalog import Found
+                return Found(None)
+        entry = self.one("INSERT INTO bv_rt SELECT a FROM theirs", catalog=Blind(self.existing, self.used_by))
+        self.assertTrue(entry["needs_yes"], entry["why"])
+
+    def test_an_entry_without_an_identity_does_not_vouch_for_a_view_of_that_name(self):
+        # CREATE REMOTE TABLE (the command) makes no base view: the ledger keeps its name without an
+        # internal_id, and a colleague's base view of the same name later is not the session's.
+        self.ledger.record_created(SERVER, ObjectRef("view", "sales", "theirs", "remote table"), internal_id=None,
+                                   source=None, statement="CREATE REMOTE TABLE theirs INTO ds AS SELECT 1", now=NOW)
+        entry = self.one("INSERT INTO theirs SELECT a FROM mine")
+        self.assertEqual((entry["own"], entry["needs_yes"]), (False, True))
+
+    def test_replacing_a_remote_table_denodo_cannot_see(self):
+        # OR REPLACE drops a table of that name in the source; with no view over it, whose it is
+        # is known only when this session made it.
+        self.assertTrue(self.one("CREATE OR REPLACE REMOTE TABLE rt_unknown INTO ds AS SELECT a FROM mine")["needs_yes"])
+        self.assertFalse(self.one("CREATE REMOTE TABLE rt_unknown INTO ds AS SELECT a FROM mine")["needs_yes"])
+        self.ledger.record_created(SERVER, ObjectRef("view", "sales", "rt_made", "remote table"), internal_id=None,
+                                   source=None, statement="CREATE REMOTE TABLE rt_made INTO ds AS SELECT 1", now=NOW)
+        self.assertFalse(self.one("CREATE OR REPLACE REMOTE TABLE rt_made INTO ds AS SELECT a FROM mine")["needs_yes"])
+        entries = self.plan("CREATE REMOTE TABLE rt_new INTO ds AS SELECT a FROM mine",
+                            "CREATE OR REPLACE REMOTE TABLE rt_new INTO ds AS SELECT a FROM mine")
+        self.assertEqual([e["needs_yes"] for e in entries], [False, False])
+
     def test_server_settings_wait(self):
         self.assertTrue(self.one("SET 'com.denodo.x' = 'y'")["needs_yes"])
         self.assertFalse(self.one("SET QUERYTIMEOUT TO 100")["needs_yes"])
@@ -296,6 +324,15 @@ class PlannerTest(unittest.TestCase):
         self.assertTrue(self.one("SELECT CLASSIFY_AI(c, 'a,b') FROM theirs")["needs_yes"])
         self.assertFalse(self.one("SELECT CLASSIFY_AI('x', 'a,b') FROM Dual()")["needs_yes"])
 
+    def test_ai_over_rows_into_your_own_table_still_waits(self):
+        # The load into your own table is yours; the paid requests it sends are the human's number.
+        for text in ("INSERT INTO bv_rt SELECT CLASSIFY_AI(a, 'x') AS a FROM theirs",
+                     "INSERT INTO m_table SELECT CLASSIFY_AI(a, 'x') AS a FROM theirs",
+                     "CREATE OR REPLACE MATERIALIZED TABLE m_table AS SELECT CLASSIFY_AI(a, 'x') AS a FROM theirs"):
+            entry = self.one(text)
+            self.assertTrue(entry["needs_yes"], text)
+            self.assertIn("AI function", entry["why"])
+
     # --- security and tags ---
 
     def test_a_new_role_over_your_objects(self):
@@ -311,6 +348,21 @@ class PlannerTest(unittest.TestCase):
         self.assertTrue(self.one("CREATE OR REPLACE ROLE analyst 'r' GRANT EXECUTE ON sales.mine")["needs_yes"])
         self.assertTrue(self.one("ALTER USER mlee GRANT ROLE fresh_role")["needs_yes"])
         self.assertTrue(self.one("CREATE USER zq_new EXTERNAL")["needs_yes"])
+
+    def test_a_grant_to_a_person_through_your_database_waits(self):
+        self.ledger.record_created(SERVER, ObjectRef("database", None, "zq_db"), internal_id=None, source=None,
+                                   statement="CREATE DATABASE zq_db", now=NOW)
+        self.ledger.record_created(SERVER, ObjectRef("role", None, "zq_role"), internal_id=None, source=None,
+                                   statement="CREATE ROLE zq_role", now=NOW)
+        self.existing[("database", None, "zq_db")] = (None, None)
+        self.existing[("role", None, "zq_role")] = (None, None)
+        self.assertFalse(self.one("ALTER DATABASE zq_db 'probe'")["needs_yes"])
+        self.assertFalse(self.one("ALTER DATABASE zq_db GRANT CONNECT, EXECUTE TO ROLE zq_role")["needs_yes"])
+        for text in ("ALTER DATABASE zq_db GRANT CONNECT TO USER kchen",
+                     "ALTER DATABASE zq_db REVOKE EXECUTE TO USER kchen",
+                     "ALTER DATABASE zq_db GRANT CONNECT TO ROLE analyst",
+                     "ALTER DATABASE zq_db GRANT CONNECT TO ROLE anaylst"):
+            self.assertTrue(self.one(text)["needs_yes"], text)
 
     def test_tags_on_your_view(self):
         self.assertFalse(self.one("CREATE OR REPLACE VIEW mine ( a TAGS ( fresh_tag ) ) AS SELECT 1 AS a FROM Dual()")["needs_yes"])

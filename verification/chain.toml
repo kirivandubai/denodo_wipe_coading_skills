@@ -1180,11 +1180,12 @@ id = "scheduler-delete-job"
 kind = "template"
 channel = "http"
 scheduler = true
-needs = ["scheduler-export-run"]
+requires = ["cache"]
+needs = ["scheduler-export-run", "scheduler-cache-job"]
 address = "skills/scheduler/references/rest-api.md#Deleting a job"
 substitute = { sales_analytics = "{tag_prefix}jobs", "<project_id>" = "{project_id}", "<job_id>" = "{export_job_id}" }
-# The export job goes; the project keeps the cache job alone, or nothing without a cache.
-expect_body = { "1" = "<absent>" }
+# The export job goes; the cache job stays, alone in the project — which job is left is the proof.
+expect_body = { "0.id" = "{job_id}", "1" = "<absent>" }
 
 [[step]]
 id = "cache-off"
@@ -1707,7 +1708,8 @@ kind = "fixture"
 channel = "vql"
 requires = ["enterprise_plus"]
 database = "{database}"
-check = "SELECT COUNT(*) FROM iv_opportunities HAVING COUNT(*) = 40"
+# 11 rows of segment A carry the reader's login in lower case, 16 of segment B in upper case.
+check = "SELECT COUNT(*) FROM iv_opportunities HAVING COUNT(*) = 40 AND COUNT(sales_rep) = 27"
 vql = """
 CONNECT DATABASE {database};
 
@@ -1756,8 +1758,9 @@ needs = ["security-own-rows-grant"]
 address = "skills/security/SKILL.md#Each person sees only their own rows[1]"
 substitute = { sales_analytics = "{database}", mlee = "{tag_prefix}reader" }
 database = "{database}"
-# As the reader: some rows, and none of anyone else's.
-check = "SELECT COUNT(*) AS seen FROM opportunities HAVING COUNT(*) > 0 AND SUM(CASE WHEN sales_rep IS NULL OR UPPER(sales_rep) <> UPPER('{tag_prefix}reader') THEN 1 ELSE 0 END) = 0 CONTEXT ('impersonate_user' = '{tag_prefix}reader')"
+# As the reader: all 27 rows with their login in either case — a filter that heeded case would
+# see 11 or 16 — and none of anyone else's.
+check = "SELECT COUNT(*) AS seen FROM opportunities HAVING COUNT(*) = 27 AND SUM(CASE WHEN sales_rep IS NULL OR UPPER(sales_rep) <> UPPER('{tag_prefix}reader') THEN 1 ELSE 0 END) = 0 CONTEXT ('impersonate_user' = '{tag_prefix}reader')"
 
 [[step]]
 id = "security-revoke-paths"

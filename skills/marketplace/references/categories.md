@@ -52,7 +52,7 @@ api get --env dev /public/api/category-management/views/<view_id>/categories
 - `200` and an empty body either way; the third call is the answer. Read from the category's
   side, `…/categories/{id}/views` nests the database as `database.databaseName`, where
   `tags/{id}/elements` has `databaseName` flat.
-- Whose it is, and the yes: as for a tag.
+- The yes: as for a tag — every unassignment waits for it, one your own call made too.
 
 ## What differs from tags
 

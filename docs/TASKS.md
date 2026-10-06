@@ -87,7 +87,10 @@ the bottlenecks in trust on another server, in rules kept as prose, and in bulk 
 - **An incremental load into the session's own remote table is now the agent's** (T43, for the
   owner). It follows from T34 — the `REFRESH` of that table, which empties it first, was already
   the agent's — and both RED agents stopped on the contradiction. Say so if the narrower write
-  should stay under the yes.
+  should stay under the yes. Not covered by it: an `UPDATE` or `DELETE` of that table, and a load
+  whose query calls an AI function over rows — both still wait. A `REFRESH` of an own remote table
+  whose `DATA_LOAD_QUERY` calls an AI function plans as the agent's: the plan reads the statement,
+  not the table's stored query.
 - **What T43 left unmeasured.** A row filter's reach to a view in another database built on the
   tagged one (`VIEW_DATABASES` names one); how an assignment of an imported VDP tag removed in VDP
   reaches the marketplace copy — at the next import of VDP tags only, or also at a catalog
@@ -468,8 +471,25 @@ the bottlenecks in trust on another server, in rules kept as prose, and in bulk 
   **A rule made consistent, for the owner to see:** an `INSERT` or upsert into a remote table
   created in this session is the agent's, as its `REFRESH` already was (T34's "own new — yourself"):
   `vql plan`, the `vql` table, `dml`, `materialize` and the design spec (6.3). Both RED agents
-  stopped on the contradiction. `api --plan` now says an unassignment removes one assignment;
-  `verify`'s `expect_body` takes `<absent>`.
+  stopped on the contradiction. `api --plan` now says an unassignment removes one assignment, or
+  every one a bulk call names; `verify`'s `expect_body` takes `<absent>`, which needs the list or
+  object the field is missing from.
+
+  **What the code review of the branch found, fixed before the PR:** a paid AI function inside an
+  `INSERT … SELECT` into the session's own table planned as the agent's (the AI check read only
+  statements starting with `SELECT`; it now covers every statement that runs its query —
+  writes, `CREATE_REMOTE_TABLE`, `CREATE … REMOTE` / `MATERIALIZED TABLE` — before any exception);
+  an `INSERT` planned as the agent's when the catalog could not be read, and a ledger entry
+  without an `internal_id` (the `CREATE REMOTE TABLE` command makes no view) vouched for a
+  colleague's later view of that name — `own` now needs the server read and the identity
+  matching; `CREATE OR REPLACE REMOTE TABLE` of a name Denodo shows no view for planned as a new
+  table, though it drops a table of that name in the source — now the agent's only for a name
+  the session made; `ALTER DATABASE … GRANT … TO USER` of the session's database planned as an
+  `ALTER` of its own object — a grant to a person, or to a role it did not create, now waits. The
+  marketplace references had made removing one's own assignment the agent's — a third exception
+  the core's table does not have; every unassignment waits now. `<absent>` passed on an empty or
+  non-JSON body; the Scheduler delete step now names the job that stays, and the own-rows check
+  counts the rows of both cases.
 
   **Numbers.** Tool calls, RED → GREEN — views Opus 30/31 → 24/30, Sonnet 24 → 21; metrics Opus
   36/29/28 → 32/28/33, Sonnet 15/17 → 14 (GREEN went deeper: like-for-like days, coverage,

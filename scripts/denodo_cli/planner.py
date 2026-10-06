@@ -11,6 +11,7 @@ the same input created it), and whether the table of ``/denodo:vql`` puts it und
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -80,10 +81,18 @@ class _Walk:
         if entry is None:
             return False
         found = self.ctx.catalog.lookup(ref)
-        if found.exists is False:
-            return False
+        if found.exists is not True:
+            return False                                  # gone, or the server could not be read
         recorded = entry.get("internal_id")
+        if found.internal_id and not recorded:
+            return False                                  # nothing ties the entry to the object there now
         return not (recorded and found.internal_id and recorded != found.internal_id)
+
+    def made_here(self, ref: ObjectRef) -> bool:
+        """Created by this session — earlier in the input, or in the ledger — whatever the server shows."""
+        if ref.key() in self.new:
+            return True
+        return self.ctx.ledger is not None and self.ctx.ledger.find(self.ctx.server, ref) is not None
 
     def kind(self, ref: ObjectRef) -> str | None:
         if ref.key() in self.new:
@@ -210,13 +219,13 @@ def _plan_one(index: int, st: Statement, walk: _Walk, ctx: PlanContext) -> dict:
     if ctx.production and st.action not in ("read", "session"):
         return _decision(entry, True, "the profile is production: every change waits for the human's yes")
 
+    if st.ai_over_rows:
+        return _decision(entry, True, "an AI function evaluated over the rows of a view: every row is a paid "
+                                      "request to the provider; the human agrees to the number (/denodo:ai)")
     action = st.action
     if action == "cache":
         return _cache(entry, st, walk)
     if action == "read":
-        if st.ai_over_rows:
-            return _decision(entry, True, "an AI function evaluated over the rows of a view: every row is a paid "
-                                          "request to the provider; the human agrees to the number (/denodo:ai)")
         return _decision(entry, False, "a read")
     if action == "session":
         return _decision(entry, False, "a setting of this session only")
@@ -308,7 +317,11 @@ def _create(entry: dict, st: Statement, walk: _Walk, ctx: PlanContext) -> dict:
                                           "DATA_LOAD_IMMEDIATE = FALSE (/denodo:materialize)")
     elif not exists:
         others = _foreign_endpoints(st, walk)
-        if kind == "remote table":
+        if kind == "remote table" and st.or_replace and not walk.made_here(ref):
+            decision = _decision(entry, True, "OR REPLACE drops and recreates a table of that name in the source "
+                                              "if there is one, and no view of Denodo says whose it is "
+                                              "(/denodo:materialize)")
+        elif kind == "remote table":
             decision = _decision(entry, False, "a new table in a source database", list(_TARGET_CONDITIONS))
         elif others:
             decision = _decision(entry, True, "a new association that names views you did not create in this "
@@ -370,10 +383,26 @@ def _replace_older(entry: dict, st: Statement, walk: _Walk, ctx: PlanContext) ->
                      conditions)
 
 
+_GRANTEE = re.compile(r"\b(?:GRANT|REVOKE)\b.*?\b(?:TO|FROM)\s+(USER|ROLE)\s+\"?([A-Za-z0-9_]+)",
+                      re.IGNORECASE | re.DOTALL)
+
+
 def _alter(entry: dict, st: Statement, walk: _Walk) -> dict:
     ref = st.obj
     if ref is None or ref.type in ("role", "user", "globalSecurityPolicy"):
         return _security(entry, st, walk)
+    grantee = _GRANTEE.search(st.text) if ref.type == "database" else None
+    if grantee and grantee.group(1).upper() == "USER":
+        return _decision(entry, True, "a user is a person: granting to one or revoking from one is the human's "
+                                      "(/denodo:security)")
+    if grantee:
+        role = ObjectRef("role", None, grantee.group(2))
+        if not walk.exists(role):
+            return _decision(entry, True, f"the role {role.name} does not exist or could not be read: the server "
+                                          "answers ok and grants nothing (/denodo:security)")
+        if not walk.own(role):
+            return _decision(entry, True, f"it changes what everyone with the role {role.name} reads — a role this "
+                                          "session did not create (/denodo:security)")
     if entry["exists"] is None:
         return _decision(entry, True, "the server could not be read: whose object this is is unknown")
     if entry["exists"] is False:

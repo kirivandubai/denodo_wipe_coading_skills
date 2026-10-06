@@ -332,7 +332,8 @@ owner's: a **new** table, by a statement that cannot overwrite one (`CREATE_REMO
 name checked free, is the agent's own, and so is a `REFRESH` or a replacement of that table in
 the same session — and an `INSERT` or an upsert into it, an incremental load (T43: it changes less
 than the `REFRESH` the rule already gave; `vql plan` says so for a remote table and a materialized
-table the ledger records); replacing, emptying or dropping a table older than the session waits for the
+table the ledger records — not an `UPDATE` or `DELETE` of it, nor a load whose query calls an AI
+function over rows); replacing, emptying or dropping a table older than the session waits for the
 yes, and so does every load of a summary, because from then on the optimizer answers other
 people's queries from it. A summary created with `DATA_LOAD_IMMEDIATE = FALSE` changes no
 answer and is the agent's; data movement added to a view older than the session is the yes —

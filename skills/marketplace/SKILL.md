@@ -552,11 +552,11 @@ other side where there is one. Every read-back below — *verified: 9.5.1 (live,
 | match a view moved to another database | `200`, the pair in neither `inserted` nor `removed` | ignored, not applied: nothing happened. Re-apply from the saved `view-details` after a plain synchronisation |
 | `POST /property-management/views/{id}/groups` to add one group | `200` | it **replaces** the view's groups, and the values of the ones left out are gone |
 
-Destructive here is decided by method and path, not by the word in it: `DELETE` of a
-category (with its children), `DELETE` of a tool server (with its elements),
-`POST /tags/vdp/synchronize` (see `references/tags.md`), every catalog `POST …/synchronize`
-— `"SERVER"` mode and a rename with the pair left unmatched worst of all — and
-`POST /views/{id}/tags` and `POST /property-management/views/{id}/groups`, which replace rather
+Destructive here is decided by method and path, not by the word in it: `DELETE` of a category
+(with its children), of a tool server (with its elements), of an assignment (a tag or a category
+off a view), `POST /tags/vdp/synchronize` (`references/tags.md`), every catalog `POST …/synchronize`
+— `"SERVER"` mode and a rename with the pair left unmatched worst of all — and `POST
+/views/{id}/tags` and `POST /property-management/views/{id}/groups`, which replace rather
 than add. All of them are the human's call — `/denodo:vql` — except a catalog synchronisation
 whose radius is yours (Who sends it) and the first import on a tool server you created in this
 session.

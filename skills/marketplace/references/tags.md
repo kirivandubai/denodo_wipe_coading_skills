@@ -55,10 +55,10 @@ api get --env dev /public/api/views/<view_id>/tags
 - **An imported VDP tag** (`vdpTag: true`) refuses with `403`: it comes off in VDP (`ALTER TAG
   … REMOVE_FROM`, `/denodo:catalog`) and the marketplace copy follows at the next import of VDP
   tags — the call below, the human's.
-- An assignment someone else made, on a view older than the session, is the human's to remove:
-  show the `DELETE` with what step 2 keeps. One your own call made in this conversation is yours —
-  the ledger records no marketplace objects. When the yes comes late, read step 1 and 2 again
-  right before the `DELETE`: ids do not move, assignments do. A label that is not
+- **Every unassignment waits for the human's yes** — one your own call made in this
+  conversation too: the core's table has two named exceptions, and this is not one of them
+  (`/denodo:vql`). Show the `DELETE` with what step 2 keeps. When the yes comes late, read step 1
+  and 2 again right before the `DELETE`: ids do not move, assignments do. A label that is not
   a tag — a deprecation endorsement, `deprecations` in `view-details` — is another object.
 
 ## Importing VDP tags — the most destructive call in this skill

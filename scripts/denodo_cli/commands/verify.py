@@ -1456,8 +1456,16 @@ def _run_http(profile: Profile, step: Step, *, body: str, values: dict[str, str]
         wanted = render(expected, {}, values)
         got = _field(last_body, field_name)
         if wanted == ABSENT:
-            # A removal is proved by what is no longer there: "views.0" of an emptied list.
-            if got is not None:
+            # A removal is proved by what is no longer there: "views.0" of an emptied list. The
+            # place it is missing from must be there — a list for an index, an object for a key —
+            # or an empty answer, a text or a misspelled path would prove it too.
+            head, _, last = field_name.rpartition(".")
+            parent = _field(last_body, head) if head else last_body
+            wanted_type = list if last.isdigit() else dict
+            if not isinstance(parent, wanted_type):
+                mismatches.append(f"{field_name}: expected it absent from a JSON "
+                                  f"{'list' if wanted_type is list else 'object'}, got {parent!r} there")
+            elif got is not None:
                 mismatches.append(f"{field_name}: expected it absent, got {got!r}")
         elif got is None or str(got) != wanted:
             mismatches.append(f"{field_name}: expected {wanted!r}, got {got!r}")
