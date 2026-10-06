@@ -579,6 +579,7 @@ def run_chain(
     file_values: dict[str, str] | None = None,
     values_file: Path | None = None,
     assume_missing: tuple[str, ...] | list[str] = (),
+    cleanup_only: bool = False,
 ) -> tuple[dict, int]:
     """Run every vql-channel step of ``chain`` in order and report what happened.
 
@@ -640,6 +641,10 @@ def run_chain(
     create tables there, fails them, and a default run must not touch that database at all.
     ``[cleanup] writes`` runs before the rest of cleanup: the table is dropped through the
     base view that names it, which ``DROP DATABASE ... CASCADE`` would otherwise take away.
+
+    ``cleanup_only`` runs no step — each is reported skipped — and then the cleanup, under the
+    same gates: what a run with ``keep`` left behind goes without the fixture being built again
+    only to be dropped (T42: the outcome scenarios reset their fixtures this way).
 
     ``update_marks`` rewrites the ``-- verified: ...`` mark of every ``template`` step
     that passed, with the version the server actually reported and ``today`` (or
@@ -707,6 +712,10 @@ def run_chain(
     stop = False
     try:
         for step in chain.steps:
+            if cleanup_only:
+                reports.append(_skipped(step, "--cleanup-only: only the manifest's cleanup runs",
+                                        cause="cleanup-only"))
+                continue
             if stop:
                 reports.append(_skipped(step, "an earlier step failed", cause="failure"))
                 continue
@@ -1188,7 +1197,7 @@ def _summary(reports: list[dict], not_run: int = 0) -> dict:
         # why: a flag not given, a feature the server lacks, a value nobody filled in, a step
         # needed that did not run, an earlier failure
         "skipped_because": {cause: sum(1 for r in reports if r["skipped"] and r.get("cause") == cause)
-                            for cause in ("flag", "server", "value", "needs", "failure")
+                            for cause in ("flag", "server", "value", "needs", "failure", "cleanup-only")
                             if any(r["skipped"] and r.get("cause") == cause for r in reports)},
         # marked blocks of the skills the manifest lists under [not_run], with the reason
         "not_run": not_run,

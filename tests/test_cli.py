@@ -287,6 +287,15 @@ class VerifyCommandTest(CliHarness, unittest.TestCase):
         self.assertFalse(args.allow_destructive)
         self.assertIsNone(args.chain)
 
+    def test_cleanup_only_is_a_flag_and_refuses_keep(self):
+        args = cli.build_parser().parse_args(["verify", "--env", "lab", "--cleanup-only"])
+        self.assertTrue(args.cleanup_only)
+        self.assertFalse(cli.build_parser().parse_args(["verify", "--env", "lab"]).cleanup_only)
+        doc, code = self.run_cli("verify", "--env", "dev", "--cleanup-only", "--keep")
+        self.assertEqual(code, 2)
+        self.assertEqual(doc["error"]["kind"], "usage")
+        self.assertIn("--keep", doc["error"]["message"])
+
     def test_a_malformed_manifest_is_a_usage_error_in_json(self):
         path = Path(tempfile.mkdtemp()) / "chain.toml"
         path.write_text("[[step]]\nid = 'x'\nkind = 'magic'\nchannel = 'vql'\n", encoding="utf-8")
