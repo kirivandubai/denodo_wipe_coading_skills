@@ -299,7 +299,8 @@ class PlannerTest(unittest.TestCase):
         self.assertTrue(self.one("SELECT * FROM GENERATE_STATS() WHERE input_database_name = 'sales'")["needs_yes"])
         for call in ("SELECT * FROM GET_STATS_FOR_FIELDS() WHERE input_view_name = 'mine' AND input_save = true",
                      "SELECT name FROM CHECK_METADATA()", "CALL CHECK_CACHE_NAMES('sales', false)",
-                     "SELECT * FROM MIGRATE_DATE_TYPES() WHERE input_database_name = 'sales'"):
+                     "SELECT * FROM MIGRATE_DATE_TYPES() WHERE input_database_name = 'sales'",
+                     "CALL OPTIMIZE_LAKEHOUSE_ACCELERATOR_CACHE_TABLES()"):
             self.assertTrue(self.one(call)["needs_yes"], call)
 
     def test_a_new_remote_table_by_the_procedure(self):

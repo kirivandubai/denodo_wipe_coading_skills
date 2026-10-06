@@ -20,7 +20,7 @@ SELECT column_name, column_vdp_type, column_type
 | Parameters live in `WHERE`, under their own names | `input_…` for many, plain for others (`DESC PROCEDURE` shows which); they are passed into the procedure, not applied to its output |
 | The result schema carries the inputs too | `SELECT *` echoes every input column back; name the columns you want |
 | Mandatory parameters announce themselves | `No search methods ready to be run. The following fields are obligatory: input_view_database_name, input_view_name` |
-| A missing name can fail bare | `PING_DATA_SOURCE` over a database or data source that does not exist answers `Error executing query. Total time …`, named or positional, with nothing about the name — *verified: 9.5.1 (live, 2026-10-07)* |
+| A missing name can fail bare | `PING_DATA_SOURCE` answers `Error executing query. Total time …`, with nothing about the cause, for example over a data source that does not exist (named or positional) or a database that does not exist — *verified: 9.5.1 (live, 2026-10-07)* |
 | `CALL` is the other form | positional, `null` for the ones you skip: `CALL USED_BY('sales_analytics', 'customer', null)`. It cannot be joined with anything |
 | A procedure can be joined like a view | that is the reason to prefer the `SELECT` form |
 
@@ -64,6 +64,7 @@ Every one of these can change state, and every one of them is invoked with `SELE
 | `DROP_SCHEMA_ON_SOURCE` | DDL in the source: removes a schema |
 | `REMOVE_ICEBERG_VIEW_SNAPSHOTS` ¹ | expires snapshots of the Iceberg table behind a view; what they held cannot be rolled back to |
 | `ROLLBACK_ICEBERG_VIEW_TO_SNAPSHOT` ¹ | replaces the current data of the table with an older snapshot |
+| `OPTIMIZE_LAKEHOUSE_ACCELERATOR_CACHE_TABLES` | with its defaults (no arguments), deletes orphan files older than 3 days and snapshots older than 5 days of the Lakehouse Accelerator's cache control tables, and rewrites their data files and manifests. `remove_orphan_files = false` and `remove_snapshots = false` keep both, and are flagged all the same |
 
 ¹ documented for 9.5, but absent from a 9.5.1 server without the Lakehouse Accelerator —
 `LIST PROCEDURES` decides what your server has.

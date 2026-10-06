@@ -353,6 +353,16 @@ class StateChangingProcedureTest(unittest.TestCase):
         ):
             self.assertEqual(classify_vql(call), "procedure", call)
 
+    def test_lakehouse_cache_maintenance_is_flagged(self):
+        # with no arguments it removes orphan files and expired snapshots of the cache control
+        # tables and rewrites their data files and manifests
+        for call in (
+            "CALL OPTIMIZE_LAKEHOUSE_ACCELERATOR_CACHE_TABLES()",
+            "CALL OPTIMIZE_LAKEHOUSE_ACCELERATOR_CACHE_TABLES('d', 'ds', true, true, true, false, null, false, null, null)",
+            "SELECT \"table\", status FROM OPTIMIZE_LAKEHOUSE_ACCELERATOR_CACHE_TABLES()",
+        ):
+            self.assertEqual(classify_vql(call), "procedure", call)
+
     def test_reading_procedures_are_not_flagged(self):
         self.assertIsNone(classify_vql("SELECT name FROM GET_ELEMENTS() WHERE input_database_name = 'd'"))
         self.assertIsNone(classify_vql("SELECT 1 AS a FROM DUAL()"))

@@ -97,6 +97,8 @@ STATE_CHANGING_PROCEDURES = frozenset({
     "CHECK_METADATA",
     "CHECK_CACHE_NAMES",
     "MIGRATE_DATE_TYPES",
+    # with no arguments it deletes orphan files and expired snapshots of the cache control tables
+    "OPTIMIZE_LAKEHOUSE_ACCELERATOR_CACHE_TABLES",
 })
 # ``FROM name(`` anywhere in the statement (a view defined over the procedure would run it
 # on every query), ``CALL name(`` at the start; an optional ``database.`` qualifier.
