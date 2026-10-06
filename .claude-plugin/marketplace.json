@@ -5,8 +5,7 @@
     "url": "https://github.com/kirivandubai"
   },
   "metadata": {
-    "description": "Claude Code skills that build Denodo 9.5 objects from plain-language intent.",
-    "version": "0.1.0"
+    "description": "Claude Code skills that build Denodo 9.5 objects from plain-language intent."
   },
   "plugins": [
     {
