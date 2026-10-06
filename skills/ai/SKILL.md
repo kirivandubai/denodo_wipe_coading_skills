@@ -47,8 +47,8 @@ took 0.7–2 s on the server it was measured on:
 - A filter on source columns runs first — delegated to the database when the source can —
   so only the rows that pass it are sent.
 - Time the `Dual()` tries — a text from the rows, the function you will run — and multiply:
-  at the 0.7–2 s measured, 1,000 rows are 12–33 minutes. A file source may give `''`, not
-  `NULL`, for an empty field — count both.
+  at the 0.7–2 s measured on the server the skill was tuned on, 1,000 rows are 12–33 minutes.
+  A file source may give `''`, not `NULL`, for an empty field — count both.
 
 ## The rule: the human's number
 
