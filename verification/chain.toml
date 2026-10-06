@@ -1083,6 +1083,19 @@ database = "{database}"
 check = "SELECT e.name FROM GET_ELEMENTS() AS e, GET_VIEW_COLUMNS() AS k, GET_VIEW_COLUMNS() AS f, GET_VIEW_TAGS() AS t, GET_ASSOCIATIONS() AS a WHERE e.input_database_name = '{database}' AND e.input_type = 'views' AND e.name = 'household_income_by_band' AND e.description LIKE 'Households per income band. One row per income band (income_band_sk)%' AND k.input_database_name = '{database}' AND k.input_view_name = 'household_income_by_band' AND k.column_name = 'income_band_sk' AND k.column_is_primary_key = true AND f.input_database_name = '{database}' AND f.input_view_name = 'household_income_by_band' AND f.column_name = 'household_count' AND f.column_remarks = 'Number of households in the band.' AND t.input_database_name = '{database}' AND t.input_view_name = 'household_income_by_band' AND t.tag_name = '{tag_prefix}mcp' AND t.column_name IS NULL AND a.input_database_name = '{database}' AND a.input_type = 'views' AND a.association_name = 'a_income_band_household' AND a.association_description LIKE 'The income band a household belongs to%'"
 
 [[step]]
+id = "semantics-every-form"
+kind = "template"
+channel = "vql"
+requires = ["enterprise_plus"]
+address = "skills/semantics/references/metadata.md#Writing — every form"
+# Every form once, over the chain's objects: the mart, the band file, the association and the
+# run's own tag. The specific lines first, then the placeholders they share. The re-apply step
+# below takes the view's metadata away again.
+substitute = { " [, '<field>' ]*" = "", "ALTER TABLE <base view> ( ALTER COLUMN <field>" = "ALTER TABLE bv_income_band ( ALTER COLUMN ib_upper_bound", "ALTER TABLE <base view> ADD PRIMARY KEY ( '<field>' )" = "ALTER TABLE bv_income_band ADD PRIMARY KEY ( 'ib_income_band_sk' )", "<base view>" = "bv_income_band", "<view>" = "household_income_by_band", "<field>" = "income_band_sk", "<text>" = "Written by the verification chain", "<association>" = "a_income_band_household", "<tag>" = "{tag_prefix}mcp", "<db>" = "{database}" }
+database = "{database}"
+check = "SELECT column_name FROM GET_VIEW_COLUMNS() WHERE input_database_name = '{database}' AND input_view_name = 'bv_income_band' AND column_name = 'ib_upper_bound' AND column_remarks = 'Written by the verification chain'"
+
+[[step]]
 id = "semantics-reapply"
 kind = "template"
 channel = "vql"
@@ -1517,6 +1530,66 @@ database = "{database}"
 # The reader's query: the sentence as an equality, five rows back, closest first.
 check = "SELECT COUNT(*) FROM product_review_search WHERE search_text = 'it stopped working after a week' HAVING COUNT(*) = 5"
 
+[[step]]
+id = "ai-vector-literals"
+kind = "template"
+channel = "vql"
+ai = true
+requires = ["enterprise_plus"]
+address = "skills/ai/references/vectors.md#The type"
+# Vector literals: no model is called.
+database = "{database}"
+
+[[step]]
+id = "ai-classify-literal"
+kind = "template"
+channel = "vql"
+ai = true
+requires = ["enterprise_plus", "llm"]
+address = "skills/ai/references/functions.md#CLASSIFY_AI"
+# One request each, over a literal; the answer is the model's, so no check reads it.
+database = "{database}"
+
+[[step]]
+id = "ai-extract-literal"
+kind = "template"
+channel = "vql"
+ai = true
+requires = ["enterprise_plus", "llm"]
+address = "skills/ai/references/functions.md#EXTRACT_AI"
+database = "{database}"
+
+[[step]]
+id = "ai-enrich-literal"
+kind = "template"
+channel = "vql"
+ai = true
+requires = ["enterprise_plus", "llm"]
+address = "skills/ai/references/functions.md#ENRICH_AI"
+database = "{database}"
+
+[[step]]
+id = "ai-vector-delegation"
+kind = "template"
+channel = "vql"
+ai = true
+requires = ["enterprise_plus", "embedding"]
+address = "skills/ai/references/vectors.md#Delegation"
+# Planned, not run, over the chain's vector view.
+substitute = { "SELECT id, VECTOR_DISTANCE(embedding," = "SELECT review_id, VECTOR_DISTANCE(review_vector,", "FROM <view>" = "FROM product_review_vector" }
+database = "{database}"
+
+[[step]]
+id = "ai-more-like-this"
+kind = "template"
+channel = "vql"
+ai = true
+requires = ["enterprise_plus", "embedding"]
+address = "skills/ai/references/vectors.md#More like this"
+# The review the block starts from is the fixture's first one.
+substitute = { "1042" = "1" }
+database = "{database}"
+
 # --- Writes through a view: gated behind --with-writes ------------------------------------
 # The seven blocks of skills/dml/SKILL.md, in its order. They need a table someone may write
 # to, and the only one every server has room for is in its cache database: writes-tables
@@ -1906,6 +1979,21 @@ marketplace = true
 # "SERVER_WITH_LOCAL_CHANGES", the only mode approved for this chain to run unattended.
 
 [[step]]
+id = "marketplace-servers"
+kind = "template"
+channel = "http"
+address = "skills/marketplace/SKILL.md#Name the server: `serverId`"
+marketplace = true
+
+[[step]]
+id = "marketplace-vdp-tags"
+kind = "template"
+channel = "http"
+address = "skills/marketplace/references/tags.md#Importing VDP tags — the most destructive call in this skill"
+marketplace = true
+# The read only: the block's POST is the human's call, and it is not in the block.
+
+[[step]]
 id = "marketplace-tag"
 kind = "template"
 channel = "http"
@@ -2043,13 +2131,7 @@ expect_body = { id = "{renamed_view_id}" }
 # tests/test_chain_manifest.py holds both directions.
 
 [not_run]
-"skills/ai/references/functions.md#CLASSIFY_AI" = "not yet a step: T40 in progress"
-"skills/ai/references/functions.md#EXTRACT_AI" = "not yet a step: T40 in progress"
-"skills/ai/references/functions.md#ENRICH_AI" = "not yet a step: T40 in progress"
-"skills/ai/references/vectors.md#The type" = "not yet a step: T40 in progress"
-"skills/ai/references/vectors.md#Delegation" = "not yet a step: T40 in progress"
-"skills/ai/references/vectors.md#More like this" = "not yet a step: T40 in progress"
-"skills/cache/references/full-cache.md#`ALTER VIEW … CACHE` (`ALTER TABLE … CACHE` for a base view)" = "not yet a step: T40 in progress"
+"skills/cache/references/full-cache.md#`ALTER VIEW … CACHE` (`ALTER TABLE … CACHE` for a base view)" = "a sequence of steps and the error it ends in, not a statement"
 "skills/catalog/references/database.md#CREATE DATABASE" = "grammar ([ … ], <…>), not a statement; the catalog template runs a CREATE DATABASE"
 "skills/catalog/references/database.md#ALTER DATABASE" = "grammar ([ … ], <…>), not a statement"
 "skills/catalog/references/database.md#DROP DATABASE" = "grammar ([ … ], <…>), not a statement; the cleanup runs a DROP DATABASE"
@@ -2065,17 +2147,14 @@ expect_body = { id = "{renamed_view_id}" }
 "skills/datasources/references/jdbc.md#Credentials" = "grammar ([ … ], <…>), not a statement; the JDBC template carries the encrypted form"
 "skills/datasources/references/jdbc.md#CREATE WRAPPER JDBC" = "grammar ([ … ], <…>), not a statement; the JDBC templates run a wrapper"
 "skills/datasources/references/json.md#CREATE DATASOURCE JSON" = "grammar ([ … ], <…>), not a statement; the JSON template runs one"
-"skills/marketplace/SKILL.md#Name the server: `serverId`" = "not yet a step: T40 in progress"
-"skills/marketplace/references/external-elements.md#Provider type" = "not yet a step: T40 in progress"
-"skills/marketplace/references/external-elements.md#The contract" = "not yet a step: T40 in progress"
-"skills/marketplace/references/tags.md#Importing VDP tags — the most destructive call in this skill" = "not yet a step: T40 in progress"
-"skills/materialize/references/remote-tables.md#The procedure" = "not yet a step: T40 in progress"
+"skills/marketplace/references/external-elements.md#Provider type" = "the --part arguments of the provider-type call, not a call; the external-provider-type step sends the whole call (the icon part is not exercised)"
+"skills/marketplace/references/external-elements.md#The contract" = "a fragment of the contract view (… stands for the projection); the external-element template runs the whole view"
+"skills/materialize/references/remote-tables.md#The procedure" = "the procedure's signature, not a statement; the materialize templates and the cleanup call it"
 "skills/procedures/references/java-procedures.md#What has to exist first" = "the error the server prints when the class is missing, not a statement; a Java procedure needs a JAR the chain cannot import"
 "skills/procedures/references/vql-procedures.md#The statement" = "grammar ([ … ], <…>), not a statement; the procedure templates run three"
 "skills/security/references/policies.md#CREATE GLOBAL_SECURITY_POLICY" = "grammar ([ … ], <…>), not a statement; the security template and the policy steps run it"
 "skills/security/references/policies.md#DROP" = "grammar ([ … ], <…>), not a statement; the cleanup runs it"
 "skills/security/references/privileges.md#Roles" = "grammar ([ … ], <…>), not a statement; the security template runs a CREATE ROLE"
-"skills/semantics/references/metadata.md#Writing — every form" = "not yet a step: T40 in progress"
 "skills/views/SKILL.md#Interface view — a contract you can re-implement[1]" = "a fragment of the interface view's file; the Field mapping step of interface.md runs the whole statement with these mappings"
 "skills/views/references/arrays.md#FLATTEN: an array to rows" = "grammar ([ … ], <…>), not a statement; the arrays templates run FLATTEN"
 "skills/views/references/arrays.md#NEST: rows to an array" = "grammar ([ … ], <…>), not a statement; the arrays templates run NEST"
