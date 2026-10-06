@@ -31,6 +31,9 @@ Since T39 every `vql run` records what the session created in a ledger beside th
 `scripts/denodo vql plan <file>` / `api … --plan` say per statement whether the core's table lets the
 agent apply it — a probe of yours, made in this session, is "own" to every subagent of the session:
 create a fixture that must look like a colleague's with `DENODO_SESSION=<other>` in front of the command.
+Since T41 a request for a set — every table of a schema, every matching column, hundreds of views — is one
+pattern in `vql` (*Many objects at once*: the list whole, a `.plan.md` per change, one file per yes, a check of
+every object), applied in `datasources`, `catalog` and `semantics`; `vql plan` names `duplicates` in a file.
 Прогон верификации шаблонов — `scripts/denodo verify --env lab`; the AI templates run only
 with `--with-ai` (about 50 paid requests to the stand's LLM), the write templates of `dml` and
 `materialize` only with `--with-writes` (`verify_` tables, a summary and a materialized table

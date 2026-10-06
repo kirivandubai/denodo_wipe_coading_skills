@@ -74,13 +74,8 @@ the bottlenecks in trust on another server, in rules kept as prose, and in bulk 
 
 *T40 is done — under «Сделано» below.*
 
-- **T41. Bulk work in the existing skills.** `next` (T39, the plan it builds on, is done). The gap
-  three reviewers hit independently: base views for every table of a JDBC schema
-  (`datasources`), one tag on every column matching a pattern (`catalog`, `security`),
-  descriptions for hundreds of views in batches (`semantics`). One pattern in `vql`, applied in
-  each: a plan file listing the N objects, one yes for the plan, apply, a per-object check
-  report. No new skill. Done when a RED/GREEN pair on a 20-or-more-table scenario passes and
-  eval cases cover the bulk phrases.
+*T41 is done — under «Сделано» below.*
+
 - **T42. Outcome evals beside the routing ones.** `next`. The 64 routing cases say which skill
   fires, not what the agent does next; that is measured today only by hand-run RED/GREEN
   scenarios. Five to seven scenarios as repeatable runs against a test server — a mart from CSV,
@@ -421,6 +416,78 @@ the bottlenecks in trust on another server, in rules kept as prose, and in bulk 
 ---
 
 ## Сделано
+
+- **T41. Bulk work in the existing skills.** Folded into the design spec (6.5) and the T39 design
+  (the plan's new fields, the ledger's two fixes).
+
+  **The pattern** — `vql`, *Many objects at once*: the list from the server, whole (`--max-rows`,
+  `truncated` checked: the tool keeps 100 rows by default, and two baselines hit it); a plan file
+  `<change>.plan.md` beside the statements, one row per candidate with its decision (the action, or
+  none and why), whose it is, its file and a status; the statements generated from the list into one
+  file per yes — the agent's part applied, the rest in a file of its own, batches where the human
+  reads every object; a check of every object, written back into the plan's status column. The yes
+  covers each file as it was shown. Applied in `datasources` (`references/jdbc.md`, *Every table of
+  a schema*), `catalog` (*One tag on many columns*, with a pointer from `security`) and `semantics`
+  (*A database of many views: batches*); `execute` sanctions `--continue-on-error` for a file of
+  reads that checks many objects.
+
+  **Found on 9.5.1 and now in the skills.** The introspection procedures join: every wrapper and
+  base view of several schemas in one query (`GET_JDBC_DATASOURCE_TABLES` ⨝
+  `GENERATE_VQL_TO_CREATE_JDBC_BASE_VIEW`, the name an expression, the wrapper renamed by `REPLACE`;
+  constant inputs in `ON` fail with `obligatory fields cannot be removed`); what already has a base
+  view, by the table it reads (`GET_ELEMENTS` ⨝ `GET_SOURCE_TABLE`, filtered to `base_view_type =
+  'jdbc'` — one DF or JSON base view fails the whole query, which the chain caught on its first run);
+  the lineage of every column of a database (`GET_ELEMENTS` ⨝ `COLUMN_DEPENDENCIES`). The generator
+  returns **three** rows, not the two the skill said: its `CREATE OR REPLACE FOLDER` without a
+  description clears an existing folder's description (a RED agent caught it). A view over a `UNION`
+  refuses field `TAGS` (`The field properties can only be specified for derived fields`), and an
+  `ALTER TAG` on its column is lost when the view's file is re-applied — so it goes into the file,
+  after the view. `GET_VIEW_TAGS` lists direct assignments only. `ALTER TABLE` takes several `ALTER
+  COLUMN` in one statement. `LEN` pushed down to SQL Server ignores trailing spaces, so the padding
+  check of `semantics` counted nothing there — it is `LIKE '% '` now (also in the dialect reference).
+
+  **The tool.** `vql plan` answers `actions` and `duplicates` (two statements of one input declaring
+  one object — a naming rule that maps two tables to one name). From the GREEN reviews: the ledger
+  kept a stale entry when an object of the session was dropped outside it (a database the session
+  did not create, dropped with `CASCADE`) and the session made it again — the new view read as not
+  its own; it is replaced now, and a dropped database takes the session's objects along whoever
+  created it. `-e` repeated ran only the last, silently; every one runs. `vql plan` called a new
+  association between views of others "a new object" while `semantics` holds it for the yes; it
+  waits now (and the `vql` table says so). An `ALTER` of an object that does not exist yet is the
+  server's refusal with "create it first", not a yes.
+
+  **RED/GREEN** — three scenarios on the test server, fixtures of a "colleague" made under another
+  `DENODO_SESSION`: **A**, base views over every table of four SQL Server schemas, 23 tables, three
+  already onboarded by a colleague (one under a singular name), `payments` in two schemas; **B**, one
+  VDP tag on every customer contact column of 21 views, 11 built "earlier in this session" with their
+  files in the project, 10 a colleague's, renamed pass-through columns and look-alikes; **C**,
+  descriptions for 26 views in batches. The skills of `main` already held the discipline — T39's
+  ledger and plan told every baseline whose each object was, and none applied anything of the
+  colleague's. They failed on the list: Sonnet (B) put the tag on its own views with one `ADD_TO`
+  outside their files (gone at the next apply); two inventories were cut at the row limit; one
+  generator call per table; no artifact said, per object, what happened. RED Opus A 55 calls /
+  7.9 min, B 68 / 10 min, C 59 / 15 min; Sonnet A 27 (blocked), B 21. GREEN, same scenarios on
+  rebuilt fixtures: all five wrote a plan file; A Opus created the 20, checked all 23 (rows, an
+  all-`NULL` column, samples) and recorded each — 58 calls / 8.8 min; B Opus 19/19 against
+  `GET_VIEW_TAGS`, the renamed columns found by lineage, the colleague's four in a waiting file —
+  67 / 9.8 min; B Sonnet put the tags in the files (the RED failure fixed) — 39 / 2.8 min; C Opus
+  seven batch files, keys and associations offered separately — 78 / 18 min; after the review fixes
+  C Sonnet — 35 / 5.4 min. Cost stayed level for Opus: what the baselines skipped (the plan file,
+  the check per object) is what GREEN did. Sonnet A was refused `vql run` by the auto-mode classifier
+  in both rounds ("Modify Shared Resources"), through the scratchpad copy and through the relative
+  path alike — an environment limit, not measured.
+
+  **Checked.** Unit tests 733 (new: duplicates, actions, the ledger's stale entry and database drop,
+  repeated `-e`, associations, an `ALTER` of a missing object); `verify --env lab` 78/0 on the base
+  flags, three new steps (`jdbc-onboarded`, `jdbc-generate-schema` over the server's cache data
+  source, `catalog-many-columns`); the new tool behaviour live in a probe database. Eval: three new
+  routing cases (`routing-datasources-bulk`, `routing-catalog-bulk-tag`, `routing-semantics-bulk`)
+  3/3 each on the unchanged descriptions ($1.96); no description changed, so the suite was not rerun.
+
+  **Open, from the GREEN reviews:** whether a question the human answers after the deadline can be
+  pre-staged for the agent's own views (their tags live in the files); a filter for `vql ledger`;
+  a value that ends in a carriage return is caught only by reading samples; a file that waits for the
+  yes is never parsed, so its syntax error shows after the yes.
 
 - **T40. A verification chain any server can run.** Design:
   [2026-10-06-portable-verify-design.md](superpowers/specs/2026-10-06-portable-verify-design.md),

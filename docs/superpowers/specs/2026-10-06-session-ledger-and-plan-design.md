@@ -60,8 +60,12 @@ one entry per object a successful statement created:
  "status": "present", "names": ["iv_household_income"]}
 ```
 
-`status` becomes `dropped` after a successful `DROP`; a rename appends the new name to `names`
-(the first is the name it was created under). The file also records `started` — the first
+`status` becomes `dropped` after a successful `DROP` — of the object, or of a database holding
+it, whoever created the database (T41); a rename appends the new name to `names` (the first is the
+name it was created under). An object created under a name whose entry is still `present` replaces
+that entry, which becomes `dropped`: the run records only what did not exist before the statement,
+so the old object went without the ledger seeing it — dropped by someone else, or with a data
+source the session did not create (T41: it left the session's own re-created views "not own"). The file also records `started` — the first
 time any command of the tool ran in the session — which the project check below needs.
 
 **Created means it did not exist before the statement.** `vql run` reads the catalog of every
@@ -109,7 +113,9 @@ Per statement:
 | `dependents` | for an existing view altered or replaced: what `USED_BY()` lists, each with `own` |
 
 Top level: `needs_yes` (the indexes), `session` (`id`, `source`, `ledger`, `objects`),
-`project` (`root`, `base` commit) and the usual envelope.
+`project` (`root`, `base` commit) and the usual envelope. Since T41 also `actions` (the statements
+counted by `action`) and `duplicates` (`{object, statements}`: two or more statements of the input
+declaring one object — the later replaces the earlier; each later entry carries `duplicate_of`).
 
 ### Declared by the project before this session
 
@@ -151,6 +157,8 @@ On a profile with `production: true`, every statement but a read or a session se
 | `REFRESH` | a remote table that is `own` | a summary's load, or a table older than this session emptied first |
 | a security statement — role, user, policy, `CHOWN`, a grant in `CREATE DATABASE`, `ALTER ROLE` / `USER` | the object is `own` or new, it is not a user, and every existing object it names (`touches`) is `own` | it changes who may read what, and touches what existed before this session; a user is a person |
 | a tag put on or taken off a column or view (`TAGS ( … )`, `ADD_TO`, `REMOVE_FROM`) | every view it names is `own`, and no global security policy names the tag unless the tag is `own` | the metadata of a view you did not create, or a policy changes who reads what |
+| `CREATE ASSOCIATION` of a new association (T41) | every view its `ENDPOINT`s name is `own` or new | it becomes a dependant of views you did not create — their owner's `DROP VIEW` then needs `CASCADE` (`/denodo:semantics`) |
+| `ALTER` of an object that does not exist at that point of the input (T41) | always, with the condition to create it first and plan again | — the server refuses the statement |
 | an AI function (`…_AI(`, `EMBED_AI(`, `VECTOR_DISTANCE(`) evaluated by a `SELECT` over a view | never | every row is a paid request; the human agrees to the number (`/denodo:ai`) — `Dual()` is a read |
 | anything the parser does not recognise | — | `null`: the `vql` table decides |
 
