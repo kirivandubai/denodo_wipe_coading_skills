@@ -22,7 +22,7 @@ tool reads host, user and password from `~/.denodo/profiles.toml` itself.
 | Task | Command |
 |---|---|
 | Apply a file | `vql run --env dev model/sales/views.vql` |
-| Apply inline VQL | `vql run --env dev -e "SELECT COUNT(*) FROM bv_orders"` |
+| Apply inline VQL | `vql run --env dev -e "SELECT COUNT(*) FROM bv_orders"` — reads only: every `CREATE`, `ALTER` and `DROP` goes through a file (`/denodo:vql`) |
 | Read stdin | `vql run --env dev -` |
 | Another database | add `--database <db>` (or put `CONNECT DATABASE <db>;` first in the file) |
 | What a file would do, before applying it | `vql plan --env dev model/sales/views.vql` (also `-e`, `-`, `--database`) — reads the server and the session's ledger, executes nothing; per statement `action`, `object`, `exists`, `own`, `needs_yes`, `why`, `conditions`. The rule it applies is `/denodo:vql`'s safety table |
@@ -177,6 +177,12 @@ created in this session (`/denodo:vql`) — `vql plan` and `api … --plan` say 
 session's ledger; on a production profile every flagged statement and call still needs the
 human's yes and the flag.
 
+**Not refused is not allowed.** The tool refuses only on a profile marked `production`; on
+every other profile it runs whatever it is given. Whether a flagged statement may run is
+`/denodo:vql`'s safety table, on every profile — the few that are yours are named there, and a
+`DROP` is never one of them, whatever it hits. When the human cannot answer — away, a deadline —
+the statements go into a file and into your message, not into `vql run`.
+
 `DROP`, `ALTER`, `DELETE`, `TRUNCATE`; `INSERT` and `UPDATE` (a write through a view lands in
 the source behind it — `INSERT … ON DUPLICATE KEY UPDATE` included, VQL has no `MERGE`); the
 server-wide `SET '<property>' = …` (it rewrites the configuration of the whole server, `= NULL`
@@ -230,6 +236,7 @@ When refused:
 | "The object doesn't even exist, the drop is a no-op" | Your read of the catalog is a snapshot. The refusal is on the statement, not on its effect. |
 | "It's only a test database on the production server" | The profile says `production`. Database names are not the rule. |
 | "I'll disclose it afterwards" | Disclosure after the fact is not consent. |
+| "The profile is not production and nothing depends on it" | Not production only means the tool will not stop you. A `DROP` waits for the yes on every profile, and an object nothing reads is still someone's. |
 
 **Red flags — stop and ask the human:** you are typing `--allow-destructive`; the
 previous result had `error.kind: "refused"`; `env.production` is `true` and the VQL
