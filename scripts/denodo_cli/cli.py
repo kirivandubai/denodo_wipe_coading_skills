@@ -63,10 +63,14 @@ def build_parser() -> argparse.ArgumentParser:
     env_opt.add_argument("--env", help="profile name from the profiles file (default: $DENODO_ENV)")
 
     vql = top.add_parser("vql", help="VQL against Virtual DataPort").add_subparsers(dest="action", required=True)
-    run = vql.add_parser("run", parents=[env_opt], help="run a .vql file (or '-' for stdin, or -e STATEMENTS)")
+    run = vql.add_parser("run", parents=[env_opt], help="run a .vql file (or '-' for stdin, or -e STATEMENTS)",
+                         description="Run a .vql file, '-' for stdin, or -e STATEMENTS. Plan a file before you "
+                                     "apply it, and again after every change to it: `vql plan` says per statement "
+                                     "whether it is yours or waits for the human's yes (/denodo:vql).")
     run.add_argument("file", nargs="?", help="path to a .vql file, or '-' to read stdin")
     run.add_argument("-e", "--execute", metavar="VQL", action="append",
-                     help="VQL text to run instead of a file; repeat it for several, in order")
+                     help="VQL text to run instead of a file — reads; a change goes through a file; "
+                          "repeat it for several, in order")
     run.add_argument("--database", help="connect to this database instead of the profile's")
     run.add_argument("--max-rows", type=int, default=DEFAULT_MAX_ROWS, help="rows kept per result set")
     run.add_argument("--continue-on-error", action="store_true", help="keep going after a failed statement")
@@ -176,6 +180,9 @@ def build_parser() -> argparse.ArgumentParser:
                         help="values of this installation, one table per profile (default: verify.toml "
                              "beside the profiles file)")
     verify.add_argument("--keep", action="store_true", help="leave the created objects on the server")
+    verify.add_argument("--cleanup-only", action="store_true",
+                        help="run no step, only the manifest's cleanup (under the same --with-* gates): "
+                             "what a run with --keep left behind")
     verify.add_argument("--update-marks", action="store_true",
                         help="rewrite the verified: mark of every template step that passed")
     verify.add_argument("--allow-destructive", action="store_true",
@@ -342,6 +349,8 @@ def _dispatch(args) -> tuple[dict, int]:
         # runs inside it, and with a user-supplied --chain that is the likeliest first
         # failure. Both are the same class of problem — a manifest that does not hold
         # together — so both come out as the one JSON usage error, never as a traceback.
+        if args.cleanup_only and args.keep:
+            raise UsageError("--cleanup-only and --keep contradict each other: one removes what the other keeps")
         try:
             chain = load_chain(manifest)
             values_path = Path(args.values).expanduser() if args.values else default_values_path()
@@ -356,7 +365,7 @@ def _dispatch(args) -> tuple[dict, int]:
                              with_marketplace=args.with_marketplace, with_ai=args.with_ai,
                              with_writes=args.with_writes, with_scheduler=args.with_scheduler,
                              testing_tool=Path(args.testing_tool).expanduser().absolute() if args.testing_tool else None,
-                             keep=args.keep,
+                             keep=args.keep, cleanup_only=args.cleanup_only,
                              update_marks=args.update_marks, allow_destructive=args.allow_destructive)
         except ChainError as exc:
             raise UsageError(str(exc)) from exc

@@ -261,6 +261,17 @@ class CliTest(CliHarness, unittest.TestCase):
         self.assertEqual(doc["error"]["kind"], "usage")
 
 
+class RunHelpTest(unittest.TestCase):
+    def test_the_help_of_vql_run_names_the_plan_first(self):
+        # An outcome scenario's agent learned the tool from `vql run --help` alone, without the
+        # skills that say to plan a file before applying it (T42).
+        out = io.StringIO()
+        with redirect_stdout(out), self.assertRaises(SystemExit):
+            cli.build_parser().parse_args(["vql", "run", "--help"])
+        self.assertIn("vql plan", out.getvalue())
+        self.assertIn("reads", out.getvalue())
+
+
 class VerifyCommandTest(CliHarness, unittest.TestCase):
     def test_parser_accepts_the_flags(self):
         args = cli.build_parser().parse_args(["verify", "--env", "lab", "--with-marketplace", "--with-ai",
@@ -286,6 +297,15 @@ class VerifyCommandTest(CliHarness, unittest.TestCase):
         self.assertFalse(args.update_marks)
         self.assertFalse(args.allow_destructive)
         self.assertIsNone(args.chain)
+
+    def test_cleanup_only_is_a_flag_and_refuses_keep(self):
+        args = cli.build_parser().parse_args(["verify", "--env", "lab", "--cleanup-only"])
+        self.assertTrue(args.cleanup_only)
+        self.assertFalse(cli.build_parser().parse_args(["verify", "--env", "lab"]).cleanup_only)
+        doc, code = self.run_cli("verify", "--env", "dev", "--cleanup-only", "--keep")
+        self.assertEqual(code, 2)
+        self.assertEqual(doc["error"]["kind"], "usage")
+        self.assertIn("--keep", doc["error"]["message"])
 
     def test_a_malformed_manifest_is_a_usage_error_in_json(self):
         path = Path(tempfile.mkdtemp()) / "chain.toml"

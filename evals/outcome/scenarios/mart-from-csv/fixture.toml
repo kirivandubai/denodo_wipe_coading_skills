@@ -1,0 +1,55 @@
+# mart-from-csv: nothing to start from but two files on the server's own disk. The agent creates
+# its database, eval_returns, itself. The steps only prove the server can read the files where the
+# prompt says they are — in a throwaway database, the manifest's own, dropped by the last step — so
+# a missing file stops the scenario at the reset instead of failing the agent.
+local_values = ["fixture_route", "fixture_base"]
+
+[values]
+database = "eval_files_check"
+fixture_route = "HTTP 'http.ApacheHttpClientConnection,120000' GET"
+fixture_base = "https://raw.githubusercontent.com/kirivandubai/denodo_wipe_coading_skills/main/verification/data"
+
+[cleanup]
+vql = [
+  "DROP DATABASE IF EXISTS eval_returns CASCADE",
+  "DROP DATABASE IF EXISTS {database} CASCADE",
+]
+
+[[step]]
+id = "files-readable"
+kind = "fixture"
+channel = "vql"
+check = "SELECT COUNT(*) FROM bv_reason_check HAVING COUNT(*) = 35"
+vql = """
+CREATE OR REPLACE DATABASE {database} 'Throwaway: can the server read the scenario files' CHARSET DEFAULT;
+CONNECT DATABASE {database};
+
+CREATE OR REPLACE DATASOURCE DF ds_reason_check
+    IGNOREMATCHINGERRORS = FALSE
+    ROUTE {fixture_route} '{fixture_base}/reason.csv'
+    CHARSET = 'UTF-8'
+    COLUMNDELIMITER = ','
+    HEADER = TRUE;
+
+CREATE OR REPLACE WRAPPER DF wr_reason_check
+    DATASOURCENAME = ds_reason_check
+    OUTPUTSCHEMA (
+        r_reason_sk = '"R_REASON_SK"',
+        r_reason_id = '"R_REASON_ID"',
+        r_reason_desc = '"R_REASON_DESC"'
+    );
+
+CREATE OR REPLACE TABLE bv_reason_check I18N us_pst ( r_reason_sk:int, r_reason_id:text, r_reason_desc:text )
+    CACHE OFF
+    TIMETOLIVEINCACHE DEFAULT
+    ADD SEARCHMETHOD wr_reason_check (
+        OUTPUTLIST ( r_reason_sk, r_reason_id, r_reason_desc )
+        WRAPPER (df wr_reason_check)
+    );
+"""
+
+[[step]]
+id = "files-check-dropped"
+kind = "fixture"
+channel = "vql"
+vql = "DROP DATABASE {database} CASCADE;"

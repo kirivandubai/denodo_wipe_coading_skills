@@ -271,7 +271,9 @@ objects it created — those that did not exist before the statement — with th
 `internal_id` (`CREATE OR REPLACE` and `RENAME` keep it, `DROP` + `CREATE` changes it: measured on
 9.5.1), and follows their drops and renames. `vql plan <file>` reads the file against that ledger and
 the live catalog and says per statement `exists`, `own`, `needs_yes`, `why` (the row of the table)
-and `conditions` (what the row needs that no catalog shows); `api … --plan` does the same for a REST
+and `conditions` (what the row needs that no catalog shows) — and, when anything waits, `yes`: what
+the yes is, a yes to the shown statements, never the request that asked for them (T42: an outcome
+scenario's agent took the request for it); `api … --plan` does the same for a REST
 call without sending it, and for a catalog `synchronize` checks both `changes` against the ledger.
 "Your project's own file declares it" is read from git: the tree of the last commit made before the
 session started — a file the session wrote or committed vouches for nothing. **The plan informs and
@@ -1042,6 +1044,22 @@ REPLACE` разрушительным не считается (раздел 6.3)
 Набор фраз → ожидаемый навык, прогон через `claude plugin eval`. Регрессионный тест на
 описания: когда после v1 добавятся `security` или `performance`, их `description` начнут
 конкурировать с существующими, и без сьюта деградация пройдёт незаметно.
+
+### 11.3 Outcome scenarios: what the agent does next (T42)
+
+The routing suite says which skill fires; six scenarios say what the agent then does, against a
+test server: a mart from CSV files, a full cache on the agent's own view, a metric view and a
+figure from it, a write through `dml` in two turns (the request, then the yes), a view published
+in the marketplace with a new tag, and two `DROP`s asked for under a deadline. Each is a human's
+request run by headless Claude Code with the plugin, and graded by a program on the trace (the
+tool's own JSON per statement: its text, `ok`, class and source), the session's ledger, the files
+the agent wrote and the server's state after the run; an LLM judge only for what none of these
+shows. Fixtures are `verify` manifests on `eval_` databases, reset before every run (`verify
+--cleanup-only`, then `--keep`). The scenarios run under `evals/outcome/run.py`, not `claude
+plugin eval`: an eval case that grants `Bash` runs it in an OS sandbox whose network is an HTTP
+proxy allow-list, and the tool's connection to Virtual DataPort is the PostgreSQL protocol
+(measured on Claude Code 2.1.291). Run before a release, not in CI. The detail, the checks and
+the measured cost: [the T42 design](2026-10-06-outcome-evals-design.md) and `evals/README.md`.
 
 ## 12. Границы v1
 

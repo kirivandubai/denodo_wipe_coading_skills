@@ -14,6 +14,7 @@ from . import EXIT_EXECUTION, EXIT_OK, EXIT_USAGE
 from ..errors import normalize_error
 from ..ledger import server_key
 from ..output import envelope
+from ..planner import YES_NOTE
 from ..profiles import Profile
 from ..safety import classify_http
 from ..statements import ObjectRef
@@ -91,6 +92,8 @@ def _plan_call(profile: Profile, method: str, path: str, body: Any, base: dict, 
 
     def decide(needs_yes, why, conditions=None):
         doc.update(needs_yes=needs_yes, why=why, conditions=conditions or [])
+        if needs_yes is True:
+            doc["yes"] = YES_NOTE
         return doc, EXIT_OK
 
     destructive = base["destructive"]

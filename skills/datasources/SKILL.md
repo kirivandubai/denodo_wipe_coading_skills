@@ -39,9 +39,9 @@ creation and fails later, at query time. That covers:
   payload is "just JSON";
 - a file anywhere other than the server's own disk (S3, ADLS, HDFS, FTP/SFTP, a URL), a
   compressed or encrypted file, Excel, XML, fixed-width, Parquet, Delta, Iceberg;
-- a delimited file whose records run over more than one line, or whose quoted values
-  contain the delimiter — the raw lines (**When you cannot see the file**) show it before
-  you write anything;
+- a delimited file whose records run over more than one line — a line break inside quoted
+  values (a delimiter inside them is fine, `references/df.md`); the raw lines (**When you
+  cannot see the file**) show it before you write anything;
 - Salesforce, SAP, OData, SOAP, MongoDB, LDAP, a SaaS wizard, a custom wrapper;
 - a base view over a SQL query, or over a stored procedure or function, instead of a table;
 - a JDBC data source that logs in by Kerberos, OAuth, cloud IAM, a credentials vault or
@@ -671,7 +671,7 @@ attempt: **When a template does not work straight away**, above.
 | DF `OUTPUTSCHEMA` with the columns the human asked for | `CREATE` succeeds, `SELECT` returns **0 rows** | list every column of the file; narrow in a derived view |
 | DF `OUTPUTSCHEMA` with the right count but the wrong order | rows arrive with values under the wrong names | the mapping is positional — reorder to match the header |
 | DF source without `IGNOREMATCHINGERRORS = FALSE` | schema mismatches are dropped row by row, silently | add it; the mismatch becomes `[DF ROUTE] [PARSE_ERROR] Invalid line found at data file` |
-| `Different number of columns` while the wrapper's count and order already match the header | the records do not split one per line on the delimiter — a line break or a delimiter inside quoted values | nothing to fix in VQL: stop, Design Studio (**When a template does not work straight away**) |
+| `Different number of columns` while the wrapper's count and order already match the header | the records do not split one per line on the delimiter — a line break inside quoted values, or a delimiter inside an unquoted one | nothing to fix in VQL: stop, Design Studio (**When a template does not work straight away**) |
 | `FOLDER = '/x'` where `/x` does not exist | `Error creating data source: destination folder '/x' not found` | create the folder first (`/denodo:catalog`) |
 | DF `OUTPUTSCHEMA` with types (`: 'java.util.Date'`) | `Syntax error … near '''` | DF wrappers take `name = 'mapping'` only, plus `(OPT)` / `NULLVALUE` |
 | Wrapper with no `OUTPUTSCHEMA` at all | creates, then `SELECT` fails: DF `[NO_CREATED_ACCESS] Unable to create xml raw access`, JSON `[JSON WRAPPER] [PROCESSING]` | the server does not introspect files — write the schema |

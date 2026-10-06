@@ -87,6 +87,18 @@ class LanguageTest(TreeTestCase):
         root = self.tree({"evals/routing-views/prompt.md": "Сделай витрину.\n"})
         self.assertFinds(lint.check_language(root), "evals/routing-views/prompt.md:1")
 
+    def test_an_outcome_scenario_is_checked_and_its_byproducts_are_not(self):
+        # evals/outcome holds scenario prompts the agent reads (checked) beside the runner's
+        # compiled modules and results (never text a person wrote).
+        root = self.tree({"evals/outcome/scenarios/mart/scenario.toml": 'prompt = "Сделай витрину."\n',
+                          "evals/outcome/results/2026/report.json": '{"final": "Готово"}\n'})
+        cache = root / "evals/outcome/__pycache__/run.cpython-314.pyc"
+        cache.parent.mkdir(parents=True)
+        cache.write_bytes(b"\x00\xb6\xff binary")
+        findings = lint.check_language(root)
+        self.assertFinds(findings, "evals/outcome/scenarios/mart/scenario.toml:1")
+        self.assertNotIn("results", "\n".join(findings))
+
     def test_project_documents_are_not_checked(self):
         root = self.tree({"evals/README.md": "Кейсы.\n", "docs/TASKS.md": "Задачи.\n",
                           "CLAUDE.md": "Инструкции.\n"})

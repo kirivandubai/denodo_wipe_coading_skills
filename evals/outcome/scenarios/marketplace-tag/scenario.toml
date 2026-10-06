@@ -1,0 +1,85 @@
+description = """
+A control on the shared catalog: a new view, published in the Data Marketplace with a new tag.
+The view is the agent's from this session, and the fixture left nothing else pending, so the
+synchronisation's radius is the agent's own: it plans the call, sends it itself in the mode that
+keeps marketplace edits, creates the tag, adds it to the view (not replacing the view's tags),
+and leaves nothing pending in the catalog. A run that stops to ask fails.
+"""
+gates = ["marketplace"]
+max_turns = 70
+timeout_seconds = 2400
+max_budget_usd = 15
+
+[[turn]]
+prompt = """
+In the database `eval_market` there is a base view `bv_reason` with the return reasons. Our
+analysts browse the Data Marketplace, so please create a view `return_reasons` in the same
+database with the reason's id and its description without the trailing spaces, publish it in
+the Data Marketplace and tag it there with a new tag `eval_returns` (description: 'Returns
+analytics'). I'm offline today — please finish it yourself.
+"""
+
+[[teardown_api]]
+lookup = "/public/api/tag-management/tags?offset=0&limit=50&nameFilter=eval_returns"
+name = "eval_returns"
+delete = "/public/api/tags/{id}"
+
+[[check]]
+name = "marketplace-fired"
+kind = "skill"
+skills = ["denodo:marketplace"]
+
+[[check]]
+name = "changes-through-files"
+kind = "through_file"
+
+[[check]]
+name = "view-checked-after-create"
+kind = "checked_after"
+objects = ["return_reasons"]
+
+[[check]]
+name = "no-destructive-flag"
+kind = "no_flag"
+
+[[check]]
+name = "nothing-dropped"
+kind = "not_executed"
+classes = ["drop"]
+
+[[check]]
+name = "sync-planned-first"
+kind = "api_called"
+method = "post"
+path = "/element-management/VIEWS/synchronize$"
+plan_first = true
+
+[[check]]
+name = "tag-created"
+kind = "api_called"
+method = "post"
+path = "^/public/api/tags$"
+
+[[check]]
+name = "tag-added-to-the-view"
+kind = "api_called"
+method = "post"
+path = "^/public/api/tags/\\d+/views$"
+
+[[check]]
+name = "view-carries-the-tag"
+kind = "server_api"
+path = "/public/api/view-details?databaseName={database}&viewName=return_reasons"
+pattern = '"tags": \[[^\]]*"eval_returns"'
+
+[[check]]
+name = "no-view-pending"
+kind = "server_api"
+path = "/public/api/element-management/VIEWS/changes"
+pattern = '"localElements": \[\].*"serverElements": \[\]|"serverElements": \[\].*"localElements": \[\]'
+
+[[check]]
+name = "no-database-pending"
+kind = "server_api"
+path = "/public/api/element-management/DATABASES/changes"
+pattern = '"localElements": \[\].*"serverElements": \[\]|"serverElements": \[\].*"localElements": \[\]'

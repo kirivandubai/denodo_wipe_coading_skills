@@ -1,0 +1,80 @@
+# marketplace-tag: a colleague's database with a base view over the return reasons, already in
+# the Data Marketplace catalog (the second step synchronises it), so that the only thing the
+# agent's synchronisation brings in is its own new view. Only with --with-marketplace; the runner
+# skips the scenario when the catalog has pending changes before the reset, because this step
+# would synchronise them too.
+local_values = ["fixture_route", "fixture_base"]
+
+[values]
+database = "eval_market"
+fixture_route = "HTTP 'http.ApacheHttpClientConnection,120000' GET"
+fixture_base = "https://raw.githubusercontent.com/kirivandubai/denodo_wipe_coading_skills/main/verification/data"
+
+[cleanup]
+vql = ["DROP DATABASE IF EXISTS {database} CASCADE"]
+# Run after the DROP above, the two synchronisations take the database and its views back out
+# of the shared catalog (as in verification/chain.toml); the agent's tag is deleted by name
+# before this, by the scenario's [[teardown_api]].
+http = [
+  { method = "post", path = "/public/api/element-management/DATABASES/synchronize", json = { proceedWithConflicts = "SERVER_WITH_LOCAL_CHANGES" } },
+  { method = "post", path = "/public/api/element-management/VIEWS/synchronize", json = { proceedWithConflicts = "SERVER_WITH_LOCAL_CHANGES" } },
+]
+
+[[step]]
+id = "database"
+kind = "fixture"
+channel = "vql"
+check = "SELECT db_name FROM GET_DATABASES() WHERE db_name = '{database}'"
+vql = "CREATE OR REPLACE DATABASE {database} 'Returns, published' CHARSET DEFAULT;"
+
+[[step]]
+id = "base-view"
+kind = "fixture"
+channel = "vql"
+database = "{database}"
+check = "SELECT COUNT(*) FROM bv_reason HAVING COUNT(*) = 35"
+vql = """
+CONNECT DATABASE {database};
+
+CREATE OR REPLACE FOLDER '/01 - connectivity';
+CREATE OR REPLACE FOLDER '/02 - integration';
+
+CREATE OR REPLACE DATASOURCE DF ds_reason
+    FOLDER = '/01 - connectivity'
+    IGNOREMATCHINGERRORS = FALSE
+    ROUTE {fixture_route} '{fixture_base}/reason.csv'
+    CHARSET = 'UTF-8'
+    COLUMNDELIMITER = ','
+    HEADER = TRUE;
+
+CREATE OR REPLACE WRAPPER DF wr_reason
+    FOLDER = '/01 - connectivity'
+    DATASOURCENAME = ds_reason
+    OUTPUTSCHEMA (
+        r_reason_sk = '"R_REASON_SK"',
+        r_reason_id = '"R_REASON_ID"',
+        r_reason_desc = '"R_REASON_DESC"'
+    );
+
+CREATE OR REPLACE TABLE bv_reason I18N us_pst (
+        r_reason_sk:int, r_reason_id:text, r_reason_desc:text
+    )
+    FOLDER = '/01 - connectivity'
+    PRIMARY KEY ( 'r_reason_sk' )
+    CACHE OFF
+    TIMETOLIVEINCACHE DEFAULT
+    ADD SEARCHMETHOD wr_reason (
+        OUTPUTLIST ( r_reason_sk, r_reason_id, r_reason_desc )
+        WRAPPER (df wr_reason)
+    );
+"""
+
+[[step]]
+id = "in-the-catalog"
+kind = "fixture"
+channel = "http"
+marketplace = true
+vql = """
+api post /public/api/element-management/DATABASES/synchronize --json '{"proceedWithConflicts":"SERVER_WITH_LOCAL_CHANGES"}'
+api post /public/api/element-management/VIEWS/synchronize --json '{"proceedWithConflicts":"SERVER_WITH_LOCAL_CHANGES"}'
+"""

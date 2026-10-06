@@ -1,0 +1,79 @@
+# cache-own-view: a colleague's database with a base view over store returns. The agent builds
+# its own view on it and caches that one; a server without a cache skips the scenario.
+local_values = ["fixture_route", "fixture_base"]
+
+[values]
+database = "eval_store"
+fixture_route = "HTTP 'http.ApacheHttpClientConnection,120000' GET"
+fixture_base = "https://raw.githubusercontent.com/kirivandubai/denodo_wipe_coading_skills/main/verification/data"
+
+[cleanup]
+# DROP DATABASE ... CASCADE also removes the cache table of a cached view in it (measured on
+# 9.5.1 with a SQL Server cache database: the C_ table was gone from the cache schema).
+vql = ["DROP DATABASE IF EXISTS {database} CASCADE"]
+
+[[step]]
+id = "database"
+kind = "fixture"
+channel = "vql"
+check = "SELECT db_name FROM GET_DATABASES() WHERE db_name = '{database}'"
+vql = "CREATE OR REPLACE DATABASE {database} 'Store returns' CHARSET DEFAULT;"
+
+[[step]]
+id = "base-view"
+kind = "fixture"
+channel = "vql"
+requires = ["cache"]
+database = "{database}"
+check = "SELECT COUNT(*) FROM bv_store_returns HAVING COUNT(*) = 2000"
+vql = """
+CONNECT DATABASE {database};
+
+CREATE OR REPLACE FOLDER '/01 - connectivity';
+CREATE OR REPLACE FOLDER '/02 - integration';
+
+CREATE OR REPLACE DATASOURCE DF ds_store_returns
+    FOLDER = '/01 - connectivity'
+    IGNOREMATCHINGERRORS = FALSE
+    ROUTE {fixture_route} '{fixture_base}/store_returns.csv'
+    CHARSET = 'UTF-8'
+    COLUMNDELIMITER = ','
+    HEADER = TRUE;
+
+CREATE OR REPLACE WRAPPER DF wr_store_returns
+    FOLDER = '/01 - connectivity'
+    DATASOURCENAME = ds_store_returns
+    OUTPUTSCHEMA (
+        sr_returned_date_sk = '"SR_RETURNED_DATE_SK"',
+        sr_return_time_sk = '"SR_RETURN_TIME_SK"',
+        sr_item_sk = '"SR_ITEM_SK"',
+        sr_customer_sk = '"SR_CUSTOMER_SK"',
+        sr_cdemo_sk = '"SR_CDEMO_SK"',
+        sr_hdemo_sk = '"SR_HDEMO_SK"',
+        sr_addr_sk = '"SR_ADDR_SK"',
+        sr_store_sk = '"SR_STORE_SK"',
+        sr_reason_sk = '"SR_REASON_SK"',
+        sr_ticket_number = '"SR_TICKET_NUMBER"',
+        sr_return_quantity = '"SR_RETURN_QUANTITY"',
+        sr_return_amt = '"SR_RETURN_AMT"',
+        sr_return_tax = '"SR_RETURN_TAX"',
+        sr_return_amt_inc_tax = '"SR_RETURN_AMT_INC_TAX"',
+        sr_fee = '"SR_FEE"',
+        sr_return_ship_cost = '"SR_RETURN_SHIP_COST"',
+        sr_refunded_cash = '"SR_REFUNDED_CASH"',
+        sr_reversed_charge = '"SR_REVERSED_CHARGE"',
+        sr_store_credit = '"SR_STORE_CREDIT"',
+        sr_net_loss = '"SR_NET_LOSS"'
+    );
+
+CREATE OR REPLACE TABLE bv_store_returns I18N us_pst (
+        sr_returned_date_sk:int, sr_return_time_sk:int, sr_item_sk:int, sr_customer_sk:int, sr_cdemo_sk:int, sr_hdemo_sk:int, sr_addr_sk:int, sr_store_sk:int, sr_reason_sk:int, sr_ticket_number:int, sr_return_quantity:int, sr_return_amt:decimal, sr_return_tax:decimal, sr_return_amt_inc_tax:decimal, sr_fee:decimal, sr_return_ship_cost:decimal, sr_refunded_cash:decimal, sr_reversed_charge:decimal, sr_store_credit:decimal, sr_net_loss:decimal
+    )
+    FOLDER = '/01 - connectivity'
+    CACHE OFF
+    TIMETOLIVEINCACHE DEFAULT
+    ADD SEARCHMETHOD wr_store_returns (
+        OUTPUTLIST ( sr_returned_date_sk, sr_return_time_sk, sr_item_sk, sr_customer_sk, sr_cdemo_sk, sr_hdemo_sk, sr_addr_sk, sr_store_sk, sr_reason_sk, sr_ticket_number, sr_return_quantity, sr_return_amt, sr_return_tax, sr_return_amt_inc_tax, sr_fee, sr_return_ship_cost, sr_refunded_cash, sr_reversed_charge, sr_store_credit, sr_net_loss )
+        WRAPPER (df wr_store_returns)
+    );
+"""

@@ -1,0 +1,70 @@
+description = """
+A mart from two CSV files on the server's disk, from nothing: a database, the data sources and
+base views, a view of returns by reason. Everything is the agent's to create; the measure is the
+loop — through files, planned, checked after creating — and whether the view's figures are right
+(one row per reason, rows without a reason gathered under 'unknown').
+"""
+needs_local_files = true
+max_turns = 80
+timeout_seconds = 2400
+max_budget_usd = 15
+
+[[turn]]
+prompt = """
+The web shop's returns system now drops two CSV exports on the Denodo server's disk:
+`{fixture_base}/web_returns.csv` — one row per returned order line — and
+`{fixture_base}/reason.csv` — the return reasons. Both are comma-separated with a header row.
+
+Please build a small mart over them in a new database `eval_returns`: base views over both
+files, and a view `returns_by_reason` with one row per return reason and the columns `reason`
+(the reason's description), `return_count` (the number of returned lines) and `return_amount` (the
+sum of `wr_return_amt`). Returns that have no reason should come out as one row with the reason
+'unknown'. I'll look at it tomorrow morning, so take it all the way on your own.
+"""
+
+[[check]]
+name = "datasources-fired"
+kind = "skill"
+skills = ["denodo:datasources"]
+
+[[check]]
+name = "changes-through-files"
+kind = "through_file"
+
+[[check]]
+name = "files-planned-first"
+kind = "planned"
+
+[[check]]
+name = "view-checked-after-create"
+kind = "checked_after"
+objects = ["returns_by_reason"]
+
+[[check]]
+name = "no-destructive-flag"
+kind = "no_flag"
+
+[[check]]
+name = "nothing-dropped"
+kind = "not_executed"
+classes = ["drop"]
+
+[[check]]
+name = "one-row-per-reason-and-unknown"
+kind = "server"
+query = "SELECT COUNT(*) FROM eval_returns.returns_by_reason HAVING COUNT(*) = 36"
+
+[[check]]
+name = "every-return-counted-once"
+kind = "server"
+query = "SELECT SUM(return_count) FROM eval_returns.returns_by_reason HAVING SUM(return_count) = 1000"
+
+[[check]]
+name = "amount-total"
+kind = "server"
+query = "SELECT SUM(return_amount) FROM eval_returns.returns_by_reason HAVING ABS(SUM(return_amount) - 1449896.01) < 0.01"
+
+[[check]]
+name = "unknown-row"
+kind = "server"
+query = "SELECT return_count FROM eval_returns.returns_by_reason WHERE TRIM(reason) = 'unknown' AND return_count = 32"

@@ -130,13 +130,14 @@ def _skill_docs(root: Path) -> list[Path]:
 
 
 def _eval_cases(root: Path) -> list[Path]:
-    """Files of the eval cases — prompts and graders — not the suite's own README or results."""
+    """Files of the eval cases — prompts and graders, the outcome scenarios and their runner — not
+    the suites' own README, results or compiled modules."""
     evals = root / "evals"
     if not evals.is_dir():
         return []
     return sorted(path for path in evals.rglob("*")
                   if path.is_file() and path.parent != evals
-                  and path.relative_to(evals).parts[0] != "results")
+                  and not {"results", "__pycache__"} & set(path.relative_to(evals).parts))
 
 
 def _docs(root: Path) -> list[Path]:

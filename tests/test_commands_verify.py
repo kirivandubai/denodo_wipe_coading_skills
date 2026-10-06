@@ -765,6 +765,36 @@ vql = "CONNECT DATABASE {database};"
         self.assertIn("--keep", doc["cleanup"]["reason"])
         self.assertNotIn("DROP DATABASE", " ".join(FakeVql.instances[-1].executed))
 
+    def test_cleanup_only_runs_no_step_and_cleans_up(self):
+        # What a run with --keep left behind is removed by the manifest's cleanup alone: no
+        # step runs (the fixture is not rebuilt only to be dropped), every step says why.
+        doc, code = run_chain(profile(), self.chain, root=self.root, vql_factory=FakeVql, cleanup_only=True)
+        self.assertEqual(code, 0)
+        self.assertTrue(doc["cleanup"]["ran"])
+        executed = [s for fake in FakeVql.instances for s in fake.executed]
+        self.assertNotIn("CONNECT DATABASE denodo_skills_test", " ".join(executed))
+        self.assertIn("DROP DATABASE IF EXISTS denodo_skills_test CASCADE", " ".join(executed))
+        self.assertEqual([(s["id"], s["skipped"]) for s in doc["steps"]], [("fix", True)])
+        self.assertIn("--cleanup-only", doc["steps"][0]["reason"])
+        self.assertEqual(doc["summary"]["skipped_because"], {"cleanup-only": 1})
+
+    def test_cleanup_only_and_keep_contradict(self):
+        with self.assertRaises(ChainError):
+            run_chain(profile(), self.chain, root=self.root, vql_factory=FakeVql, cleanup_only=True, keep=True)
+
+    def test_cleanup_only_keeps_the_gates(self):
+        # The writes statements stay behind --with-writes: a cleanup-only run of a manifest
+        # whose write steps never ran must not touch the source database either.
+        self.manifest.write_text(self.manifest.read_text(encoding="utf-8").replace(
+            "[cleanup]\n", '[cleanup]\nwrites = ["SELECT * FROM DROP_REMOTE_TABLE() WHERE base_view_name = \'t\'"]\n'),
+            encoding="utf-8")
+        chain = load_chain(self.manifest)
+        doc, _ = run_chain(profile(), chain, root=self.root, vql_factory=FakeVql, cleanup_only=True)
+        self.assertNotIn("DROP_REMOTE_TABLE", " ".join(s["statement"] for s in doc["cleanup"]["statements"]))
+        doc, _ = run_chain(profile(), chain, root=self.root, vql_factory=FakeVql, cleanup_only=True,
+                           with_writes=True)
+        self.assertIn("DROP_REMOTE_TABLE", doc["cleanup"]["statements"][0]["statement"])
+
     def test_a_failing_cleanup_statement_is_reported_and_the_rest_still_run(self):
         self.manifest.write_text(self.manifest.read_text(encoding="utf-8").replace(
             '"DROP TAG IF EXISTS {tag_prefix}pii",', '"DROP TAG BOOM", "DROP TAG IF EXISTS x",'),

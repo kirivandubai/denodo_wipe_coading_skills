@@ -15,7 +15,7 @@ from ..catalog import Catalog
 from ..errors import normalize_error
 from ..ledger import server_key
 from ..output import envelope
-from ..planner import PlanContext, plan_statements
+from ..planner import YES_NOTE, PlanContext, plan_statements
 from ..profiles import Profile
 from ..project import declarations_before
 from ..statements import ObjectRef
@@ -70,6 +70,8 @@ def plan_input(profile: Profile, statements: list[str], *, transport_factory: Ca
                    project=None if declarations.root is None else {
                        "root": str(declarations.root), "base": declarations.base,
                        "declarations": len(declarations.entries)})
+    if doc["needs_yes"]:
+        doc["yes"] = YES_NOTE
     if ledger is None:
         doc["session_note"] = NO_SESSION
     if declarations.root is not None and declarations.base is None:
