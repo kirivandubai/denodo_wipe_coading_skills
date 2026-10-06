@@ -40,7 +40,7 @@ them to the next environment, or rebuild them after a rollback. Data Marketplace
 one exception to the VQL part — it is a separate server driven by REST — but the rest of
 the loop is the same.
 
-Naming follows Denodo's own *VDP Naming Conventions* out of the box (`ds_`, `bv_`, `iv_`,
+Naming is adapted from Denodo's *VDP Naming Conventions* out of the box (`ds_`, `bv_`, `iv_`,
 `a_`, numbered layer folders). A project that has its own standard overrides them in
 `.denodo/conventions.md` — plain markdown, no schema to learn.
 

@@ -134,7 +134,7 @@ WHERE input_database_name = 'sales_analytics';
   file's, reports `65536` for every text and no generated key; read the table's definition
   from its owner instead. `input_view_name` is a `LIKE` pattern (`%` and `_` are wildcards,
   documentation); `IN ( … )` answers no rows, without an error. Check every value you will
-  write against them — a text's length is `LEN(s)`, spaces counted (`LEN(TRIM(s))` only for
+  write against them — a text's length is `LEN(s)`, spaces counted (delegated to SQL Server, `LEN` drops trailing spaces — `/denodo:vql`; `LEN(TRIM(s))` only for
   padded source text); `LENGTH` does not exist: the source's own refusal arrives cut off.
 - **A view in `USED_BY` with `cache_status` `3` (full) serves a copy**: after the write it shows
   the old rows until its next load, and a write through it, or through any view above it,

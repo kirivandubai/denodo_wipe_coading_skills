@@ -685,7 +685,7 @@ attempt: **When a template does not work straight away**, above.
 | JDBC clauses in a different order | `Syntax error` naming a clause that is fine | restore the template's order; the named token is where the parser stopped |
 | `SELECT shipping.country` | `Field not found 'shipping.country' in view 'shipping'` | `(shipping).country` |
 | `LIST DATASOURCES` | `Syntax error … near 'DATASOURCES'` | the type is mandatory: `LIST DATASOURCES DF` |
-| `SELECT` from a JDBC base view whose source is unreachable | `[JDBC ROUTE] [CONNECTION_ERROR]` | expected without the database; the objects are still correct — verify with `PING_DATA_SOURCE` |
+| `SELECT` from a JDBC base view whose source is unreachable | `[JDBC ROUTE] [CONNECTION_ERROR]` in `raw` | expected without the database; the objects are still correct — verify with `PING_DATA_SOURCE` |
 | Relative path in `ROUTE LOCAL` | `[DF ROUTE] [PARSE_ERROR] … Error getting input Stream` | absolute path, on the server's filesystem |
 
 Dropping a source takes its wrappers and base views with it (`CASCADE`), and that is the

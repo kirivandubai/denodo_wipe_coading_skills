@@ -96,6 +96,7 @@ STATE_CHANGING_PROCEDURES = frozenset({
     "GET_STATS_FOR_FIELDS",
     "CHECK_METADATA",
     "CHECK_CACHE_NAMES",
+    # no listing mode: it always changes
     "MIGRATE_DATE_TYPES",
     # with no arguments it deletes orphan files and expired snapshots of the cache control tables
     "OPTIMIZE_LAKEHOUSE_ACCELERATOR_CACHE_TABLES",
