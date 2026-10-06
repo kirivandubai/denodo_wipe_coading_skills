@@ -65,7 +65,10 @@ api get --env dev /public/api/views/<view_id>/tags
 
 VDP tags can be copied into the marketplace, where they become read-only mirrors
 (`vdpTag: true`). Their assignments come from VDP, so `ALTER TAG … ADD_TO` in
-`/denodo:catalog` shows up here after the next import.
+`/denodo:catalog` shows up here after the next import. Only with the Semantics FeaturePack
+(Enterprise Plus; the About dialog of Design Studio or the Data Marketplace shows the bundle):
+without it there is no import, and a label the consumer must see in the marketplace is a
+marketplace tag.
 
 | Call | What it is |
 |---|---|
@@ -92,8 +95,9 @@ Two traps around it, both *verified: 9.5.1 (live, 2026-09-10)*:
   name exists — including an unrelated local one: a VDP tag `finance` reports `inLocal: true,
   nameConflict: true`, while `/tags/vdp/local` does not list it, when a separate marketplace
   tag `Finance` exists. Names collide case-insensitively. **What the import then does with the local namesake — refuse it,
-  replace it, merge into it — is *unverified*:** finding out costs someone else's tag, so
-  ask the human whether to rename one of the two first.
+  replace it, merge into it — is *unverified*:** the UI never offers it (the documentation: its
+  check box is disabled when a marketplace tag of that name exists), and finding out what the
+  API does costs someone else's tag, so ask the human whether to rename one of the two first.
 - **An imported tag brings its VDP assignments, and no more.** A VDP tag assigned to nothing
   arrives in the marketplace empty, which usually is not what the request meant. Check
   `GET_VIEW_TAGS()` in VDP (`/denodo:catalog`) before importing, and if the tag is bare, the

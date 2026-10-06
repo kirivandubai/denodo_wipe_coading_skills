@@ -3,7 +3,9 @@
 A category is a folder for consumers browsing the marketplace: a tree, not a flat list, and
 a view or external element may sit in several of them. Categories are the one family here
 that is **not** scoped to a VDP server — they answer without `serverId`, and whatever the
-profile adds is ignored.
+profile adds is ignored. The UI calls this tree Domains and Categories (Browse > Domains /
+Categories), and the REST API knows only categories: a "domain" the human names is a node of
+this tree, usually a root one — look it up by name in `…/categories/tree`.
 
 ## The surface
 

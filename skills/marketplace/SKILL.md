@@ -237,7 +237,7 @@ drag-and-drop in the marketplace's own synchronisation dialog. The rename itself
 #    carry: rename, do not synchronise, and say so — the next synchronisation imports it
 api get --env dev /public/api/view-details \
     --param databaseName=sales_analytics --param viewName=household_income_by_band
-# → {"id":7446,"inLocal":true,"tags":[…],"categories":[…],"endorsements":[…], …}
+# → {"id":<view_id>,"inLocal":true,"tags":[…],"categories":[…],"endorsements":[…], …}
 
 # 1. the rename, in VDP (/denodo:views):
 #    ALTER VIEW household_income_by_band RENAME household_income_per_band;
@@ -316,7 +316,7 @@ stays whole until the new one is proven — *verified: 9.5.1 (live, 2026-10-01)*
 | categories | `POST /public/api/category-management/categories/{id}/views` with `[<newId>]` | adds |
 | description edited in the marketplace | `PUT /public/api/views` with `{"id":<newId>,"description":"…","descriptionType":"TEXT"}` | |
 | field descriptions edited there | `PUT /public/api/views/fields` with `{"databaseName","viewName","fieldName","fieldDescription"}` | one call per field; step 0 has them under `schema[].description` — under `field.allFields` the same fields read empty |
-| custom property values | `POST /public/api/property-management/views/{newId}/groups` with `[<groupId>, …]`, then `PUT /public/api/views/property-values` with `[{"propertyId","elementId":<newId>,"visualValue"}]` | the first call **replaces** the view's set of groups, and a group left out loses its values: send every group step 0 shows (`propertyInfo`; there is no `GET` for a view's groups — `405`). A value before its group is assigned is `500 "Incorrect number of updated tuples"`. Send what step 0 has under `visualValueToEdit`, not `visualValue`: an interpolable property shows `$element_name` already filled in there, and copying that freezes the old name |
+| custom property values | `POST /public/api/property-management/views/{newId}/groups` with `[<groupId>, …]`, then `PUT /public/api/views/property-values` with `[{"propertyId","elementId":<newId>,"visualValue"}]` | the first call **replaces** the view's set of groups, and a group left out loses its values: send every group step 0 shows (`propertyInfo`; there is no `GET` for a view's groups — `405`). A value before its group is assigned is `500 "Incorrect number of updated tuples"`. Send what step 0 has under `visualValueToEdit`, not `visualValue`: a property with *Allow variables in value* shows `$element_name` already filled in there, and copying that freezes the old name |
 | endorsements, warnings, deprecations | `POST /public/api/endorsement-management/views/{newId}/endorsements` with `{"comment":"…"}`; `…/warnings` and `…/deprecations` take the same body — *unverified: 9.5 documentation only* (the server's OpenAPI) | the human's call, not a default: each is somebody's statement, and a copy is yours, dated today — even under the same account, it claims a check made now on a view that just moved. List them, and re-create only the ones the human asks for once they have seen the list — "keep everything" said before anyone looked is not that |
 
 ### External element — a dashboard, job or contract from another tool
@@ -330,6 +330,7 @@ chain runs VQL and REST alternately, and the whole block below carries one verif
 
 # 0. the views this element will link to must already be in the marketplace catalog
 #    (previous template) — otherwise step 4 fails and nothing is created
+# 0b. the element type the VQL half names ('DASHBOARD') must be listed, or created (below)
 
 # 1. provider type: the tool the metadata comes from. Multipart, but the icon is optional
 api post --env dev /public/api/external-providers-types \
@@ -373,22 +374,19 @@ None of this changes the tool: the call is stamped
 `destructive: replace` either way, and on a `production` profile it is refused without
 `--allow-destructive`, which only a human may add.
 
-**Both type steps are usually unnecessary, and they are different objects.** Look each one
-up before creating it — a new type is a marketplace-wide object that everyone then sees:
-
-| | Built in on 9.5.1 | List it with | Examples |
-|---|---|---|---|
-| **Element type** — what the asset *is* | 24 | `GET /public/api/external-elements-types` | `DASHBOARD`, `REPORT`, `PIPELINE`, `DATA_CONTRACT`, `AI_AGENT`, `NOTEBOOK`, `ETL_JOB`, `QUALITY_RULE` |
-| **Provider type** — the tool it *comes from* | 28 | `GET /public/api/external-providers-types` | `AIRFLOW_PROVIDER`, `GITHUB_PROVIDER`, `TABLEAU`, `POWERBI`, `COLLIBRA_PROVIDER`, `DATABRICKS_PROVIDER`, `SNOWFLAKE_PROVIDER`, `JUPYTER_PROVIDER` |
-
-*verified: 9.5.1 (live, 2026-09-10).* **The provider listing carries every icon as base64
-and weighs about 290 KB** — read it into a file and project
-`{externalProviderTypeId, name, visualName}` rather than letting it into the conversation.
-Step 1 of the chain above only applies when no built-in provider type fits; the same goes for the element type
-(`POST /public/api/external-elements-types`, all six fields mandatory, `iconKey` is a
-FontAwesome key). Both listings return the name under a different key than the one you send:
-the element type is `externalElementTypeName` when read and `name` when written, and the read
-form has no `description` at all.
+**Look each type up before creating it — they are different objects.** The element type, what
+the asset *is*, is listed by `GET /public/api/external-elements-types`, which returns the name as
+`externalElementTypeName` (sent as `name`) and has no `description`; the provider type, the tool
+it *comes from*, by `GET /public/api/external-providers-types`. **That listing embeds every icon
+as base64 and can be large** — read it into a file and project
+`{externalProviderTypeId, name, visualName}` rather than letting it into the conversation —
+*verified: 9.5.1 (live, 2026-09-10)*. Tableau and Power BI are the documented native tools: the
+`REPORT` element type, the `TABLEAU` and `POWERBI` providers. Every other type a marketplace
+lists (`DASHBOARD`, `ETL_JOB`, an `…_PROVIDER`) was created there, and another marketplace may
+lack it — the template's `DASHBOARD` included. A new type is a marketplace-wide object that
+everyone then sees. Step 1 of the chain above is skipped only when a listed provider type
+really is the asset's tool; an element type the listing lacks is created before step 4 with
+`POST /public/api/external-elements-types` — all six fields mandatory, `iconKey` a FontAwesome key.
 
 The VQL half — the implementation behind the contract from step 3. **Its names are outside
 the naming convention of `/denodo:vql` on purpose:** the interface view's name is part of
@@ -476,16 +474,16 @@ that does not match it, and only the `SELECT` shows it (`/denodo:views`).
 | Which "tag" | marketplace tag = visible in the Data Marketplace UI, created here; VDP tag = `LIST TAGS`, `/denodo:catalog`. When the request does not say, ask — the call succeeds either way, on the wrong server |
 | `serverId` | `marketplace_server_id` in the profile — the human's to set, and the tool adds it for you; the ids are in `GET /public/api/configuration/servers`. Needed as soon as more than one VDP is registered. Do not put it in a call unless you mean a server other than the profile's |
 | Tag or category name, description | the human. Both are shown to consumers browsing the marketplace, so they read as labels, not as identifiers |
-| A new category's parent | `GET …/categories/tree` first. A live marketplace's tree is a taxonomy somebody designed — hang the new category inside the branch it belongs to. A **new top-level** category is a question for the human, not a default: it adds an axis to what everybody browsing sees. (`GET …/categories/{id}/potential-parent` is for moving an existing one) |
+| A new category's parent | `GET …/categories/tree` first; a *domain* the human names is a category of this tree, usually a root one. A live marketplace's tree is a taxonomy somebody designed — hang the new category inside the branch it belongs to. A **new top-level** category is a question for the human, not a default: it adds an axis to what everybody browsing sees. (`GET …/categories/{id}/potential-parent` is for moving an existing one) |
 | Every numeric id | never a template, never memory: a `GET` in this session. Ids differ per installation and per server |
 | View ids to assign to | `GET /public/api/view-details?databaseName=…&viewName=…`; `id:null` means synchronise first. Save the answer to a file and read `id`, `inLocal` and `inVDP` out of it with a script — it carries the view's whole field list and its connection URIs, and truncating it instead is how the three fields get missed |
 | Whether the catalog may be synchronised | you, when the call with `--plan`, right before it, says `needs_yes: false` — both `changes` hold only databases and views you created in this session (`modifiedElements` aside) and the profile is not production; the human for any other radius — it is a shared catalog |
 | Whether a view about to be renamed, recreated or moved is in the marketplace | `view-details` on it **before** the change — `id` not null and `inLocal: true`. The answer is also what to keep: it is the only copy of the element's metadata |
 | Which removed element is which new one | you renamed it, or the human says so. The same database and the same columns are a hint, not proof |
-| For an external element: the type | `GET /public/api/external-elements-types` — 24 built in; invent one only if none fits |
+| For an external element: the type | `GET /public/api/external-elements-types` — list it; create one if none fits |
 | For an external element: id, name, url, timestamps | the source tool. `updated_at` is what drives updates — an element whose `updated_at` does not move is never refreshed |
 | Which views the element links to | the human, plus their exact `database.view` — an association naming a view the marketplace does not know fails the whole import |
-| Direction and role | `IN`/`OUT` plus free text (`consumes`, `feeds`, `validates`). The direction is read from the element outwards, so a dashboard that *reads* a view is still `OUT`. The role is the label on the edge of the 360 graph |
+| Direction and role | `IN`/`OUT` plus free text (`consumes`, `feeds`, `validates`). The documentation calls `direction` the data-flow direction and the 360 graph draws its arrow by it, without saying from whose side; Denodo's own sample marks every association `OUT`, a dashboard that *reads* a view included, and what `IN` changes is *unverified*. Follow the marketplace's existing elements, say which you chose, and look at the arrow after the first import. The role is the label on the edge of the 360 graph |
 
 Do not ask about property groups, endorsements, requests or personalisation — they are
 marketplace features with their own screens, not part of creating these objects.
@@ -521,7 +519,7 @@ other side where there is one. Every read-back below — *verified: 9.5.1 (live,
 | Did a renamed view keep its element | `view-details` on the new name → the `id` the old name had, with its tags, categories and endorsements. The `synchronize` response cannot tell you: a matched pair and an ignored one look the same there |
 | What a synchronisation would change | `GET /public/api/element-management/{DATABASES\|VIEWS}/changes` — **before**, not after |
 | Did the import create what you meant | the `synchronize` response names each element: `externalElementsAdded/Updated/Deleted` with `originalExternalElementId` |
-| Is the element visible to a consumer | `GET /public/api/external-elements/{id}/details` — type, server, url, and its lineage |
+| Did the element import (read as you) | `GET /public/api/external-elements/{id}/details` — type, server, url, and its lineage. A consumer sees the element only with the Visualize permission of its element type — a new type adds its own column, which an administrator grants to roles (External element, in the Permissions tab of the marketplace's Server Set-Up) — plus `METADATA` on every view it links to and `CONNECT` on their databases: tell the human what a new type still needs |
 | **Does the view show the element** | `GET /public/api/views/tree/external-elements/lineage?databaseName=…&viewName=…` — the question a human actually asked ("what consumes this?"), answered from the other end. The view node must resolve to `databaseName`/`viewName`, not stay a bare string |
 | Is it really gone | `GET` it: `404` is the answer you want. The tool reports that as `ok:false` and exit `1`, so a verification script must treat `404` as success here rather than stopping — *verified: 9.5.1 (live, 2026-09-10)* |
 | Which VDP tags are imported | `GET /public/api/tags/vdp/local` — a plain list of names. **Not** `inLocal` in `/tags/vdp/changes`: that flag means "a marketplace tag of this name exists", which is also true for an unrelated local tag — *verified: 9.5.1 (live, 2026-09-10)* |
