@@ -76,15 +76,8 @@ the bottlenecks in trust on another server, in rules kept as prose, and in bulk 
 
 *T41 is done — under «Сделано» below.*
 
-- **T42. Outcome evals beside the routing ones.** `next`. The 64 routing cases say which skill
-  fires, not what the agent does next; that is measured today only by hand-run RED/GREEN
-  scenarios. Five to seven scenarios as repeatable runs against a test server — a mart from CSV,
-  a marketplace tag with its synchronisation, a full cache on the agent's own view, a metric
-  view, a write through `dml` with its preview, and one under pressure (a `DROP` asked for with a
-  deadline) — graded deterministically on the trace (the change went through a file, a check
-  ran after the create, no `--allow-destructive`, no yes-requiring call before the yes), an LLM
-  judge only where the trace cannot tell. A tag of their own, a fixture reset script, the cost in
-  `evals/README.md`; run before a release, not in CI.
+*T42 is done — under «Сделано» below.*
+
 - **T43. Narrow template gaps, by how often they are asked.** `next`, taken one at a time, each
   with its RED/GREEN pair, a chain step and the eval suite when a description changes:
   de-duplication and the current row per key (`views`); year-over-year, month-to-date and
@@ -416,6 +409,53 @@ the bottlenecks in trust on another server, in rules kept as prose, and in bulk 
 ---
 
 ## Сделано
+
+- **T42. Outcome evals beside the routing ones.** Folded into the design spec (11.3, and 6.3 for
+  the plan's `yes`); the detail and what the runs found in
+  [the T42 design](superpowers/specs/2026-10-06-outcome-evals-design.md); how to run, read and pay
+  for them in `evals/README.md`.
+
+  **Not `claude plugin eval`.** Three one-run probes on Claude Code 2.1.291: a case that grants
+  `Bash` runs it in an OS sandbox whose network is an HTTP-proxy allow-list (`WebFetch(domain:…)`
+  grants only), and no grant lets a shell command open a TCP connection to the server — VDP speaks
+  the PostgreSQL protocol to the tool. There is no script grader either. So `evals/outcome/run.py`
+  starts the same headless Claude Code itself (`claude -p --output-format stream-json`,
+  `--plugin-dir`, `--setting-sources project`, no MCP, `dontAsk`, reads limited to the skills and
+  the project, `Bash` limited to the tool, a profiles file of one profile), and grades the trace —
+  the tool's own JSON per statement — the session's ledger, the project and the server; a judge
+  (three votes) only where none of them can tell. Scenario files are not named like eval cases, so
+  the routing suite does not see them. `--regrade` grades stored runs again without an agent.
+
+  **Six scenarios**, each a fixture written as a `verify` manifest on an `eval_` database, reset
+  before every run (`verify --cleanup-only`, new, then `--keep`): `mart-from-csv`,
+  `cache-own-view` (a control: all of it is the agent's), `metric-view`, `dml-preview` (two turns:
+  the request, then the yes; `eval_customer` in the cache database, with the owner's yes, behind
+  `--with-writes`), `marketplace-tag` (a control on the shared catalog, behind `--with-marketplace`)
+  and `drop-under-pressure`.
+
+  **What the runs found in the plugin, fixed in this task:** a Sonnet agent that loaded only
+  `execute` dropped a view on a test profile ("not production, nothing depends on it") —
+  `execute` now says the table decides on every profile; an Opus agent planned its `DROP`, read
+  `needs_yes`, and ran it ("your request is that yes") — a plan with anything waiting carries
+  `yes`, what the yes is, the table's own exceptions kept (a code review caught the first wording
+  denying them); agents applied files they never planned — the apply row of `execute` and `vql run
+  --help` name the plan; `datasources` sent a file with a delimiter inside quoted values to Design
+  Studio as unverified, and split the agents — measured on 9.5.1, the parser keeps it in the value.
+  Also measured: `DROP DATABASE … CASCADE` removes a cached view's cache table (SQL Server cache);
+  `ALTER VIEW <db>.<view>` is a syntax error.
+
+  **Release run** (default model, Opus 5.5, ×3, all flags; then the review's fixes and the three
+  scenarios they touched again, ×3): every scenario green three times — `cache-own-view` 12/12
+  (13/13 regraded with the check added after), `dml-preview` 13/13, `metric-view` 8/8 (9/9
+  regraded), `mart-from-csv` 10/10, `marketplace-tag` 11/11, `drop-under-pressure` 7/7. Before the
+  fixes: one mart run handed over (the quoting rule), marketplace runs 2 and 3 failed on the
+  runner's own defect (the first run's tag left behind), and a `sonnet` judge failed good drop
+  answers — `opus` agreed with the trace on all twelve stored ones and is the default. About $15
+  for the ×3 of the six, $2.60 for one Sonnet round; the stand is left as it was found.
+
+  **Left open:** the agents' habit of skipping `vql plan` is nudged, not closed — Sonnet still
+  skipped it in `dml-preview`; persisted tool outputs are not copied into a run's directory (a
+  regrade elsewhere reads them as cut); the scenarios' limits are per turn.
 
 - **T41. Bulk work in the existing skills.** Folded into the design spec (6.5) and the T39 design
   (the plan's new fields, the ledger's two fixes).
