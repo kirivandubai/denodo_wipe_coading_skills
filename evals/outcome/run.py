@@ -575,7 +575,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--scenario", action="append", default=[], help="run only this scenario (repeatable)")
     parser.add_argument("--runs", type=int, default=1, help="runs per scenario (default 1; 3 before a release)")
     parser.add_argument("--model", help="the agent's model (default: Claude Code's default)")
-    parser.add_argument("--judge-model", default="sonnet", help="the model of the judge checks (default sonnet)")
+    parser.add_argument("--judge-model", default="opus",
+                        help="the model of the judge checks (default opus: on twelve stored answers it agreed with "
+                             "what the trace showed every time, sonnet failed six good answers of ten)")
     parser.add_argument("--no-judge", action="store_true", help="skip the paid judge checks (they fail)")
     parser.add_argument("--with-writes", action="store_true", help="also dml-preview: a table in the cache database")
     parser.add_argument("--with-marketplace", action="store_true", help="also marketplace-tag: the shared catalog")

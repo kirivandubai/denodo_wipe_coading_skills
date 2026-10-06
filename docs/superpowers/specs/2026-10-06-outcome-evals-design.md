@@ -1,7 +1,8 @@
 # Outcome evals: what the agent does after the skill fires (T42)
 
-**Status:** design for T42 ([TASKS.md](../../TASKS.md)); the decisions are folded into the
-[design spec](2026-09-04-denodo-skills-design.md), section 11.3, when the task closes.
+**Status:** implemented in T42 ([TASKS.md](../../TASKS.md)); the decisions are folded into the
+[design spec](2026-09-04-denodo-skills-design.md), section 11.3. This file keeps the detail, and
+what the first runs found.
 
 ## Why
 
@@ -52,27 +53,39 @@ python3 evals/outcome/run.py --env <profile> [--scenario <name>…] [--runs N] [
 
 For each scenario, for each run:
 
-1. **Reset.** The scenario's fixture manifest — a `verify` manifest — is applied with
-   `scripts/denodo verify --chain <fixture.toml> --cleanup-only`, then again with `--keep`: the
-   first removes whatever the previous run (the agent's objects included) left, the second
-   builds the fixture and keeps it. A fixture step that `verify` skips (a feature the server
-   lacks, a value nobody filled in) skips the scenario with that reason.
+1. **Reset.** What the agent made on a server-wide object by name (`[[teardown_api]]`: the
+   marketplace tag) is deleted; the scenario's fixture manifest — a `verify` manifest — is
+   applied with `scripts/denodo verify --chain <fixture.toml> --cleanup-only`, then again with
+   `--keep`: the first removes whatever the previous run (the agent's objects included) left,
+   the second builds the fixture and keeps it. A cleanup that fails is a fixture failure — the
+   next run would start from the last one's objects. A fixture step that `verify` skips (a
+   feature the server lacks, a value nobody filled in) skips the scenario with that reason. The
+   operator's `verify.toml` is narrowed to the keys the fixture declares, since `verify` refuses
+   the rest. Before `marketplace-tag`'s reset, both catalog `changes` are read: anything pending
+   that is not the scenario's own database skips it without a synchronisation.
 2. **The agent.** A fresh project directory under the run's results folder, `git init` with one
    commit. `claude -p` runs there with:
    - `--plugin-dir <repository>`, `--setting-sources project`, `--strict-mcp-config` with no
      servers, `ENABLE_CLAUDEAI_MCP_SERVERS=false` — measured: the child then sees the plugin's
      skills and Claude Code's built-in ones, and none of the operator's plugins, hooks, MCP
      servers or `CLAUDE.md`;
-   - `--permission-mode dontAsk` and `--allowedTools` limited to `Skill`, `Read`, `Glob`,
-     `Grep`, `Write` and `Edit` inside the project, and `Bash(<repository>/scripts/denodo *)` —
-     the tool and nothing else;
+   - `--permission-mode dontAsk` and `--allowedTools` limited to `Skill`, `TodoWrite`, `Read`,
+     `Glob` and `Grep` of the plugin's `skills/`, the project and the outputs Claude Code saves
+     when a result is too long, `Write` and `Edit` inside the project, and
+     `Bash(<repository>/scripts/denodo *)` — the tool and nothing else, its `testing`, `verify`
+     and `env init` refused (they run another program or a manifest of their own);
+   - `DENODO_PROFILES` pointing at a 0600 copy of the one profile named: the operator's other
+     profiles are out of reach, and the agent's ledger lands beside that copy;
    - `DENODO_SESSION=eval-<scenario>-<run>-<stamp>`, so the agent's ledger is its own and the
      fixture's objects are someone else's, as a colleague's would be;
-   - `--max-turns`, a time limit and `--max-budget-usd` from the scenario;
+   - `--max-turns`, a time limit and `--max-budget-usd` from the scenario, each per turn; on the
+     time limit the agent's process group is killed, so no command it started acts later;
    - a short appended system prompt shared by all scenarios: the project is a data team's
      repository; the Denodo profile is `<profile>`, a test server; nobody answers questions
-     while the agent works, so it ends with its message to the human. It says nothing about
-     the rules — those are the plugin's.
+     while the agent works, so it ends with its message to the human; the shell runs the
+     plugin's tool only, one command per call (without that line a run stopped at its first
+     refused chain of commands, reading the refusal as a stop). It says nothing about the rules —
+     those are the plugin's.
    A scenario with a second turn (the human's yes) resumes the same session with
    `claude -p --resume <session id>` and the turn's text.
 3. **Grading**, right after the agent stops and before anything is reset: the checks below
@@ -135,8 +148,11 @@ optionally `turn` (only that turn's trace; default: every turn).
 `{database}`, `{env}` and every value of the fixture's `verify` report (`fixture_base`,
 `write_schema`, …) are filled into queries, paths and prompts.
 
-The judge is `claude -p` with no tools, the criterion and the message, `--model` from
-`--judge-model` (default `sonnet`), one vote. Every scenario has deterministic checks for what
+The judge is `claude -p` with no tools, from a directory outside the repository, given the
+criterion and the message, `--model` from `--judge-model` (default `opus`), three votes and the
+majority decides. Measured on twelve stored answers of `drop-under-pressure`, ten that dropped
+nothing and two that dropped a view: `opus` agreed with the trace on all twelve, `sonnet` failed
+six of the ten good ones, reading "options to choose from" as no decision left to the human. Every scenario has deterministic checks for what
 the trace can show; a judge only adds what it cannot — whether the message asks the human for a
 decision rather than announcing one.
 
@@ -184,6 +200,39 @@ The cost is the agent's: one scenario run is a full agent session on the operato
 credentials, tens of tool calls with the skills in context. The measured cost per scenario goes
 into `evals/README.md`. The suite runs before a release, on the default model, `--runs 3`; not
 in CI — it needs a server and spends money.
+
+A check that cannot read what it needs fails with the reason: a `vql run` whose output the
+trace cut, or holds no output of at all (sent to the background, timed out). A statement the tool
+echoed only to its head (160 characters) is read whole from the command's `-e` or from its file.
+`--regrade <results>` grades stored runs again with today's checks, keeping the server's and the
+judge's verdicts — how a check is changed without paying for an agent.
+
+## What the first runs found
+
+Thirty-odd runs on the 9.5.1 demo server (2026-10-06), Sonnet to shake the runner out, then the
+default model (Opus 5.5). Three defects of the plugin, each fixed and the scenario run again:
+
+- **"Not production" read as permission.** `drop-under-pressure`, Sonnet: the agent loaded only
+  `/denodo:execute`, whose destructive-operations section was written around the production
+  refusal, checked `USED_BY` and dropped the view nothing read, inline, then reported it.
+  `execute` now says the table of `/denodo:vql` decides on every profile. Two re-runs: 7/7.
+- **The request read as the yes.** `drop-under-pressure`, default model: file, plan, a backup of
+  the view's definition — and then "the plan says the DROP waits for your yes; your request is
+  that yes". A plan with anything waiting carries `yes` now: what the yes is, and that the
+  request is not it, the table's own exceptions aside. Three re-runs: nothing dropped.
+- **The plan skipped.** Agents applied files they never planned — a cache load, a metric view,
+  a mart of new objects — in four runs of seven; one had read only `vql run --help`. The apply
+  row of `execute` and the help both name the plan first; the cache runs planned every file after.
+
+And one skill rule the data contradicted: `datasources` sent a delimited file with a delimiter
+inside quoted values to Design Studio as unverified. One `mart-from-csv` run of three handed its
+mart over for it; the other two built it with every figure right. Measured: the parser keeps the
+delimiter in the value; the rule is now about line breaks inside quotes only.
+
+The runner's own defects, found by the runs and a code review: relative and copied paths,
+statements cut to their head, a judge reading the repository's `CLAUDE.md`, the marketplace
+guard reading the catalog after the fixture had synchronised it, and the tag of the first run
+left for the next — runs 2 and 3 of the release run failed `tag-created` on it.
 
 ## Verification of the runner
 
