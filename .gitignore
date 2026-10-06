@@ -19,3 +19,6 @@ profiles.toml
 
 # Результаты прогонов eval-сьюта
 evals/results/
+
+# Results of the outcome scenarios (evals/outcome/run.py)
+evals/outcome/results/
