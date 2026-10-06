@@ -118,8 +118,9 @@ ALTER VIEW iv_household_income CACHE FULL WITH_STATUS;
   Server cache database (measured; the documentation says a database that can rename tables
   keeps the name) — until its own `CREATE OR REPLACE VIEW` is re-applied — not after
   minutes, not after the next load. With `WITH_STATUS` the table stays and loads are
-  atomic. A bare `CACHE FULL` is `WITH_STATUS` on some servers and `NO_STATUS` on others (the documentation says the latter
-  is the default since 9.4) — write it out. *verified: 9.5.1 (live, 2026-09-30)*
+  atomic. A bare `CACHE FULL` is `WITH_STATUS` on some servers and `NO_STATUS` on others
+  (the documentation says the latter is the default since 9.4) — write it out.
+  *verified: 9.5.1 (live, 2026-09-30)*
 - From this statement until a load finishes, the view returns **0 rows** to everyone.
 - **A base view** carries it in its own `CREATE OR REPLACE TABLE`: `CACHE FULL WITH_STATUS`
   in place of `CACHE OFF`, keeping `TIMETOLIVEINCACHE DEFAULT` after it
@@ -146,8 +147,9 @@ The file is what a refresh job runs, and what you run again after the view's col
 Keep it out of the view's file: that one is applied on every change, a load only when the
 data should move. The tool marks it `destructive: cache`. In a Scheduler *Simple Cache
 Management* job the same choice is its *Invalidate* option, `cacheInvalidationMode`:
-`ALL_ROWS`. Its default is `NONE`, whatever the documentation says — every scheduled run appends, the first row of the table
-below, every night — *verified: 9.5.1 (live, 2026-10-05)* (`/denodo:scheduler`).
+`ALL_ROWS`. Its default is `NONE`, whatever the documentation says — every scheduled run
+appends, the first row of the table below, every night — *verified: 9.5.1 (live, 2026-10-05)*
+(`/denodo:scheduler`).
 
 Each of the four parameters prevents a silent failure:
 
@@ -188,8 +190,9 @@ numbers:
 
 `'cache_invalidate' = 'matching_rows'` replaces only the rows that match the `WHERE` and
 keeps the rest: a way to reload one slice, not a way to shrink the cache. Nor does a
-smaller load shrink the table at once: the rows it replaced are marked, and stay until they
-are cleaned (Clear it, below).
+smaller load shrink a `WITH_STATUS` table at once: the rows it replaced are marked, and stay
+until they are cleaned (Clear it, below); a `NO_STATUS` table loses them at once
+(documentation).
 
 ### Clear it, switch it off
 
@@ -214,7 +217,7 @@ ALTER VIEW iv_household_income CACHE OFF;
   database. Leave it out when space does not matter and `maintenance` is `true`
   (`GET_CACHE_CONFIGURATION`, step 1): the cache maintenance task deletes marked rows every
   `maintainer_period` seconds. With it `false` — the documentation's advice for production —
-  only a `CLEAN_CACHE_DATABASE` run does. It is a state-changing procedure for
+  only a `CLEAN_CACHE_DATABASE` run does. It is a state-changing procedure for global
   administrators (`/denodo:procedures`).
 - Only clearing, the cache staying on: `INVALIDATE` alone. The view returns 0 rows until the
   next load.
@@ -283,7 +286,7 @@ Each runs without an error — *verified: 9.5.1 (live, 2026-09-30)*.
 | `SELECT a, b FROM v CONTEXT ('cache_preload' = 'true', …)` | `All view fields should be projected with cache full mode` | `SELECT *` |
 | a load while the database's cache is off | `Operation not allowed because the cache is disabled or not correctly configured` | the administrator enables it; stop |
 | a text value longer than the cache column (4000 on SQL Server) | `Error loading cache: …` — on SQL Server, `String or binary data would be truncated` | the previous content is still served; show the human the value |
-| a view on a `NO_STATUS` cache, after a load | its cache table is gone — on SQL Server `Invalid object name '<catalog>.<schema>.C_<VIEW>…'` | `ALTER VIEW <cached view> CACHE FULL WITH_STATUS;` (keeps the rows), then re-apply the failing view's file |
+| a view on a `NO_STATUS` cache, after a load | on a SQL Server cache database (measured), its cache table is gone: `Invalid object name '<catalog>.<schema>.C_<VIEW>…'` | `ALTER VIEW <cached view> CACHE FULL WITH_STATUS;` (keeps the rows), then re-apply the failing view's file |
 | `ALTER VIEW <metric view> CACHE FULL` | `Metric views do not support cache mode` | cache its source views (`/denodo:metrics`), or a summary over them (`/denodo:materialize`) |
 | `ALTER VIEW v CACHE RECREATE` to clear | nothing: the view is empty, but `CACHE_CONTENT` keeps the old load's date | `CACHE INVALIDATE` |
 

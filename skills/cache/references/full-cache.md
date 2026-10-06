@@ -34,9 +34,9 @@ Rules of the load itself:
 - Over a view whose cache is off, it answers `ok` and loads nothing: switching the cache on
   afterwards gives 0 rows. A refresh job left running after `CACHE OFF` fails silently. *live*
 - A Scheduler *Simple Cache Management* job builds this query from its options; its
-  *Invalidate* option (`cacheInvalidationMode`) defaults to `NONE` for a new job — in the API and in the 9.5.1
-  administration tool, against the documentation's *Matching rows* — so every run appends. Set
-  `ALL_ROWS` (`/denodo:scheduler`). *live*
+  *Invalidate* option (`cacheInvalidationMode`) defaults to `NONE` for a new job — in the
+  API and in the 9.5.1 administration tool, against the documentation's *Matching rows* —
+  so every run appends. Set `ALL_ROWS` (`/denodo:scheduler`). *live*
 
 ## `ALTER VIEW … CACHE` (`ALTER TABLE … CACHE` for a base view)
 
@@ -55,8 +55,8 @@ Rules of the load itself:
 | `CACHE INVALIDATE ON CASCADE` | not for a full cache: a full cache cannot be invalidated on cascade, and a cascade from above skips the full caches below (documentation) | | |
 
 The status column is the Design Studio option **Include control columns (legacy)**. The
-documentation recommends leaving it out; on 9.5.1 with a SQL Server cache, leaving it out broke
-every view above the cache on every full reload — *verified: 9.5.1 (live, 2026-09-30)*:
+documentation recommends leaving it out; on 9.5.1 with a SQL Server cache, leaving it out
+broke every view above the cache on every full reload — *verified: 9.5.1 (live, 2026-09-30)*:
 
 ```
 view above, queried once → load with 'all_rows' → view above:
