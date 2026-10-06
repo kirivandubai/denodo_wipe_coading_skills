@@ -87,37 +87,8 @@ into `views`; `version` leaves the manifests, so users track commits; `vql` keep
 the skills. Three tasks in this order; after them, development is driven by sessions only — no new
 object skill until a session asks for one. Low findings are made in the same passes, file by file.
 
-- **T44. What an agent would get wrong on another server** (points 1 and 4, the version, `verify`).
-  - **The version:** remove `version` from `.claude-plugin/plugin.json` and `metadata.version`
-    from `marketplace.json` (repo-3, scope-maintainer-8): by the Claude Code plugin reference a set
-    `version` "keeps users on that version until you change it". README: one note that existing
-    installs reinstall once, and a launcher path that cannot match an orphaned old version
-    (repo-13).
-  - **The five high findings of point 4 and the two of point 1:** the dependants check
-    (datasources-B1, datasources-A13 — `USED_BY`); `date` → `localdate`, `TO_DATE` →
-    `TO_LOCALDATE` (datasources-B2, datasources-B6, execute-B1, and the open question below);
-    procedure parameters under their own names, not `input_…` (procedures-B1); summaries outside
-    Professional and Standard (materialize-B1); the marketplace types — only Report is native,
-    plus `direction`, the Semantics FeaturePack, the Visualize permission and the stray id `7446`
-    (marketplace-A1, -A8, -A9, -B1, -B2, -B3, -B4, sweep-2); the time zone of writes (dml-A1,
-    -A2, -B2, -B3, sweep-1).
-  - **The medium findings of points 1 and 4** (the main document lists them by kind), with
-    side-3, side-4 and side-12; the low ones of the same files in the same pass, side-1 included.
-    To measure or settle against a manual: side-6 (the cursor loop's row count), side-7 (the MCP
-    Server's user), side-11 (`GET_VIEWS()` with a missing database).
-  - **Outside `skills/`, low:** CLI help texts that trail the code (repo-10), PyPI access on the
-    first run (repo-14), the fixture README (repo-15), task ids in `chain.toml` comments
-    (repo-16), fixtures from `main` against an older installed chain (repo-19), the fixed
-    `verify_` names on a shared server (repo-20).
-  - **`safety.py`:** `GET_STATS_FOR_FIELDS` and `CHECK_METADATA` join the state-changing
-    procedures, with the unit test that compares the two lists (procedures-B2, procedures-B3).
-  - **`verify`:** `--with-marketplace` reads both `changes` before the tail and before cleanup and
-    skips the synchronise pair when anything foreign is pending, as the outcome runner does
-    (repo-1); `jdbc-generate-schema` after `cache-load` (repo-4); README's production and
-    Scheduler-export statements (repo-11, repo-12); one figure for the AI tail (side-13).
-  - **Done when:** unit tests and lint pass; every changed template is a green chain step on the
-    test server (`--update-marks` rewrites the marks); the routing suite runs if a description
-    changed.
+*T44 is done — under «Сделано» below.*
+
 - **T45. The drifted duplicates, then the cuts** (point 3).
   - **First the ten duplicates that now contradict each other:** catalog-A2, catalog-A3,
     catalog-A4, catalog-A5, views-A13, marketplace-A4, procedures-A2 (with procedures-B4),
@@ -175,6 +146,26 @@ object skill until a session asks for one. Low findings are made in the same pas
 
 ## Открытые вопросы
 
+- **What T44 measured against the documentation, for the owner** (each now written into the
+  skill that needs it). The documentation contradicts itself or the 9.5.1 server in seven places:
+  a cast of a zoned value to `timestamp`, `LOCALTIMESTAMP` and `NOW()` follow the query's i18n (a
+  `CONTEXT ('i18n' = …)` changes them), where the cast page names the server's i18n;
+  `CURRENT_DATE` ignores that `CONTEXT` and, delegated to SQL Server or PostgreSQL, is sent as
+  Denodo's own date; `ALTER DATASOURCE JDBC` refuses the `FOLDER` and `ID` clauses its grammar
+  lists; `CREATE DATASOURCE JDBC` without `USERNAME`/`USERPASSWORD` does not parse, though the
+  credentials are documented optional; `PING_DATA_SOURCE` answers positional arguments; a bare
+  `LIST RESOURCES JDBC` lists the names a driver can be imported under, not what was imported;
+  `GET_STATS_FOR_FIELDS` is described as not storing and has an `input_save` that stores.
+  Worth reporting to Denodo if the owner wants.
+- **Left open by T44.** Something that becomes pending in the catalog in the middle of the
+  `--with-marketplace` tail (between the first read and `marketplace-rename-match`) is not
+  guarded. The README's note for installs made at version `0.1.0` was not tried on a real old
+  install. `features.mpp` in `env check` is the licence check only, not a configured engine —
+  T46 reads `features`. `CREATE OR REPLACE DATABASE` kept `CHARSET`, cost optimisation, ODBC
+  authentication and `CHECK_VIEW_RESTRICTIONS` set before it; LDAP, VCS, vault and cache settings
+  were not tried, so `catalog` still prefers `ALTER` for a database the project does not own.
+  The tails whose templates did not change were not re-run: writes, AI, Scheduler, Testing Tool.
+
 - **An incremental load into the session's own remote table is now the agent's** (T43, for the
   owner). It follows from T34 — the `REFRESH` of that table, which empties it first, was already
   the agent's — and both RED agents stopped on the contradiction. Say so if the narrower write
@@ -190,7 +181,8 @@ object skill until a session asks for one. Low findings are made in the same pas
   `INSERT`).
 - **The DF template declares `created_dt:date`** (`datasources`), a type `dialect.md` calls
   deprecated — `localdate` reads the same file (T43, noticed by a GREEN review). Confirmed by the
-  final review against the documentation ("should not be used anymore") — fixed in T44.
+  final review against the documentation ("should not be used anymore") — **fixed in T44**:
+  `localdate` and `TO_LOCALDATE` throughout, the chain's DF steps green on it.
 - **A matched-rename synchronisation is still the human's yes — should it be?** (T30, for the
   owner.) **Decided 2026-10-05:** a matched-rename synchronisation of the session's own view is
   the agent's; for a view older than the session, one yes covers the rename and the
