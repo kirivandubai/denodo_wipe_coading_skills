@@ -1844,7 +1844,7 @@ check = "SELECT association_name FROM GET_ASSOCIATIONS() WHERE input_database_na
 # The fixture keeps every run small and bounded: product_review is the first six return
 # reasons of the fixture file, so the whole tail sends about 50 requests. product_review_vector
 # embeds those six rows on every read (EMBED_AI in the view): the chain has no vector table of
-# its own in this database, and a full cache cannot store a vector column (skills/ai,
+# its own in this database, and a full cache of a vector column failed on 9.5.1 (skills/ai,
 # "Common mistakes"). The search blocks read it as if it were a stored column; what they
 # prove is the syntax and that a search answers, not the cost of one.
 
