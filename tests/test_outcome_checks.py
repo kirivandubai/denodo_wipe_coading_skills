@@ -67,6 +67,14 @@ class ThroughFileTest(CheckCase):
         outside = self.evidence(Stream().bash("d vql run ../x.vql", run_doc("../x.vql", ("DROP VIEW v", True, "drop"))))
         self.assertFalse(self.check({"kind": "through_file"}, outside)["passed"])
 
+    def test_a_stored_run_maps_the_agent_s_directory_onto_its_copy(self):
+        # A run graded again later: the agent worked in a temporary directory, its files are now in
+        # the results; the trace's init event says where the agent was.
+        stream = Stream(cwd="/gone/denodo-outcome-x").bash(
+            "d vql run /gone/denodo-outcome-x/m/v.vql",
+            run_doc("/gone/denodo-outcome-x/m/v.vql", ("CREATE VIEW v AS SELECT 1", True, None)))
+        self.assertTrue(self.check({"kind": "through_file"}, self.evidence(stream))["passed"])
+
     def test_an_inline_create_fails(self):
         ev = self.evidence(Stream().bash("d vql run -e 'CREATE VIEW v'", run_doc("<inline>", ("CREATE VIEW v AS SELECT 1", True, None))))
         result = self.check({"kind": "through_file"}, ev)

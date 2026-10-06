@@ -74,6 +74,7 @@ class Transcript:
     cost_usd: float | None = None
     turns: int | None = None
     session_id: str | None = None
+    cwd: str | None = None       # the agent's working directory, from the init event
     # the last answer of each turn, by turn number (merge fills it; parse gives its own turn's)
     finals: dict[int, str] = field(default_factory=dict)
 
@@ -151,6 +152,8 @@ def parse(lines: Iterable[str], turn: int = 1) -> Transcript:
         if not isinstance(event, dict):
             continue
         kind = event.get("type")
+        if kind == "system" and event.get("subtype") == "init" and event.get("cwd"):
+            t.cwd = str(event["cwd"])
         message = event.get("message")
         content = message.get("content") if isinstance(message, dict) else None
         if kind == "assistant" and isinstance(content, list):
@@ -198,6 +201,7 @@ def merge(transcripts: list[Transcript]) -> Transcript:
         if part.turns is not None:
             merged.turns = (merged.turns or 0) + part.turns
         merged.session_id = part.session_id or merged.session_id
+        merged.cwd = merged.cwd or part.cwd
     return merged
 
 
@@ -220,11 +224,25 @@ def _inline_texts(command: str) -> list[str]:
     return [part for text in texts for part in split_statements(text)]
 
 
-def _file_texts(source: str, project: Path | None) -> list[str]:
+def project_path(source: str, project: Path, origin: str | None = None) -> Path:
+    """A file the tool reported, in ``project``: a relative path is the agent's working directory's;
+    an absolute one under ``origin`` — where the agent worked, when its files were copied since — is
+    the same file in the copy."""
+    path = Path(source)
+    if not path.is_absolute():
+        return (project / path).resolve()
+    if origin:
+        try:
+            return (project / path.relative_to(origin)).resolve()
+        except ValueError:
+            pass
+    return path.resolve()
+
+
+def _file_texts(source: str, project: Path | None, origin: str | None = None) -> list[str]:
     if project is None:
         return []
-    path = Path(source)
-    path = path if path.is_absolute() else project / path
+    path = project_path(source, project, origin)
     try:
         return split_statements(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError):
@@ -261,7 +279,7 @@ def statements(t: Transcript, project: Path | None = None) -> list[Statement]:
                 continue
             source = doc.get("source") or ""
             candidates = (_inline_texts(call.command) if source == "<inline>"
-                          else [] if source.startswith("<") else _file_texts(source, project))
+                          else [] if source.startswith("<") else _file_texts(source, project, t.cwd))
             for s in doc["statements"]:
                 out.append(Statement(
                     call=call.index, turn=call.turn, command=command,

@@ -12,8 +12,8 @@ if str(OUTCOME) not in sys.path:
 class Stream:
     """Builds the lines of one turn the way `claude -p --output-format stream-json` prints them."""
 
-    def __init__(self):
-        self.lines = [json.dumps({"type": "system", "subtype": "init", "session_id": "s-1"})]
+    def __init__(self, cwd="/work/project"):
+        self.lines = [json.dumps({"type": "system", "subtype": "init", "session_id": "s-1", "cwd": cwd})]
         self._next = 0
 
     def call(self, tool, tool_input, result, *, is_error=False):

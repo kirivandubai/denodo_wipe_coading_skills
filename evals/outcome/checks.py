@@ -85,18 +85,11 @@ def _changes(s: tr.Statement, name: str) -> bool:
     return _names(text, name)
 
 
-def _file(source: str, project: Path) -> Path:
-    """A source path as the tool reported it — as the agent passed it, relative to the agent's
-    working directory, the project."""
-    path = Path(source)
-    return (path if path.is_absolute() else project / path).resolve()
-
-
-def _inside(source: str | None, project: Path) -> bool:
+def _inside(source: str | None, ev: Evidence) -> bool:
     if not source or source.startswith("<"):
         return False
     try:
-        _file(source, project).relative_to(project.resolve())
+        tr.project_path(source, ev.project, ev.transcript.cwd).relative_to(ev.project.resolve())
         return True
     except ValueError:
         return False
@@ -130,7 +123,7 @@ def check_through_file(spec, ev, server, judge):
     if unreadable:
         return _cannot_tell(unreadable)
     outside = [s for s in _executed(ev, turn)
-               if tr.changes_state(s.text, s.destructive) and not _inside(s.source, ev.project)]
+               if tr.changes_state(s.text, s.destructive) and not _inside(s.source, ev)]
     if outside:
         return False, "; ".join(f"{_short(s.text, 60)} ran from {s.source}" for s in outside[:5])
     changed = sum(1 for s in _executed(ev, turn) if tr.changes_state(s.text, s.destructive))
@@ -141,12 +134,12 @@ def check_planned(spec, ev, server, judge):
     turn = spec.get("turn")
     first_apply: dict[str, int] = {}
     for s in _executed(ev, turn):
-        if tr.changes_state(s.text, s.destructive) and _inside(s.source, ev.project):
-            first_apply.setdefault(str(_file(s.source, ev.project)), s.call)
+        if tr.changes_state(s.text, s.destructive) and _inside(s.source, ev):
+            first_apply.setdefault(str(tr.project_path(s.source, ev.project, ev.transcript.cwd)), s.call)
     plans: dict[str, int] = {}
     for s in _statements(ev, turn):
         if s.command == "vql plan" and s.source and not s.source.startswith("<"):
-            plans.setdefault(str(_file(s.source, ev.project)), s.call)
+            plans.setdefault(str(tr.project_path(s.source, ev.project, ev.transcript.cwd)), s.call)
     missing = [f for f, call in first_apply.items() if f not in plans or plans[f] > call]
     if missing:
         return False, "applied before any plan: " + ", ".join(Path(f).name for f in missing)
