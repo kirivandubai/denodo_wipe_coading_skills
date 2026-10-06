@@ -141,7 +141,7 @@ after a fix is safe — with one exception, the JDBC password, called out below.
 ### Delimited file (CSV) — DF
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 CONNECT DATABASE sales_analytics;
 
 CREATE OR REPLACE DATASOURCE DF ds_crm
@@ -234,7 +234,7 @@ CREATE OR REPLACE TABLE bv_crm_customers I18N us_pst (
 ### JSON file
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 CONNECT DATABASE sales_analytics;
 
 CREATE OR REPLACE DATASOURCE JSON ds_oms
@@ -358,7 +358,7 @@ SQL Server on a self-signed certificate needs `trustServerCertificate=true`, and
 question for the human, not a default you add silently.
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06) — created against an unreachable host, ciphertext included
+-- verified: 9.5.1 (live, 2026-10-07) — created against an unreachable host, ciphertext included
 CONNECT DATABASE sales_analytics;
 
 CREATE OR REPLACE DATASOURCE JDBC ds_orders_db
@@ -422,7 +422,7 @@ schema the human gives you — the DDL still parses and the objects still get cr
 columns** and works fine — that is the opposite of DF, where a subset returns zero rows:
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06) — created against an unreachable host
+-- verified: 9.5.1 (live, 2026-10-07) — created against an unreachable host
 CREATE OR REPLACE WRAPPER JDBC wr_orders_db_orders
     FOLDER = '/01 - connectivity'
     DATASOURCENAME = ds_orders_db
@@ -479,7 +479,7 @@ no shell. Three ways to get it, in order of preference:
    cheapest and the most accurate, because what comes back is already working on this
    server. Find the candidates:
    ```sql
-   -- verified: 9.5.1 (live, 2026-10-06)
+   -- verified: 9.5.1 (live, 2026-10-07)
    SELECT database_name, name FROM GET_ELEMENTS()
     WHERE type = 'view' AND subtype = 'base' AND name LIKE '%<word from the file name>%';
    ```
@@ -516,7 +516,7 @@ no shell. Three ways to get it, in order of preference:
    `TUPLEPATTERN` captures the whole line returns the raw text of the file — header
    included, and it works for JSON too:
    ```sql
-   -- verified: 9.5.1 (live, 2026-10-06)
+   -- verified: 9.5.1 (live, 2026-10-07)
    CREATE OR REPLACE DATASOURCE DF ds_crm
        FOLDER = '/01 - connectivity'
        ROUTE LOCAL 'LocalConnection' '/data/exports/crm/customers.csv'

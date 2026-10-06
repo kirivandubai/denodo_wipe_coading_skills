@@ -193,7 +193,7 @@ statements and the check each come from one read (`/denodo:vql`, **Many objects 
 `bv_crm_customer` over `crm.customers` is the same table as your `bv_crm_customers` would be:
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 SELECT e.name, s.source_catalog_name, s.source_schema_name, s.source_table_name
   FROM GET_ELEMENTS() AS e
        INNER JOIN GET_SOURCE_TABLE() AS s
@@ -212,7 +212,7 @@ an expression, and the wrapper gets its `wr_` name in both statements. The const
 following obligatory fields cannot be removed`:
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06) — SQL Server, several schemas in one query
+-- verified: 9.5.1 (live, 2026-10-07) — SQL Server, several schemas in one query
 SELECT t.schema_name, t.table_name,
        CASE WHEN g.creation_vql LIKE 'CREATE OR REPLACE WRAPPER%' THEN 1 ELSE 2 END AS step,
        REPLACE(REPLACE(g.creation_vql, 'WRAPPER JDBC bv_', 'WRAPPER JDBC wr_'),

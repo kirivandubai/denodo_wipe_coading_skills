@@ -89,7 +89,7 @@ views built on it stay valid while the metrics and dimensions they name stay.
 ### The metric view
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 CONNECT DATABASE sales_analytics;
 
 CREATE OR REPLACE METRIC VIEW household_metrics
@@ -171,7 +171,7 @@ declared answers every `HAVING` grouped by that key with no rows.
 ### Selection views, a total and a share
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 CONNECT DATABASE sales_analytics;
 
 CREATE OR REPLACE VIEW households_by_band
@@ -251,7 +251,7 @@ year with the coverage of each year, to date against the same days of last year,
 ### Query it ad hoc
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 SELECT income_band_sk, buy_potential,
        evaluate_metric(household_count) AS household_count
   FROM household_metrics
@@ -276,7 +276,7 @@ calendar — not the members that have facts. Ask with a metric to see what has 
 ## 3. Read what exists
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 SELECT column_name, column_organization, column_dimension, column_definition, column_vdp_type
   FROM GET_VIEW_COLUMNS()
  WHERE input_database_name = 'sales_analytics' AND input_view_name = 'household_metrics';
@@ -314,7 +314,7 @@ is the `own` of `vql plan` (`/denodo:vql`).
 The one check that catches the silent failures of the model: the same figure three ways.
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 CONNECT DATABASE sales_analytics;
 
 -- 1. The fact itself.

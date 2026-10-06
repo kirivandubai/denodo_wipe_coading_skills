@@ -114,7 +114,7 @@ before `DROP DATABASE x;` in the same file, and do not run it with `--database x
 ## Reading databases back
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 LIST DATABASES;                                   -- name
 DESC DATABASE <name>;                             -- name, description
 SELECT db_name, description, charset, authentication, odbc_authentication,

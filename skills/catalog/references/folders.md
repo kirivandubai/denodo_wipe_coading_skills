@@ -71,7 +71,7 @@ DROP FOLDER [ IF EXISTS ] '/<path>' [ CASCADE ]
 ## Reading folders back
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 DESC FOLDER '/<path>';                            -- name, path, description
 DESC VQL FOLDER '/<path>';                        -- CREATE OR REPLACE FOLDER … as the server writes it
 

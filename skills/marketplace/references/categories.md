@@ -39,7 +39,7 @@ Creation, the child, duplicate `409`, assignment, cascade and repeated delete ar
 ## Taking a view out of a category
 
 ```bash
-# verified: 9.5.1 (live, 2026-10-06)
+# verified: 9.5.1 (live, 2026-10-07)
 api get --env dev /public/api/category-management/views/<view_id>/categories
 api delete --env dev /public/api/category-management/categories/<category_id>/views/<view_id>
 api get --env dev /public/api/category-management/views/<view_id>/categories

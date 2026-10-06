@@ -33,7 +33,7 @@ the version, `s_rec_start_date` and `s_rec_end_date` its validity, `localdate`.
 ## The current row of a history
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 CONNECT DATABASE sales_analytics;
 
 CREATE OR REPLACE VIEW iv_store_current
@@ -112,7 +112,7 @@ database as one `SQLSentence` — *verified: 9.5.1 (live, 2026-10-06)*, SQL Serv
 ## The latest version, from a file
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 CONNECT DATABASE sales_analytics;
 
 CREATE OR REPLACE VIEW iv_store_latest
@@ -164,7 +164,7 @@ second template — same rows, same columns.
 ## Checks
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 CONNECT DATABASE sales_analytics;
 
 -- 1. One row per key: no rows.

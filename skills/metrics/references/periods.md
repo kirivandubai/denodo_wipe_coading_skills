@@ -12,7 +12,7 @@ calendar, one row per day, `d_date_sk` its key), in `sales_analytics`.
 ## The periods are dimensions
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 CONNECT DATABASE sales_analytics;
 
 CREATE OR REPLACE ASSOCIATION a_return_date REFERENTIAL CONSTRAINT
@@ -66,7 +66,7 @@ CREATE OR REPLACE METRIC VIEW store_return_metrics
 ## Year over year
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 CONNECT DATABASE sales_analytics;
 
 CREATE OR REPLACE VIEW store_returns_by_year
@@ -141,7 +141,7 @@ CREATE OR REPLACE VIEW store_returns_yoy
 ## To date, against the same days of last year
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 CONNECT DATABASE sales_analytics;
 
 CREATE OR REPLACE VIEW store_returns_ytd
@@ -197,7 +197,7 @@ CREATE OR REPLACE VIEW store_returns_ytd
 ## Running total within a year
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 CONNECT DATABASE sales_analytics;
 
 CREATE OR REPLACE VIEW store_returns_by_month

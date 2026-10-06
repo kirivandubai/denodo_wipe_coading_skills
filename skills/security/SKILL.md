@@ -34,7 +34,7 @@ Reads only, and every decision below comes from them — complete only for a glo
 profile's own grants and its roles': say the list of readers is partial.
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 -- 1. Who reads the database, and through what: one row per grant. A user's row with
 --    userrolename empty = granted to that user directly; a row with username empty = a
 --    role's own grant (a role nobody holds shows only this way); elementname empty = the
@@ -145,7 +145,7 @@ view's own file, then the check. Names follow the example database of `/denodo:v
 ### A role that reads the marts, given to a user
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 CREATE OR REPLACE ROLE sales_analyst 'Sales analysts: read the household marts'
     GRANT CONNECT ON sales_analytics
     GRANT EXECUTE ON sales_analytics.household_income
@@ -171,7 +171,7 @@ ALTER USER mlee GRANT ROLE sales_analyst;
 ### Tag the columns, then the policy
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 CREATE OR REPLACE TAG personal_data
     DESCRIPTION = 'Personal data of a household. Masked for sales analysts by policy analyst_masking.';
 
@@ -204,7 +204,7 @@ The view of `/denodo:views`, re-declared with its field properties. This is the 
 re-applied on every change of the view, so this is where the tag has to live:
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 CONNECT DATABASE sales_analytics;
 
 CREATE OR REPLACE VIEW iv_household_income
@@ -243,7 +243,7 @@ CREATE OR REPLACE VIEW iv_household_income
 ### Check it as the people it is for
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 CONNECT DATABASE sales_analytics;
 
 SELECT buy_potential, dependents FROM household_income LIMIT 5
@@ -282,7 +282,7 @@ The rows carry the login of the person they belong to; a tag on that column, and
 compares the tag with the login of whoever is asking:
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 CONNECT DATABASE sales_analytics;
 
 CREATE OR REPLACE TAG row_owner
@@ -323,7 +323,7 @@ CREATE OR REPLACE GLOBAL_SECURITY_POLICY own_opportunities_only
   view it goes on with `ALTER TAG` after the yes.
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 CONNECT DATABASE sales_analytics;
 
 -- 1. What each person should see, as the administrator: rows per owner.
@@ -346,7 +346,7 @@ rows — it looks like the restriction works and proves nothing (*verified: 9.5.
 ### Take someone's access away
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 -- 1. Every path into the database: the rows with userrolename empty are granted to the person,
 --    the others come with a role.
 SELECT username, userrolename, elementname, dbconnect, dbexecute, elementexecute, dbadmin
@@ -363,7 +363,7 @@ SELECT name FROM GET_USERS_WITH_ROLE() WHERE role = 'sales_analyst' AND include_
 The file, one statement per path of query 1 — it waits for the yes (Who applies what):
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 ALTER USER kchen REVOKE ROLE sales_analyst;
 ALTER USER kchen REVOKE EXECUTE ON sales_analytics.household_income;
 ALTER USER kchen REVOKE CONNECT ON sales_analytics;

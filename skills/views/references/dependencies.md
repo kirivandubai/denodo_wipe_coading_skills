@@ -81,7 +81,7 @@ a file and search it for the view's name.
 ## Where a field comes from
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 SELECT column_name, dependency_database_name, dependency_name, dependency_column_name,
        dependency_type, expression, depth
   FROM COLUMN_DEPENDENCIES()

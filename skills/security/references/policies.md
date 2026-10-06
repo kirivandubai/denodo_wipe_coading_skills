@@ -36,7 +36,7 @@ CREATE [ OR REPLACE ] GLOBAL_SECURITY_POLICY <name>
 ### Masking
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 RESTRICTION ( FILTER = '' MASKING ANY ( personal_data )
               WITH ( HIDE ) ( texts WITH REDACT_ASTERISK, numbers WITH HIDE, datetimes WITH HIDE ) )
 ```
@@ -78,7 +78,7 @@ and `CUSTOM = <expression>` with the special tag name `any_tag` standing for the
 ### Row filter and deny
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 RESTRICTION ( FILTER = 'sales_territory = ''EMEA''' REJECT )
 RESTRICTION ( DENY )
 ```
@@ -95,7 +95,7 @@ RESTRICTION ( DENY )
 ## ALTER GLOBAL_SECURITY_POLICIES — enable, disable
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 ALTER GLOBAL_SECURITY_POLICIES ( mask_personal_data ENABLED = FALSE, filter_emea ENABLED = TRUE );
 ```
 
@@ -136,7 +136,7 @@ role would read, add it (`'sales_analyst,allusers'`).
 named in `userrolename` (`rolename` is empty there):
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 SELECT username, userrolename, elementname, dbconnect, dbexecute, elementexecute, dbadmin
 FROM CATALOG_PERMISSIONS()
 WHERE dbname = 'sales_analytics';
@@ -171,14 +171,14 @@ audiences kept the values — *verified: 9.5.1 (live, 2026-10-01)*.
 Policy status, every policy of the server:
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 SELECT name, element_status, description FROM GET_ELEMENTS() WHERE type = 'globalSecurityPolicy';
 ```
 
 ## Reading
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 LIST GLOBAL_SECURITY_POLICIES;                         -- names
 DESC VQL GLOBAL_SECURITY_POLICY <name>;                -- the definition (read it, do not apply it)
 SELECT global_security_policy_name, tag_name

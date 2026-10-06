@@ -102,7 +102,7 @@ were empty or partial, and the loaded copy stays behind (Silent failures, 4).
 ### Switch it on — in the view's own file
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 CONNECT DATABASE sales_analytics;
 
 ALTER VIEW iv_household_income CACHE FULL WITH_STATUS;
@@ -133,7 +133,7 @@ ALTER VIEW iv_household_income CACHE FULL WITH_STATUS;
 ### Load it — a file of its own
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 CONNECT DATABASE sales_analytics;
 
 SELECT * FROM iv_household_income
@@ -197,7 +197,7 @@ until they are cleaned (Clear it, below); a `NO_STATUS` table loses them at once
 ### Clear it, switch it off
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 CONNECT DATABASE sales_analytics;
 
 ALTER VIEW iv_household_income CACHE INVALIDATE;

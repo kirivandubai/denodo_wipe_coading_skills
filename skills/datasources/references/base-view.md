@@ -46,7 +46,7 @@ CREATE [ OR REPLACE ] TABLE [<database>.]<name> I18N <map>
 ## The minimum that works
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 CREATE OR REPLACE TABLE bv_crm_customers I18N us_pst (
         cust_id:text,
         created_dt:localdate
@@ -91,7 +91,7 @@ plus every user-defined type (`CREATE TYPE … AS REGISTER OF (…)` / `ARRAY OF
   `timestamptz`.
 - The base view's declared type is what Denodo *parses the source value into*. Over a text
   file, `created_dt:localdate` on `2021-04-12` works; a type that does not match returns `NULL`
-  for that column, with **no error**. *verified: 9.5.1 (live, 2026-09-09)*
+  for that column, with **no error**. *verified: 9.5.1 (live, 2026-10-07)*
 - Over JDBC, introspection picks the type from the source: Oracle `NUMBER(10)` → `long`,
   `NVARCHAR2` → `text`, PostgreSQL `date` → `localdate`, SQL Server `bigint` → `long`.
   *verified: 9.5.1 (live, 2026-09-09)*
@@ -101,7 +101,7 @@ plus every user-defined type (`CREATE TYPE … AS REGISTER OF (…)` / `ARRAY OF
 ## Primary keys, tags, indexes
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06) — the key and the tags after the field list, the index after the search method
+-- verified: 9.5.1 (live, 2026-10-07) — the key and the tags after the field list, the index after the search method
     CONSTRAINT 'pk_customer' PRIMARY KEY ( 'cust_id' )
     TAGS ( pii )
     CACHE OFF

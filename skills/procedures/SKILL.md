@@ -31,7 +31,7 @@ naming and the safety rule are `/denodo:vql`; apply the file with `/denodo:execu
 ### Call a predefined procedure
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 SELECT view_name, depth FROM USED_BY()
  WHERE input_view_database_name = 'sales_analytics'
    AND input_view_name = 'customer';
@@ -67,7 +67,7 @@ to other skills, each on objects you created in this session: a new remote table
 ### VQL procedure
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 CONNECT DATABASE sales_analytics;
 
 CREATE OR REPLACE VQL PROCEDURE order_size_band

@@ -22,7 +22,7 @@ attached to views that must already exist.
 ### Database
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 CREATE OR REPLACE DATABASE sales_analytics 'Sales data products' CHARSET DEFAULT;
 ```
 
@@ -37,7 +37,7 @@ LDAP. `CREATE OR REPLACE DATABASE` keeps the objects inside.
 ### Folders
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 CONNECT DATABASE sales_analytics;
 
 CREATE OR REPLACE FOLDER '/01 - connectivity' DESCRIPTION 'data sources, wrappers, base views';
@@ -73,7 +73,7 @@ changes that view's metadata, and is a yes too (`/denodo:vql`); a tag that a sec
 names changes who reads what (`/denodo:security`). `vql plan` checks both for the file.
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 CREATE OR REPLACE TAG pii
     DESCRIPTION = 'Personal data, GDPR scope'
     ADD_TO      ( VIEWS () COLUMNS ( sales_analytics.customer.email, sales_analytics.customer.phone ) )
@@ -124,7 +124,7 @@ objects at once**). Two reads give it whole — every field, and for every field
 each column under it that its value comes from, down to the base view:
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 SELECT view_name, column_name, column_vdp_type
   FROM GET_VIEW_COLUMNS() WHERE input_database_name = 'sales_analytics';
 

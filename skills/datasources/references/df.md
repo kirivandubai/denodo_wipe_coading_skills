@@ -89,7 +89,7 @@ It is the only way to look at a server-side file from VQL, and it works for any 
 format — CSV, JSON, XML:
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 CREATE OR REPLACE DATASOURCE DF ds_peek
     FOLDER = '/01 - connectivity'
     ROUTE LOCAL 'LocalConnection' '/data/exports/oms/orders.json'
@@ -109,7 +109,7 @@ path fails with `[DF ROUTE] [PARSE_ERROR] … Error getting input Stream`.
 The wrapper hands text to the base view; the types are declared in `CREATE TABLE`
 (`references/base-view.md`). Denodo parses the text into the declared type at query time:
 
-- `created_dt:localdate` over `2021-04-12` → a date. *verified: 9.5.1 (live, 2026-09-09)*
+- `created_dt:localdate` over `2021-04-12` → a date. *verified: 9.5.1 (live, 2026-10-07)*
 - a type that does not match returns `NULL` for the whole column, with no error at all —
   `cust_id:int` over `C-10472`. *verified: 9.5.1 (live, 2026-09-09)*
 

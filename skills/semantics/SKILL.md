@@ -60,7 +60,7 @@ as a question.
 ## 1. Audit — read-only
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 SELECT e.name, e.subtype, e.folder,
        CASE WHEN e.description IS NULL OR TRIM(e.description) = '' THEN 'none' ELSE 'yes' END AS view_description,
        c.fields, c.undescribed_fields, c.pk_fields,
@@ -128,7 +128,7 @@ will read:
 ## 2. Profile — what the data says
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 CONNECT DATABASE sales_analytics;
 
 -- The grain: the key the description will name. Equal counts, no NULL key.
@@ -240,7 +240,7 @@ silently — including the MCP tag, so the view disappears from the agent. An `A
 view that has a file lasts until the file is next applied.
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 CONNECT DATABASE sales_analytics;
 
 ALTER VIEW household_income_by_band

@@ -59,7 +59,7 @@ else entirely:
 *verified: 9.5.1 (live, 2026-09-10).* Read the ids once:
 
 ```bash
-# verified: 9.5.1 (live, 2026-10-06)
+# verified: 9.5.1 (live, 2026-10-07)
 api get --env dev /public/api/configuration/servers
 # → [{"id":<serverId>,"name":"<VDP server as registered>","url":"//<vdp-host>:9999/admin"}, …]
 ```
@@ -165,7 +165,7 @@ Needed before any assignment to a view, and before an external element can name 
 at the radius first — the whole point of `changes` is that it costs nothing:
 
 ```bash
-# verified: 9.5.1 (live, 2026-10-06)
+# verified: 9.5.1 (live, 2026-10-07)
 api get --env dev /public/api/element-management/DATABASES/changes
 api get --env dev /public/api/element-management/VIEWS/changes
 # → {"serverElements":[…new…], "modifiedElements":[…], "localElements":[…gone from VDP…]}
@@ -397,7 +397,7 @@ after the tool, as below; do not rename them to `iv_…` to match the table.
 
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 CONNECT DATABASE sales_analytics;
 
 -- the two types come from vql-metadata verbatim. The names are part of the contract
