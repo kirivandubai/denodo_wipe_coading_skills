@@ -106,6 +106,12 @@ folder). Сам инструмент:
 
 ## Проверки
 
+- **CI and the lint of the skills** (T38) — `.github/workflows/ci.yml` runs the unit tests and
+  `claude plugin validate .` on every pull request. The lint is `tests/skills_lint.py`, part of
+  the unit tests: Cyrillic, names of the test server, task ids and "v1", description budget
+  (900) and `SKILL.md` length, marks, links. Its lists (`OVER_BUDGET`, `LONG_SKILLS`,
+  `UNMARKED_BLOCKS`) change only with a reason a reviewer sees; a new name of the stand that
+  reaches a skill goes into `INSTALLATION_NAMES`.
 - **Верификация шаблонов** — прогоняются на живом стенде в отдельной тестовой базе;
   результат обновляет пометки `verified:`. Синтаксис источников проверяется без самих
   источников: недоступный хост всё равно проходит парсер Denodo.

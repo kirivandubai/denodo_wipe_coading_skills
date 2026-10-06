@@ -153,8 +153,8 @@ CREATE [ OR REPLACE ] WRAPPER JDBC <name>
 
 ## Introspection procedures
 
-All of them need the source to be reachable. Verified against live Oracle, SQL Server and
-PostgreSQL on 9.5.1 (live, 2026-09-09).
+All of them need the source to be reachable. Run against Oracle, SQL Server and PostgreSQL —
+*verified: 9.5.1 (live, 2026-09-09)*.
 
 | Procedure | Call | Notes |
 |---|---|---|

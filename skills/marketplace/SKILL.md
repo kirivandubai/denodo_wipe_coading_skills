@@ -152,7 +152,7 @@ api post --env dev /public/api/category-management/categories/<category_id>/view
 ```
 
 Same lookup-first rule (`GET …/categories/tree`), same empty-list-is-success rule. Two
-differences from tags, both verified on 9.5.1 (live, 2026-09-10):
+differences from tags, both *verified: 9.5.1 (live, 2026-09-10)*:
 
 - **Deleting a parent deletes its children.** No warning, no mention of them in the
   response, and the assignments go with them. Read the tree before you offer a delete.
@@ -447,7 +447,7 @@ CREATE OR REPLACE INTERFACE VIEW i_acme_bi_elements (
     FOLDER = '/02 - integration';
 ```
 
-Four things here are load-bearing, each verified on 9.5.1 (live, 2026-09-10):
+Four things here are load-bearing, each *verified: 9.5.1 (live, 2026-09-10)*:
 
 - **`external_element_association_array_type` is the name the marketplace checks**, literally.
   Rename it and synchronisation refuses the whole server:

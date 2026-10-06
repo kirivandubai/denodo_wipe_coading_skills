@@ -5,8 +5,8 @@ template, a `references/` file for a source type nobody has covered yet, an erro
 decoded — all of it is welcome, and none of it requires touching the execution layer.
 
 This file is what you need in order to work here. The design documents under `docs/` are
-in Russian and are the authority on *why* things are the way they are; everything in them
-that constrains the parts you will touch is restated below in English.
+partly in Russian and are the authority on *why* things are the way they are; everything in
+them that constrains the parts you will touch is restated below in English.
 
 ## What this repository is
 
@@ -30,14 +30,19 @@ denodo_skills/
 │   ├── semantics/           descriptions, keys, associations, MCP visibility + references/
 │   ├── metrics/             metric views and the views over them + references/
 │   ├── security/            roles, grants, global security policies + references/
-│   └── ai/                  LLM functions, their cached answers, semantic search + references/
+│   ├── ai/                  LLM functions, their cached answers, semantic search + references/
+│   ├── dml/                 rows changed through a view: INSERT, UPDATE, DELETE + references/
+│   ├── materialize/         query results stored as tables: remote tables, summaries + references/
+│   ├── testing/             regression tests run by the Denodo Testing Tool + references/
+│   └── scheduler/           Denodo Scheduler jobs + references/
+├── .github/workflows/ci.yml the checks every pull request runs
 ├── scripts/
 │   ├── denodo               launcher — standard library only
 │   └── denodo_cli/          the implementation behind it
 ├── verification/chain.toml  the chain of templates run against a live server
 ├── evals/                   phrase → expected skill
-├── tests/                   unit tests, plus integration/ against a server
-└── docs/                    design documents and the task tracker (Russian)
+├── tests/                   unit tests and the lint of the skills, plus integration/ against a server
+└── docs/                    design documents and the task tracker
 ```
 
 A skill directory's name becomes its command: the plugin adds its own namespace, so
@@ -94,9 +99,12 @@ Order and dependencies belong in the skill too: an agent has to know
 `data source → wrapper → base view` before it starts, not after it fails.
 
 **Descriptions compete with each other.** The `description` in a skill's frontmatter is
-the entire basis on which the right skill gets chosen, it has a budget of 1536 characters
-in the listing, and it should carry both trigger phrasings and an explicit "not for X —
-that is /denodo:Y" line. Any edit to a `description` — however cosmetic — means running
+the entire basis on which the right skill gets chosen, and it should carry both trigger
+phrasings and an explicit "not for X — that is /denodo:Y" line. **Keep it within 900
+characters.** The Agent Skills limit is 1024; what is left is room for the next trigger
+phrase, and syntax in parentheses does little for routing — cut that first. The lint fails
+a description over 900 unless the skill is listed in `OVER_BUDGET` in
+`tests/skills_lint.py` with its length, which then may only shrink. Any edit to a `description` — however cosmetic — means running
 the eval suite; see below. A feature renamed in 9.x goes into the description under both
 names, because users say the old one and the 9.5 documentation the new one: Data Catalog →
 Data Marketplace, Cache → Materialization, Embedded MPP → Lakehouse Accelerator, VDPCache
@@ -117,7 +125,10 @@ CREATE DATASOURCE JDBC ... WITH SOME_EXOTIC_OPTION ...
 
 Those two forms are the only ones in use — copy them verbatim and change the version and
 date to what you actually ran against; `live` stays as written, whatever the server was. A
-template with no mark counts as unverified.
+template with no mark counts as unverified, and the lint fails it: every fenced block under
+`skills/` carries a mark inside it or in the paragraph right above or below, or is listed
+in `UNMARKED_BLOCKS` in `tests/skills_lint.py` with the reason it is not a template —
+grammar, a diagram, the shape of a message, a command for the human.
 
 The comment character follows the channel: `--` in VQL, `#` above a `scripts/denodo api`
 call in the marketplace skill, and in prose a mark in italics at the end of the sentence
@@ -131,13 +142,27 @@ in the templates, and adding one is not a fix.
 
 ## Checks
 
-Four, each answering a different question.
+Four, each answering a different question. The first runs in CI on every pull request
+(`.github/workflows/ci.yml`), together with `claude plugin validate .`; the other three
+need a server or a paid model and are yours to run.
 
-**Unit tests** — the execution layer. No dependencies, no server, fast:
+**Unit tests** — the execution layer, and the lint of what a plugin user and the agent
+read. No dependencies, no server, fast:
 
 ```
 PYTHONPATH=scripts python3 -m unittest discover -s tests -t .
 ```
+
+The lint (`tests/skills_lint.py`, run by `tests/test_skills_lint.py`) fails on Cyrillic in
+the skills, README, this file, the manifests, the CLI or the eval cases; on names of one
+installation — a test server's own tags, databases, hosts, ports and profile, the
+prefixes of test runs — and on the project's task ids and release-scope words; on a
+description over its budget or a `SKILL.md` over 500 lines (the longer ones are listed in
+`LONG_SKILLS` and may only shrink); on a template without a mark or a mark in any other
+wording; on a `references/` file, a `/denodo:<name>` or a relative link that does not
+resolve. Every finding names the file and line. `PYTHONPATH=scripts python3 -m tests.skills_lint [root]` prints them all for
+any tree. It cannot tell a generic word from a server's own name — a tag called `sensitive`
+passes — so the names it knows are the ones a review found.
 
 **Integration tests** — the same layer against a real server. Skipped unless
 `DENODO_TEST_ENV` names a non-production profile; everything is created in
@@ -205,7 +230,7 @@ If the work is not finished, open it as a draft with an honest "what's left" sec
 ## Language
 
 The plugin is in English: skill descriptions, `SKILL.md` files, `references/`, README,
-this file. The project's own documents — `docs/` and `CLAUDE.md` — are in Russian, and
-stay that way. You do not need to read them to contribute; if something in them turns out
-to constrain your change and is not restated here, that is a gap in this file worth
-reporting.
+this file, the CLI. The project's own documents — `docs/` and `CLAUDE.md` — are partly in
+Russian from earlier work; new text there is English too. You do not need to read them to
+contribute; if something in them turns out to constrain your change and is not restated
+here, that is a gap in this file worth reporting.

@@ -56,7 +56,7 @@ Rules of the load itself:
 
 The status column is the Design Studio option **Include control columns (legacy)**. The
 documentation recommends leaving it out; on 9.5.1, leaving it out breaks every view above the
-cache on every full reload *(live)*:
+cache on every full reload — *verified: 9.5.1 (live, 2026-09-30)*:
 
 ```
 view above, queried once → load with 'all_rows' → view above:
