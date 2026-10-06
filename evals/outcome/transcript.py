@@ -143,8 +143,11 @@ def parse(lines: Iterable[str], turn: int = 1) -> Transcript:
             event = json.loads(line)
         except json.JSONDecodeError:
             continue
+        if not isinstance(event, dict):
+            continue
         kind = event.get("type")
-        content = (event.get("message") or {}).get("content")
+        message = event.get("message")
+        content = message.get("content") if isinstance(message, dict) else None
         if kind == "assistant" and isinstance(content, list):
             for part in content:
                 if part.get("type") == "tool_use":

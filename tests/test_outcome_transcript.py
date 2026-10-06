@@ -75,6 +75,12 @@ class ParseTest(unittest.TestCase):
         self.assertEqual((t.final_text, t.cost_usd, t.turns, t.session_id),
                          ("Done: the view is cached.", 2.5, 31, "abc"))
 
+    def test_events_of_other_shapes_are_skipped(self):
+        lines = [json.dumps({"type": "system", "subtype": "notice", "message": "a plain string"}),
+                 json.dumps({"type": "user", "message": {"content": "a plain prompt"}}),
+                 "not json at all", ""] + Stream().text("still read").lines
+        self.assertEqual(transcript.parse(lines).final_text, "still read")
+
     def test_without_a_result_event_the_last_text_is_final(self):
         t = transcript.parse(Stream().text("first").text("last").lines)
         self.assertEqual(t.final_text, "last")

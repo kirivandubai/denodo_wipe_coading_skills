@@ -52,19 +52,19 @@ classes = ["drop"]
 [[check]]
 name = "one-row-per-reason-and-unknown"
 kind = "server"
-query = "SELECT COUNT(*) FROM {database}.returns_by_reason HAVING COUNT(*) = 36"
+query = "SELECT COUNT(*) FROM eval_returns.returns_by_reason HAVING COUNT(*) = 36"
 
 [[check]]
 name = "every-return-counted-once"
 kind = "server"
-query = "SELECT SUM(return_count) FROM {database}.returns_by_reason HAVING SUM(return_count) = 1000"
+query = "SELECT SUM(return_count) FROM eval_returns.returns_by_reason HAVING SUM(return_count) = 1000"
 
 [[check]]
 name = "amount-total"
 kind = "server"
-query = "SELECT SUM(return_amount) FROM {database}.returns_by_reason HAVING ABS(SUM(return_amount) - 1449896.01) < 0.01"
+query = "SELECT SUM(return_amount) FROM eval_returns.returns_by_reason HAVING ABS(SUM(return_amount) - 1449896.01) < 0.01"
 
 [[check]]
 name = "unknown-row"
 kind = "server"
-query = "SELECT return_count FROM {database}.returns_by_reason WHERE TRIM(reason) = 'unknown' AND return_count = 32"
+query = "SELECT return_count FROM eval_returns.returns_by_reason WHERE TRIM(reason) = 'unknown' AND return_count = 32"
