@@ -145,7 +145,7 @@ ledger knows and you do not. `vql ledger --env dev` lists what the session creat
 | — | `CREATE OR REPLACE` of an existing object no file of your project declares — made in Design Studio, or another team's: your text replaces its whole configuration, a data source's stored password and a view's cache settings included (`/denodo:datasources`) |
 | — | loading, reloading or clearing the cache of a view you did not create in this session — `SELECT … CONTEXT ('cache_preload' = 'true', …)`, `ALTER VIEW … CACHE` (`/denodo:cache`) |
 | — | `CREATE OR REPLACE METRIC VIEW` over a metric view you did not create in this session — a changed join type, filter or metric changes every figure built on it, with no column dropped (`/denodo:metrics`) |
-| — | the description, field descriptions, primary key or tags of a view you did not create in this session — by `ALTER VIEW`, `ALTER TAG`, or by re-declaring the view with `CREATE OR REPLACE`: the human approves the texts; naming a view to be made visible to an agent is the yes for its tag. A new association between views you did not create counts too: it becomes a dependant of both (`/denodo:semantics`) |
+| — | the description, field descriptions, primary key or tags of a view you did not create in this session — by `ALTER VIEW`, `ALTER TAG`, or by re-declaring the view with `CREATE OR REPLACE`: the human approves the texts; naming a view to be made visible to an agent is the yes for its tag. An association that names a view you did not create counts too: it becomes that view's dependant (`/denodo:semantics`) |
 | — | who may read what: a role, a user or a global security policy, created or changed, a grant of a role or a privilege to a person, or a tag that a policy names put on or taken off a column — unless every object it touches was created by you in this session. A `CREATE` counts: a new policy restricts people who exist, and `CREATE OR REPLACE` of an existing role adds to it (`/denodo:security`) |
 | `…_AI` calls on `Dual()` — to see that the server answers, or to try an expression on up to three texts — and a search whose text is embedded once | an AI function — `CLASSIFY_AI`, `SENTIMENT_AI` and the rest, or an embedding computed per row — evaluated on the rows of a view, a cache load of a view with such a column included: every row is a paid request to an outside provider, and its text goes with it. The human agrees to the number of requests, or names a ceiling (`/denodo:ai`) |
 | — | a predefined procedure that changes state, however it is spelled: `SELECT * FROM DROP_REMOTE_TABLE(…)`, `CALL CLEAN_CACHE_DATABASE(…)`, `GENERATE_STATS(…)`, `LOGCONTROLLER(…)` — the list is in `/denodo:procedures`. Two exceptions, both on what you created in this session: `CREATE_REMOTE_TABLE` of a new table, above, and `CLEAN_CACHE_DATABASE` of the cache of your own view (`/denodo:cache`) |
@@ -240,13 +240,14 @@ The loop is the same; the list becomes a file, and every step answers per object
    the list; when two sources would get one name, the rule changes for all of them.
 3. **One statement file per yes.** Generate the statements from the list — a query that
    returns them, or a script — never by hand. `vql plan` the file: `actions` counts what it
-   does, and `duplicates` lists two statements of the file declaring one object, the later
-   silently replacing the earlier. What is yours goes into the file you apply; what waits for the
+   does, and `duplicates` lists two statements of the file declaring one object differently —
+   the later silently replaces the earlier. What is yours goes into the file you apply; what waits for the
    human goes into a file of its own, all of it. When the human has to read every object — texts,
    tags on views you did not create — split that file into batches one sitting reads (tens of
    objects, grouped by schema, folder or subject), a file and a yes each.
 4. **Apply** each file as always. An object that fails and cannot be fixed now leaves the file
-   and becomes a `failed` row with the server's message; the rest goes on.
+   and becomes a `failed` row with the server's message; the rest goes on. Taking a failed
+   statement out of a file the human said yes to only narrows what they approved.
 5. **Check every object, then write the result into the plan file.** A catalog read compared
    with the list row for row — `GET_ELEMENTS()`, `GET_VIEW_TAGS()`, `GET_VIEW_COLUMNS()`: a
    missing row is a failure that raised no error. For rows, a file of reads, one `SELECT` per
@@ -266,7 +267,8 @@ The loop is the same; the list becomes a file, and every step answers per object
 
 The message to the human gives the count per status, names the plan file and the files that
 wait, and lists every row that is not done. Those files are what you showed: the yes to them
-covers each file as it was when shown — a file changed after the yes is planned and shown again.
+covers each file as it was when shown — a file changed after the yes in any other way than a
+failed statement taken out is planned and shown again.
 
 ## Expressions: VQL is not PostgreSQL
 

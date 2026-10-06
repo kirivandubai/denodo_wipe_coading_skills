@@ -160,7 +160,8 @@ What to read out of it, and where it goes:
 Each query reads the whole view. Over a view with statistics gathered, `SELECT * FROM
 GET_VIEW_STATISTICS() WHERE input_database_name = '<db>' AND input_name = '<view>'` gives
 rows, distinct values, `NULL`s and ranges without reading it (0 rows = not gathered) — one view
-per call: `input_name` is required.
+per call: without `input_name` it answers `The following fields are obligatory: input_name` —
+*verified: 9.5.1 (live, 2026-10-06)*.
 
 ## 3. The texts
 
@@ -202,7 +203,9 @@ reads at once, not how much of the data is read (`/denodo:vql`, **Many objects a
 
 - The audit's field query returns a row per field: run it with `--max-rows 5000` and check
   `truncated`. The profile is a file of reads, one all-columns statement per view, run with
-  `--continue-on-error` — one view that fails to read does not stop the others.
+  `--continue-on-error` — one view that fails to read does not stop the others. A view whose
+  columns call the server's LLM is profiled from its cache or not read at all: every row read is
+  a paid request (`/denodo:ai`).
 - A batch is a statement file and its part of the proposal, `semantics/<database>/batch_NN_<group>.vql`:
   what one sitting reads — count the texts, not the views: field texts are most of the reading
   — grouped the way the human thinks of them, a folder, a source, a subject. Base views go in

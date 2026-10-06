@@ -392,11 +392,11 @@ SELECT creation_vql FROM GENERATE_VQL_TO_CREATE_JDBC_BASE_VIEW()
    AND folder = '/01 - connectivity';
 ```
 
-`GENERATE_VQL_TO_CREATE_JDBC_BASE_VIEW` returns **three rows**: a `CREATE OR REPLACE FOLDER`
-of the folder you named, with no description — leave it out: over an existing folder it clears
-the description, and over one you did not create it waits for a yes — then the `CREATE OR
-REPLACE WRAPPER JDBC` with every column and its Java type, and the matching `CREATE OR REPLACE
-TABLE`. Paste those two into the file under the data source; the wrapper is given the *base
+Given a `folder`, `GENERATE_VQL_TO_CREATE_JDBC_BASE_VIEW` returns **three rows**: a `CREATE OR
+REPLACE FOLDER` of it without a description — leave it out: the folder belongs in the project's
+folder file (`/denodo:catalog`), and over an existing folder it clears the description — then
+the `CREATE OR REPLACE WRAPPER JDBC` with every column and its Java type, and the matching
+`CREATE OR REPLACE TABLE`. Paste those two into the file under the data source; the wrapper is given the *base
 view's* name, so rename it to `wr_…` in both, and `DATASOURCENAME` comes back
 database-qualified. The `CREATE TABLE` ends with `CONTEXT('SIMULATE' = 'NO')`, a harmless hint.
 **Every table of a schema at once** — what already has a base view, all the statements in one

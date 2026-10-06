@@ -94,8 +94,8 @@ the profiles, never in the project.
 **`vql plan`** answers `ok` with exit `0` whenever it could read the server, whatever it found;
 `needs_yes` at the top lists the statements that wait for the human, `not_recognised` those the
 table decides, `actions` counts the statements by what they do, and `duplicates` lists the
-statements that declare one object twice — the later replaces the earlier, and the entry of each
-later one names the first in `duplicate_of`. `session: null` (no session id) means only an object an earlier statement of the
+statements that declare one object twice, differently — the later replaces the earlier (without
+`OR REPLACE`, fails), and the entry of each later one names the first in `duplicate_of`. `session: null` (no session id) means only an object an earlier statement of the
 same input creates counts as yours. `project.base` is the commit the plan read declarations
 from — the last one before this session started; `project: null` means the input is not in a
 git work tree, so no file of it vouches for an object that already exists, however old the

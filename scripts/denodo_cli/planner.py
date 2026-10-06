@@ -55,7 +55,7 @@ class _Walk:
         self.new: dict[tuple, ObjectRef] = {}               # created by an earlier statement of the input
         self.renamed: dict[tuple, ObjectRef] = {}           # old key -> the object under its new name
         self.dropped: set[tuple] = set()                    # dropped by an earlier statement of the input
-        self.declared: dict[tuple, int] = {}                # the statement of the input that last declared it
+        self.declared: dict[tuple, tuple[int, str]] = {}    # the statement of the input that last declared it, and its text
 
     def exists(self, ref: ObjectRef) -> bool | None:
         if ref.key() in self.state:
@@ -150,9 +150,11 @@ def _advance(st: Statement, walk: _Walk, entry: dict) -> None:
     generated for many objects it is a naming rule that gave two sources one name, and the later
     definition silently replaces the earlier one."""
     if st.action == "create" and st.obj is not None:
-        if st.obj.key() in walk.declared:
-            entry["duplicate_of"] = walk.declared[st.obj.key()]
-        walk.declared[st.obj.key()] = entry["index"]
+        earlier = walk.declared.get(st.obj.key())
+        if earlier is not None and earlier[1] != normalize(st.text):
+            entry["duplicate_of"] = earlier[0]
+        if earlier is None or earlier[1] != normalize(st.text):
+            walk.declared[st.obj.key()] = (entry["index"], normalize(st.text))
         if entry["exists"] is False:
             walk.create(st.obj)          # new: the input's own from here on
     elif st.action == "drop" and st.obj is not None:
@@ -296,23 +298,40 @@ def _create(entry: dict, st: Statement, walk: _Walk, ctx: PlanContext) -> dict:
         decision = _decision(entry, True, "every load of a summary changes other people's answers — create it with "
                                           "DATA_LOAD_IMMEDIATE = FALSE (/denodo:materialize)")
     elif not exists:
-        others = [ObjectRef("view", db, view) for db, view in st.endpoints]
-        others = [ref.label() for ref in others if walk.exists(ref) and not walk.own(ref)]
+        others = _foreign_endpoints(st, walk)
         if kind == "remote table":
             decision = _decision(entry, False, "a new table in a source database", list(_TARGET_CONDITIONS))
         elif others:
-            decision = _decision(entry, True, "a new association between views you did not create in this session: "
-                                              + ", ".join(others) + " — it becomes a dependant of both, and their "
-                                              "owner's DROP VIEW then needs CASCADE (/denodo:semantics)")
+            decision = _decision(entry, True, "a new association that names views you did not create in this "
+                                              "session: " + ", ".join(others) + " — it becomes a dependant of them, "
+                                              "and their owner's DROP VIEW then needs CASCADE (/denodo:semantics)")
         else:
             decision = _decision(entry, False, "a new object")
     elif own:
-        decision = _decision(entry, False, "replaces an object you created in this session")
+        others = _foreign_endpoints(st, walk)
+        if others:
+            decision = _decision(entry, True, "re-declares your association onto views you did not create in this "
+                                              "session: " + ", ".join(others) + " (/denodo:semantics)")
+        else:
+            decision = _decision(entry, False, "replaces an object you created in this session")
     else:
         decision = _replace_older(entry, st, walk, ctx)
     if decision["needs_yes"] is not True and st.tags_assigned:
         return _tags(decision, st, walk)
     return decision
+
+
+def _foreign_endpoints(st: Statement, walk: _Walk) -> list[str]:
+    """The views an association names that are not the session's own — or could not be read."""
+    out = []
+    for db, view in st.endpoints:
+        ref = ObjectRef("view", db, view)
+        exists = walk.exists(ref)
+        if exists is None:
+            out.append(f"{ref.label()} (could not be read)")
+        elif exists and not walk.own(ref):
+            out.append(ref.label())
+    return out
 
 
 def _replace_older(entry: dict, st: Statement, walk: _Walk, ctx: PlanContext) -> dict:
@@ -349,9 +368,10 @@ def _alter(entry: dict, st: Statement, walk: _Walk) -> dict:
     if entry["exists"] is None:
         return _decision(entry, True, "the server could not be read: whose object this is is unknown")
     if entry["exists"] is False:
-        return _decision(entry, False, "the object does not exist at this point of the input: the server refuses "
-                                       "the statement", ["create it first — apply the file that does, then plan "
-                                                         "this one again"])
+        return _decision(entry, True, "the object does not exist at this point of the input: the server would "
+                                      "refuse the statement now, and whose it is — and whose the views it names "
+                                      "are — can be read only once it exists",
+                         ["create it first — apply the file that does, then plan this one again"])
     if not entry["own"]:
         return _decision(entry, True, "an ALTER of an object this session did not create")
     if ref.type == "view":

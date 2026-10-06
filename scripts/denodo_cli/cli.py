@@ -213,7 +213,8 @@ def _read_vql(args) -> tuple[str, str]:
     if bool(args.file) == bool(args.execute):
         raise UsageError("give exactly one input: a .vql file, '-' for stdin, or -e VQL")
     if args.execute:
-        return ";\n".join(args.execute), "<inline>"
+        # a line comment at the end of one -e must not swallow the separator
+        return "\n;\n".join(args.execute), "<inline>"
     if args.file == "-":
         return sys.stdin.read(), "<stdin>"
     path = Path(args.file).expanduser()

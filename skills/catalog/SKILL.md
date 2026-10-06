@@ -135,10 +135,13 @@ SELECT e.name AS view_name, d.column_name, d.dependency_name, d.dependency_colum
   numbers) is on the list by its lineage. A field that matches and holds something else — an
   `email_verified` flag, an `email_bounce_count` — is a row with "none" and why: look at its
   values. Whether a column falls inside what the human named is theirs to say — a question row.
-- Each row says where its assignment goes: the view's file for a view you created in this session
-  (`TAGS`, or the `ALTER TAG` after a union view), and one `ALTER TAG … ADD_TO` file for every
-  column of views you did not create — the yes for it is one, after the list (`/denodo:vql`).
-  The tag itself first, in a file of its own: the views' files name it.
+- Each row says where its assignment goes: into the view's file when the project applies one
+  (`TAGS`, or the `ALTER TAG` after a union view) — whoever created the view, or its next apply
+  takes the tag off — and into one `ALTER TAG … ADD_TO` file for the views that have none. Which
+  rows wait is the usual rule: a view you did not create in this session waits for the yes,
+  whichever file carries its tag (`/denodo:vql`) — one yes for the list, or one per batch when
+  the list is longer than one sitting reads. The tag itself first, in a file of its own: the
+  views' files name it.
 - One `CREATE OR REPLACE TAG … ADD_TO` over your own views' columns is the shortcut that loses
   them: the next apply of any of those files takes its tags off, and nothing reports it.
 - An assignment belongs to one view: a tag on a base view's column does not appear in

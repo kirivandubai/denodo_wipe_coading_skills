@@ -119,10 +119,11 @@ class CliTest(CliHarness, unittest.TestCase):
         self.assertEqual(doc["executed"], 2)
 
     def test_vql_run_runs_every_inline_statement_given(self):
-        doc, code = self.run_cli("vql", "run", "--env", "dev", "-e", "SELECT 1 FROM DUAL()",
-                                 "-e", "SELECT 2 FROM DUAL()")
+        doc, code = self.run_cli("vql", "run", "--env", "dev", "-e", "SELECT 1 FROM DUAL() -- one",
+                                 "-e", "SELECT 2 FROM DUAL();")
         self.assertEqual(code, 0)
-        self.assertEqual(FakeVql.executed, ["SELECT 1 FROM DUAL()", "SELECT 2 FROM DUAL()"])
+        self.assertEqual(len(FakeVql.executed), 2, FakeVql.executed)
+        self.assertTrue(FakeVql.executed[1].startswith("SELECT 2"))
 
     def test_vql_run_file(self):
         script = Path(self.tmp.name) / "x.vql"

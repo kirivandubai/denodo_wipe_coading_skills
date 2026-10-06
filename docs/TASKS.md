@@ -453,8 +453,10 @@ the bottlenecks in trust on another server, in rules kept as prose, and in bulk 
   its own; it is replaced now, and a dropped database takes the session's objects along whoever
   created it. `-e` repeated ran only the last, silently; every one runs. `vql plan` called a new
   association between views of others "a new object" while `semantics` holds it for the yes; it
-  waits now (and the `vql` table says so). An `ALTER` of an object that does not exist yet is the
-  server's refusal with "create it first", not a yes.
+  waits now — an endpoint that cannot be read, and the session's own association re-declared onto
+  views of others, too — and the `vql` table says so. An `ALTER` of an object that does not exist
+  yet says so and to create it first; it still waits (the code review: a waiting `ALTER TAG` file
+  planned before its tag existed read as the agent's in the first fix).
 
   **RED/GREEN** — three scenarios on the test server, fixtures of a "colleague" made under another
   `DENODO_SESSION`: **A**, base views over every table of four SQL Server schemas, 23 tables, three
@@ -477,8 +479,12 @@ the bottlenecks in trust on another server, in rules kept as prose, and in bulk 
   in both rounds ("Modify Shared Resources"), through the scratchpad copy and through the relative
   path alike — an environment limit, not measured.
 
-  **Checked.** Unit tests 733 (new: duplicates, actions, the ledger's stale entry and database drop,
-  repeated `-e`, associations, an `ALTER` of a missing object); `verify --env lab` 78/0 on the base
+  **Checked.** Unit tests 736 (new: duplicates, actions, the ledger's stale entry and database drop,
+  repeated `-e`, associations, an `ALTER` of a missing object); a code review by a subagent, whose
+  findings are folded in — the `ALTER` rule above, associations that fail open, `-e` and a trailing
+  comment, identical re-declarations listed as duplicates, and four places where the new text
+  disagreed with itself (one yes or batches for a tag file; which views carry their tags in their
+  files; profiling a view with an AI column; a failed statement taken out of an approved file); `verify --env lab` 78/0 on the base
   flags, three new steps (`jdbc-onboarded`, `jdbc-generate-schema` over the server's cache data
   source, `catalog-many-columns`); the new tool behaviour live in a probe database. Eval: three new
   routing cases (`routing-datasources-bulk`, `routing-catalog-bulk-tag`, `routing-semantics-bulk`)

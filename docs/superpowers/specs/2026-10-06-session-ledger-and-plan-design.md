@@ -115,7 +115,8 @@ Per statement:
 Top level: `needs_yes` (the indexes), `session` (`id`, `source`, `ledger`, `objects`),
 `project` (`root`, `base` commit) and the usual envelope. Since T41 also `actions` (the statements
 counted by `action`) and `duplicates` (`{object, statements}`: two or more statements of the input
-declaring one object — the later replaces the earlier; each later entry carries `duplicate_of`).
+declaring one object differently — the later replaces the earlier; each later entry carries
+`duplicate_of`; a re-declaration identical to the earlier one, whitespace aside, is not listed).
 
 ### Declared by the project before this session
 
@@ -157,8 +158,8 @@ On a profile with `production: true`, every statement but a read or a session se
 | `REFRESH` | a remote table that is `own` | a summary's load, or a table older than this session emptied first |
 | a security statement — role, user, policy, `CHOWN`, a grant in `CREATE DATABASE`, `ALTER ROLE` / `USER` | the object is `own` or new, it is not a user, and every existing object it names (`touches`) is `own` | it changes who may read what, and touches what existed before this session; a user is a person |
 | a tag put on or taken off a column or view (`TAGS ( … )`, `ADD_TO`, `REMOVE_FROM`) | every view it names is `own`, and no global security policy names the tag unless the tag is `own` | the metadata of a view you did not create, or a policy changes who reads what |
-| `CREATE ASSOCIATION` of a new association (T41) | every view its `ENDPOINT`s name is `own` or new | it becomes a dependant of views you did not create — their owner's `DROP VIEW` then needs `CASCADE` (`/denodo:semantics`) |
-| `ALTER` of an object that does not exist at that point of the input (T41) | always, with the condition to create it first and plan again | — the server refuses the statement |
+| `CREATE [OR REPLACE] ASSOCIATION` — new, or the session's own re-declared (T41) | every view its `ENDPOINT`s name is `own` or new | it becomes a dependant of a view you did not create — their owner's `DROP VIEW` then needs `CASCADE` (`/denodo:semantics`); an endpoint that could not be read counts as not yours |
+| `ALTER` of an object that does not exist at that point of the input (T41) | never | the server would refuse it now, and whose it is — and whose the views it names are — can be read only once it exists: the condition says to create it first and plan again. A waiting `ALTER TAG` file planned before its tag's file must not read as the agent's |
 | an AI function (`…_AI(`, `EMBED_AI(`, `VECTOR_DISTANCE(`) evaluated by a `SELECT` over a view | never | every row is a paid request; the human agrees to the number (`/denodo:ai`) — `Dual()` is a read |
 | anything the parser does not recognise | — | `null`: the `vql` table decides |
 
