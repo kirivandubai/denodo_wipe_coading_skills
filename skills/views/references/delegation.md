@@ -135,5 +135,5 @@ report:
   join to the cache database (documentation), is `/denodo:cache`; a data movement — forced in
   the view's `CONTEXT`, or chosen by the cost-based optimizer when it is on — or a copy as a
   table in one database is `/denodo:materialize`. An MPP engine the server is set up for can
-  also take the join (documentation); `env check` shows `features.data_movement` and
-  `features.mpp`.
+  also take the join (documentation); `env check` shows whether data movement is switched on
+  (`features.data_movement`) — its `features.mpp` is the licence check only.

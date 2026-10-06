@@ -387,8 +387,8 @@ household has exactly one band `(1)`.
   `In a 1:N association, the principal endpoint must have multiplicity 1 or 0..1`.
 - Multiplicity is `(1)`, `(0,1)`, `(*)` or `(0,*)`, and `(+)` or `(1,*)` for one or more; the
   server writes `(0,*)` and `(+)`. The dialog's `0..1` is a syntax error in VQL.
-- In `ADD MAPPING`, the left column belongs to the **first** endpoint's view and the right
-  to the second. Several mappings = several `ADD MAPPING` lines for a composite key.
+- In `ADD MAPPING`, the left side — a column, or an expression or `CASE` over columns — is
+  the **first** endpoint's view's, the right the second's. A composite key is several lines.
 - **Role names are unique per view**: a second association reusing a role name on the same
   view is `The association endpoint role name 'x' already exists for the selected view`.
   Name roles after the other view and the clash tells you something real.

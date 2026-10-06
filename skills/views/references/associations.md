@@ -87,8 +87,8 @@ side has a match on the principal side. `PRINCIPAL` marks which side that is.
 
 ## Mappings
 
-`ADD MAPPING <left> = <right>`: the left column belongs to the view of the **first**
-`ENDPOINT`, the right to the second. A composite key is several `ADD MAPPING` lines —
+`ADD MAPPING <left> = <right>`: the left column or expression is over the view of the
+**first** `ENDPOINT`, the right over the second. A composite key is several `ADD MAPPING` lines —
 *verified: 9.5.1 (live, 2026-09-10)*.
 
 A column that does not exist is caught at creation:
@@ -102,7 +102,7 @@ one thing about associations the server does check eagerly.
 
 A precondition restricts which rows show a link to the other end in
 `SELECT_NAVIGATIONAL` and the RESTful web service. It goes **after the multiplicity**, and
-the condition is written as one, not as a string literal:
+the condition is an expression, not a string literal:
 
 ```sql
 -- verified: 9.5.1 (live, 2026-10-06)
