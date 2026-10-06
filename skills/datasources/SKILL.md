@@ -392,24 +392,23 @@ SELECT creation_vql FROM GENERATE_VQL_TO_CREATE_JDBC_BASE_VIEW()
    AND folder = '/01 - connectivity';
 ```
 
-`GENERATE_VQL_TO_CREATE_JDBC_BASE_VIEW` returns **two rows**: the `CREATE OR REPLACE
-WRAPPER JDBC` with every column, its Java type and the source's own type metadata, and the
-matching `CREATE OR REPLACE TABLE`. Paste both into the file under the data source, and
-mind two things: the wrapper is given the *base view's* name, so rename it to `wr_…` if
-the project's conventions say so (rename it in both statements), and the generated
-`DATASOURCENAME` is database-qualified. The generated `CREATE TABLE` ends with
-`CONTEXT('SIMULATE' = 'NO')` — an execution hint, not part of the definition; keep it or
-drop it, the object is the same.
+`GENERATE_VQL_TO_CREATE_JDBC_BASE_VIEW` returns **three rows**: a `CREATE OR REPLACE FOLDER`
+of the folder you named, with no description — leave it out: over an existing folder it clears
+the description, and over one you did not create it waits for a yes — then the `CREATE OR
+REPLACE WRAPPER JDBC` with every column and its Java type, and the matching `CREATE OR REPLACE
+TABLE`. Paste those two into the file under the data source; the wrapper is given the *base
+view's* name, so rename it to `wr_…` in both, and `DATASOURCENAME` comes back
+database-qualified. The `CREATE TABLE` ends with `CONTEXT('SIMULATE' = 'NO')`, a harmless hint.
+**Every table of a schema at once** — what already has a base view, all the statements in one
+query, the check per view: `references/jdbc.md`, *Every table of a schema*.
 
 - `PING_DATA_SOURCE` before introspecting: a `DOWN` answer names the cause —
   `UnknownHostException` (network), `ClassNotFoundException` (wrong `CLASSPATH`), an
   authentication error (credentials).
-- Two listing procedures exist and they are not equivalent.
-  `GET_JDBC_DATASOURCE_TABLES` takes `input_catalog_name` / `input_schema_name` /
-  `input_table_name` as **input** and is the one to use.
-  `LIST_JDBC_DATASOURCE_TABLES` takes only the data source and walks everything: fine on
-  Oracle and PostgreSQL, but on SQL Server it fails outright — filtering it in `WHERE`
-  does not help, because the walk happens first.
+- Two listing procedures, not equivalent: `GET_JDBC_DATASOURCE_TABLES` takes
+  `input_catalog_name` / `input_schema_name` / `input_table_name` as **input** and is the one
+  to use; `LIST_JDBC_DATASOURCE_TABLES` takes only the data source and walks everything — fine
+  on Oracle and PostgreSQL, but on SQL Server it fails, and a `WHERE` does not help.
 - A database that doubles as Denodo's cache store is full of the server's own cache tables
   (`C_…`); the real tables sit in the business schemas. Show the human the schema list
   before picking.
@@ -602,7 +601,7 @@ else yourself. Three or four lines, not an interview:
 | JDBC product and version | **the human** — it picks `DRIVERCLASSNAME`, `CLASSPATH` and the adapter; a wrong adapter changes what gets pushed down and the server will not complain |
 | JDBC login | **the human**; it goes into the file |
 | Any password | **the human**, through `secret encrypt` in their own terminal (**Passwords** above) — only the ciphertext reaches you and the file. Ask for it last, after everything else is settled |
-| JDBC schema, tables, columns, types | **the server** — `GET_JDBC_DATASOURCE_TABLES` and `GENERATE_VQL_TO_CREATE_JDBC_BASE_VIEW` after the source is up. Ask only which tables the human wants, and only if the schema has more than a handful |
+| JDBC schema, tables, columns, types | **the server** — `GET_JDBC_DATASOURCE_TABLES` and `GENERATE_VQL_TO_CREATE_JDBC_BASE_VIEW` after the source is up. Ask only which tables the human wants, and only if they did not name them — "every table of the schema" names them |
 | File path | **the human** — and it is **server-side**: the file must be readable by the Denodo server, not by you. A URL, a bucket or an FTP server is Design Studio (**What you build** above) |
 | Delimiter, header, charset | the human, or a sample of the file; `,` + `HEADER = TRUE` + `UTF-8` is the common case |
 | **Every column name of a file, in order** | the file header, verbatim and complete — the server does **not** introspect files. Three ways to get it, including one that needs nobody: **When you cannot see the file** above. Never infer it from the columns the human wants |

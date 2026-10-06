@@ -134,8 +134,7 @@ SELECT COUNT(*) AS row_count, COUNT(household_sk) AS keys_not_null,
 -- Every column in one pass: NULLs, distinct values, range, padding.
 SELECT COUNT(buy_potential) AS buy_potential_not_null,
        COUNT(DISTINCT buy_potential) AS buy_potential_distinct,
-       MAX(LEN(buy_potential)) AS buy_potential_len,
-       MAX(LEN(TRIM(buy_potential))) AS buy_potential_len_trimmed,
+       SUM(CASE WHEN buy_potential LIKE '% ' THEN 1 ELSE 0 END) AS buy_potential_padded,
        COUNT(vehicles) AS vehicles_not_null,
        MIN(vehicles) AS vehicles_min, MAX(vehicles) AS vehicles_max,
        COUNT(DISTINCT vehicles) AS vehicles_distinct
@@ -152,7 +151,7 @@ What to read out of it, and where it goes:
 |---|---|---|
 | `distinct_keys` = `row_count`, no `NULL` key | the grain | "One row per household (`household_sk`)" |
 | a value far outside the rest (`-1`, `0`, `9999`, `'Unknown'`) | a sentinel | what it stands for — if the data or the human says; otherwise a question |
-| `LEN` > `LEN(TRIM)` | padded text | "compare with `TRIM(x) = '…'`" — an equality on the raw value finds nothing |
+| `…_padded` above 0 | padded text — counted with `LIKE '% '`: `LEN` pushed down to SQL Server ignores trailing spaces (*verified: 9.5.1 (live, 2026-10-06)*) | "compare with `TRIM(x) = '…'`" — an equality on the raw value finds nothing |
 | a short value list | codes | each code with its meaning, when known |
 | `NULL`s in a column | missing values | what a `NULL` stands for, when known |
 | an aggregate grouped by a label | one row per label, not per key | two keys with the same text are one row — compare the label's distinct count with the key's |
@@ -160,7 +159,8 @@ What to read out of it, and where it goes:
 
 Each query reads the whole view. Over a view with statistics gathered, `SELECT * FROM
 GET_VIEW_STATISTICS() WHERE input_database_name = '<db>' AND input_name = '<view>'` gives
-rows, distinct values, `NULL`s and ranges without reading it (0 rows = not gathered).
+rows, distinct values, `NULL`s and ranges without reading it (0 rows = not gathered) — one view
+per call: `input_name` is required.
 
 ## 3. The texts
 
@@ -194,6 +194,26 @@ Questions: what does status X mean? Is premium monthly or yearly?
 MCP: which views should the agent see? (tag <name>, from the MCP Server's configuration)
 Statements: semantics/claims_analytics.vql — applied after your yes.
 ```
+
+### A database of many views: batches
+
+The whole database is still audited and every view profiled — batches cut how much the human
+reads at once, not how much of the data is read (`/denodo:vql`, **Many objects at once**):
+
+- The audit's field query returns a row per field: run it with `--max-rows 5000` and check
+  `truncated`. The profile is a file of reads, one all-columns statement per view, run with
+  `--continue-on-error` — one view that fails to read does not stop the others.
+- A batch is a statement file and its part of the proposal, `semantics/<database>/batch_NN_<group>.vql`:
+  what one sitting reads — count the texts, not the views: field texts are most of the reading
+  — grouped the way the human thinks of them, a folder, a source, a subject. Base views go in
+  the first batches: a field passed through unchanged inherits their text, so one description
+  there covers the views above.
+- Reads saved into the project keep counts and value lists of codes, not the rows of columns
+  that hold people's data: a sample with names and emails in a profile file is that data in git.
+- The plan file lists every view with its batch and status; the proposal's questions stay
+  with the batch they block, so a yes to one batch is not held up by another's question.
+- After a batch is applied, the audit query over its views is its check: `view_description =
+  'yes'` and `undescribed_fields` down to the fields left to inherit — per view, into the plan.
 
 ## 5. Write it where the view is defined
 
@@ -237,6 +257,8 @@ ALTER TAG mcp
 - Each statement changes that metadata and nothing else: the cache, the views built on it,
   their status and the privileges granted on it stay as they were — *verified: 9.5.1 (live,
   2026-09-30)*. The tool marks each one `destructive: alter`.
+- `ALTER TABLE <base view> ( ALTER COLUMN a ADD ( DESCRIPTION = '…' ) ALTER COLUMN b ADD ( … ) )`
+  takes several fields in one statement, as `ALTER VIEW` does — *verified: 9.5.1 (live, 2026-10-06)*.
 - **`ADD PRIMARY KEY` replaces a declared key** without an error — the old columns lose
   the flag and their `NOT NULL`. `ALTER VIEW <view> DROP PRIMARY KEY` removes it.
 - `ALTER TAG … ADD_TO` adds to the tag's assignments and keeps the others. The tag must

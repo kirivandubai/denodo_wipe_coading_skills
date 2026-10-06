@@ -301,6 +301,10 @@ with a yes.
   audience can read the whole database — or grant the audience only the views above the tag.
 - "It must also cover views built later": a tag on the base view's column covers every view
   built over it; a new source with its own copy of the column needs its own tag.
+- **Many columns** — "mask every column that holds an email": the list, its lineage, where each
+  assignment goes and the check row for row are `/denodo:catalog`, *One tag on many columns*.
+  Here every row whose view existed before this session is one statement of the file the human
+  says yes to, and the impersonated check runs per view of the list, not on one example.
 
 ## What you need
 

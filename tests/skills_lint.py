@@ -36,7 +36,7 @@ SKILL_LINES_LIMIT = 500    # a SKILL.md is read whole; the detail belongs in ref
 OVER_BUDGET: dict[str, int] = {}
 
 # SKILL.md files over the limit, with their length in lines — the same ratchet.
-LONG_SKILLS: dict[str, int] = {"datasources": 697, "marketplace": 562, "views": 722}
+LONG_SKILLS: dict[str, int] = {"datasources": 696, "marketplace": 562, "views": 722}
 
 # Fenced blocks in skills/ that are not templates and so carry no verification mark:
 # grammar, diagrams, what a server or a tool prints, a report the agent writes, a command
@@ -111,7 +111,10 @@ UNMARKED_BLOCKS: dict[str, list[tuple[str, str]]] = {
     ],
     "skills/views/SKILL.md": [("ENDPOINT <role name>  <view>  [PRINCIPAL]  (<multiplicity>)", GRAMMAR)],
     "skills/views/references/associations.md": [("DROP ASSOCIATION [ IF EXISTS ] <name>", GRAMMAR)],
-    "skills/vql/SKILL.md": [("intent in words\n  → read .denodo/conventions.md", "a diagram of the loop")],
+    "skills/vql/SKILL.md": [
+        ("intent in words\n  → read .denodo/conventions.md", "a diagram of the loop"),
+        ("# Base views over ds_erp, schemas sales and billing", "the shape of a plan file the agent writes"),
+    ],
     "skills/vql/references/dialect.md": [
         ("vql run --env dev -e \"SELECT SUBSTR('abcdef', 1, 3) AS want_abc",
          "a probe through the CLI; the mark at the top of the file covers its expressions"),

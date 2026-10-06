@@ -161,7 +161,7 @@ All of them need the source to be reachable. Run against Oracle, SQL Server and 
 | `PING_DATA_SOURCE` | `SELECT status, down_cause FROM PING_DATA_SOURCE() WHERE database_name='<db>' AND data_source_type='JDBC' AND data_source_name='<ds>'` | `UP` / `DOWN` plus the Java exception. Positional arguments do **not** work — pass the parameters in `WHERE` |
 | `GET_JDBC_DATASOURCE_TABLES` | `… WHERE input_datasource_name='<ds>' [ AND input_catalog_name='<cat>' ] [ AND input_schema_name='<schema>' ] [ AND input_table_name='<t>' ] [ AND input_type='TABLE' ]` | the reliable one: the filters are input parameters, so the server asks the source only about what you want |
 | `LIST_JDBC_DATASOURCE_TABLES` | `… WHERE data_source_name='<ds>'` | walks every catalog and schema. Fine on Oracle and PostgreSQL; **fails on SQL Server**, and filtering in `WHERE` does not help — the walk happens first |
-| `GENERATE_VQL_TO_CREATE_JDBC_BASE_VIEW` | `SELECT creation_vql FROM …() WHERE data_source_name='<ds>' [ AND catalog_name='<cat>' ] AND schema_name='<s>' AND table_name='<t>' AND base_view_name='<bv>' AND folder='<path>'` | returns **two rows**: the wrapper and the `CREATE TABLE`. `catalog_name` is required where the product has catalogs (SQL Server), omitted for Oracle |
+| `GENERATE_VQL_TO_CREATE_JDBC_BASE_VIEW` | `SELECT creation_vql FROM …() WHERE data_source_name='<ds>' [ AND catalog_name='<cat>' ] AND schema_name='<s>' AND table_name='<t>' AND base_view_name='<bv>' AND folder='<path>'` | with `folder`, returns **three rows**: a `CREATE OR REPLACE FOLDER` of that folder with no description, the wrapper and the `CREATE TABLE` — *verified: 9.5.1 (live, 2026-10-06)*. `catalog_name` is required where the product has catalogs (SQL Server), omitted for Oracle |
 | `GET_SOURCE_TABLE`, `GET_SOURCE_COLUMNS` | `… WHERE input_database_name='<db>' AND input_view_name='<view>'` | the other direction: which source table and columns an existing base view sits on — the way to answer "where does this column come from" |
 
 What generated VQL looks like, and what to change in it:
@@ -171,7 +171,82 @@ What generated VQL looks like, and what to change in it:
 - `DATASOURCENAME` comes back database-qualified (`<db>.<ds>`);
 - the `CREATE TABLE` ends with `CONTEXT('SIMULATE' = 'NO')`, which is harmless to keep;
 - types are chosen by the adapter: Oracle `NUMBER(10)` → `long`, `NVARCHAR2` → `text`,
-  PostgreSQL `date` → `localdate`, SQL Server `bigint` → `long`.
+  PostgreSQL `date` → `localdate`, SQL Server `bigint` → `long`;
+- the first row, `CREATE OR REPLACE FOLDER`, is not part of the base view: leave it out. Over a
+  folder that exists it clears the folder's description, and over a folder you did not create
+  in this session it is a re-declaration that waits for the human's yes.
+
+## Every table of a schema
+
+For a request that names a set of tables — every table of one or more schemas — the list, the
+statements and the check each come from one read (`/denodo:vql`, **Many objects at once**).
+
+**What is already there**, by the table it reads rather than by its name — a colleague's
+`bv_crm_customer` over `crm.customers` is the same table as your `bv_crm_customers` would be:
+
+```sql
+-- verified: 9.5.1 (live, 2026-10-06)
+SELECT e.name, s.source_catalog_name, s.source_schema_name, s.source_table_name
+  FROM GET_ELEMENTS() AS e
+       INNER JOIN GET_SOURCE_TABLE() AS s
+       ON (s.input_database_name = e.database_name AND s.input_view_name = e.name)
+ WHERE e.input_database_name = 'sales_analytics' AND e.input_type = 'views'
+   AND e.subtype = 'base' AND e.base_view_type = 'jdbc';
+```
+
+`base_view_type = 'jdbc'` is not a nicety: one base view of another kind in the database — a
+delimited file, a JSON document — and `GET_SOURCE_TABLE` fails the whole query with `GET_SOURCE_TABLE
+[STORED_PROCEDURE] [ERROR]`.
+
+**Every statement, in one query** — here over `ds_erp`, a SQL Server data source. The
+introspection procedures join: the list of tables feeds the generator, the base view's name is
+an expression, and the wrapper gets its `wr_` name in both statements. The constant inputs of the generator go in `WHERE` — in `ON` they fail with `The
+following obligatory fields cannot be removed`:
+
+```sql
+-- verified: 9.5.1 (live, 2026-10-06) — SQL Server, several schemas in one query
+SELECT t.schema_name, t.table_name,
+       CASE WHEN g.creation_vql LIKE 'CREATE OR REPLACE WRAPPER%' THEN 1 ELSE 2 END AS step,
+       REPLACE(REPLACE(g.creation_vql, 'WRAPPER JDBC bv_', 'WRAPPER JDBC wr_'),
+               'WRAPPER (jdbc bv_', 'WRAPPER (jdbc wr_') AS creation_vql
+  FROM GET_JDBC_DATASOURCE_TABLES() AS t
+       INNER JOIN GENERATE_VQL_TO_CREATE_JDBC_BASE_VIEW() AS g
+       ON (g.catalog_name = t.catalog_name AND g.schema_name = t.schema_name
+           AND g.table_name = t.table_name
+           AND g.base_view_name = CONCAT('bv_erp_', t.schema_name, '_', t.table_name))
+ WHERE t.input_database_name = 'sales_analytics' AND t.input_datasource_name = 'ds_erp'
+   AND t.input_catalog_name = 'erp' AND t.schema_name IN ('sales', 'billing')
+   AND t.type = 'TABLE'
+   AND g.database_name = 'sales_analytics' AND g.data_source_name = 'ds_erp'
+   AND g.folder = '/01 - connectivity'
+   AND g.creation_vql NOT LIKE 'CREATE OR REPLACE FOLDER%'
+ ORDER BY schema_name, table_name, step;
+```
+
+- Run it with `--max-rows 5000` — two rows per table — and check `truncated` before writing
+  the rows into the file, in their order: each wrapper before its table.
+- `input_schema_name` narrows the walk to one schema; for several, `t.schema_name IN (…)`
+  filters a walk of the whole catalog (on SQL Server give `input_catalog_name`).
+- `t.input_database_name` and `g.database_name` are the **data source's** database. When the
+  views go into another one, the statements still create them wherever the file is applied,
+  and `DATASOURCENAME` comes back qualified with the source's database (`shared.ds_erp`).
+- The name rule is one for every table and mechanical — the table's name as it is, not
+  singularised by hand table by table. When the same table name exists in two schemas of the
+  list, the schema goes into every name, as above — not only into the two that collide. Base
+  views someone made earlier under another rule keep their names: renaming them is their
+  owner's yes.
+- Keep out of the file what is not the human's data — views (`t.type`); the server's own `C_…`
+  and `vdb_cache_…` tables, in a database that doubles as Denodo's cache store — and the rows of
+  every table that already has a base view (the query above): those are plan rows, not statements.
+
+**The check, one read per view** — a file of `SELECT COUNT(*) AS row_count FROM <bv>;`, one line
+per base view, run with `--continue-on-error`: an entry with `ok: false` is that table's failure
+(a permission on one table, a type the adapter cannot read), and the others still answer. Then
+the reads of **Verify** in `SKILL.md` that look at values, the same way — one statement per view,
+generated from `GET_VIEW_COLUMNS()`: `SELECT COUNT(<c1>) AS <c1>, COUNT(<c2>) AS <c2>, … FROM <bv>`
+finds a column that is `NULL` throughout, and a few sample rows show what the values end with.
+When the request names who will query the views, whether they can is part of the check — the
+grants on the database (`/denodo:security`, its first read); granting is the human's yes.
 
 ## Data movement and MPP
 

@@ -336,6 +336,32 @@ database = "{database}"
 check = "SELECT name FROM GET_ELEMENTS() WHERE input_database_name = '{database}' AND name = 'bv_orders_db_orders'"
 
 [[step]]
+id = "jdbc-onboarded"
+kind = "template"
+channel = "vql"
+# Which source table each base view of a database reads, in one query. GET_SOURCE_TABLE reads the
+# base view's metadata, not the source, so the hand-written base view above answers although its
+# host does not resolve.
+address = "skills/datasources/references/jdbc.md#Every table of a schema[0]"
+substitute = { sales_analytics = "{database}" }
+database = "{database}"
+check = "SELECT source_table_name FROM GET_SOURCE_TABLE() WHERE input_database_name = '{database}' AND input_view_name = 'bv_orders_db_orders' AND source_schema_name = 'public' AND source_table_name = 'orders'"
+
+[[step]]
+id = "jdbc-generate-schema"
+kind = "template"
+channel = "vql"
+# The whole-schema generator needs a database that answers, with a real credential: the chain has
+# one — the server's cache data source (write_datasource_*, read from the server), which it only
+# reads here. Its schema holds whatever tables the cache made; the claim checked is that the join
+# generates wrappers already renamed to wr_.
+requires = ["cache"]
+address = "skills/datasources/references/jdbc.md#Every table of a schema[1]"
+substitute = { "'sales_analytics'" = "'{write_datasource_database}'", "'ds_erp'" = "'{write_datasource_name}'", "t.input_catalog_name = 'erp' AND t.schema_name IN ('sales', 'billing')" = "t.input_catalog_name = '{write_catalog}' AND t.schema_name IN ('{write_schema}')" }
+database = "{database}"
+check = "SELECT COUNT(*) FROM GET_JDBC_DATASOURCE_TABLES() AS t INNER JOIN GENERATE_VQL_TO_CREATE_JDBC_BASE_VIEW() AS g ON (g.catalog_name = t.catalog_name AND g.schema_name = t.schema_name AND g.table_name = t.table_name AND g.base_view_name = CONCAT('bv_erp_', t.schema_name, '_', t.table_name)) WHERE t.input_database_name = '{write_datasource_database}' AND t.input_datasource_name = '{write_datasource_name}' AND t.input_catalog_name = '{write_catalog}' AND t.input_schema_name = '{write_schema}' AND t.type = 'TABLE' AND g.database_name = '{write_datasource_database}' AND g.data_source_name = '{write_datasource_name}' AND g.folder = '/01 - connectivity' AND REPLACE(g.creation_vql, 'WRAPPER JDBC bv_', 'WRAPPER JDBC wr_') LIKE 'CREATE OR REPLACE WRAPPER JDBC wr_erp_%' HAVING COUNT(*) > 0"
+
+[[step]]
 id = "fixture-base-views"
 kind = "fixture"
 channel = "vql"
@@ -747,6 +773,17 @@ address = "skills/views/references/arrays.md#One row per parent, every parent ke
 database = "{database}"
 # Every order once, its lines counted and valued from the element view.
 check = "SELECT COUNT(*) FROM order_line_summary HAVING COUNT(*) = 3 AND SUM(line_count) = 4 AND SUM(line_value) = 153.5"
+
+[[step]]
+id = "catalog-many-columns"
+kind = "template"
+channel = "vql"
+# Every field of the database and the base columns behind each field of its derived views, after
+# the union and array views exist: one view the procedure cannot read fails the whole join.
+address = "skills/catalog/SKILL.md#One tag on many columns"
+substitute = { sales_analytics = "{database}" }
+database = "{database}"
+check = "SELECT e.name FROM GET_ELEMENTS() AS e INNER JOIN COLUMN_DEPENDENCIES() AS d ON (d.input_view_database_name = e.database_name AND d.input_view_name = e.name) WHERE e.input_database_name = '{database}' AND e.input_type = 'views' AND e.subtype = 'derived' AND e.name = 'iv_household_income' AND d.column_name = 'buy_potential' AND d.dependency_column_name = 'hd_buy_potential'"
 
 [[step]]
 id = "vql-procedure"
