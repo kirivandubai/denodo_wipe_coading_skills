@@ -231,8 +231,8 @@ def _plan_one(index: int, st: Statement, walk: _Walk, ctx: PlanContext) -> dict:
     if action == "drop":
         return _decision(entry, True, "a DROP waits for the human's yes, whatever it hits — your own object too")
     if action == "insert":
-        if ref is not None and entry["own"] and walk.kind(ref) == "materialized table":
-            return _decision(entry, False, "an INSERT into a materialized table you created in this session")
+        if ref is not None and entry["own"] and walk.kind(ref) in ("materialized table", "remote table"):
+            return _decision(entry, False, f"an INSERT into a {walk.kind(ref)} you created in this session")
         return _decision(entry, True, "the rows land in the source behind the view at once (/denodo:dml)")
     if action in ("update", "delete"):
         return _decision(entry, True, "the rows change in the source behind the view at once (/denodo:dml)")
@@ -425,8 +425,8 @@ def _tags(decision: dict, st: Statement, walk: _Walk) -> dict:
 def _security(entry: dict, st: Statement, walk: _Walk) -> dict:
     ref = st.obj
     if ref is not None and ref.type == "user" or "USER" in st.text.upper().split()[:2]:
-        return _decision(entry, True, "a user is a person: creating one, or granting to one, is the human's "
-                                      "(/denodo:security)")
+        return _decision(entry, True, "a user is a person: creating one, granting to one or revoking from "
+                                      "one is the human's (/denodo:security)")
     if ref is not None and entry["exists"] and not entry["own"]:
         return _decision(entry, True, "re-declaring or changing a role or policy this session did not create — "
                                       "CREATE OR REPLACE of a role adds to it (/denodo:security)")

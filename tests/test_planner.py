@@ -245,6 +245,14 @@ class PlannerTest(unittest.TestCase):
         self.assertTrue(self.one("UPDATE m_table SET a = 2")["needs_yes"])
         self.assertTrue(self.one("DELETE FROM m_table")["needs_yes"])
 
+    def test_an_incremental_load_into_your_own_remote_table_is_yours(self):
+        # Its REFRESH, which empties the table first, is yours already; adding rows to it, or
+        # upserting them by key, changes less (T43, from the owner's T34 rule).
+        self.assertFalse(self.one("INSERT INTO bv_rt SELECT a FROM theirs")["needs_yes"])
+        self.assertFalse(self.one("INSERT INTO bv_rt ON DUPLICATE KEY ( a ) UPDATE SELECT a FROM theirs")["needs_yes"])
+        self.assertTrue(self.one("INSERT INTO theirs SELECT a FROM mine")["needs_yes"])
+        self.assertTrue(self.one("UPDATE bv_rt SET a = 2")["needs_yes"])
+
     def test_server_settings_wait(self):
         self.assertTrue(self.one("SET 'com.denodo.x' = 'y'")["needs_yes"])
         self.assertFalse(self.one("SET QUERYTIMEOUT TO 100")["needs_yes"])

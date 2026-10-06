@@ -330,7 +330,9 @@ TABLE` and `SELECT … INTO` refuse a name that exists and pass. The rule the sk
 owner's: a **new** table, by a statement that cannot overwrite one (`CREATE_REMOTE_TABLE` with
 `replace_remote_table_if_exist = false`), in the data source and schema the human named, under a
 name checked free, is the agent's own, and so is a `REFRESH` or a replacement of that table in
-the same session; replacing, emptying or dropping a table older than the session waits for the
+the same session — and an `INSERT` or an upsert into it, an incremental load (T43: it changes less
+than the `REFRESH` the rule already gave; `vql plan` says so for a remote table and a materialized
+table the ledger records); replacing, emptying or dropping a table older than the session waits for the
 yes, and so does every load of a summary, because from then on the optimizer answers other
 people's queries from it. A summary created with `DATA_LOAD_IMMEDIATE = FALSE` changes no
 answer and is the agent's; data movement added to a view older than the session is the yes —

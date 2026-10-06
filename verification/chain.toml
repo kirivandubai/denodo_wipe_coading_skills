@@ -127,6 +127,11 @@ writes = [
   "SELECT * FROM DROP_REMOTE_TABLE() WHERE base_view_database_name = '{database}' AND base_view_name = '{tag_prefix}orders_drop' AND drop_base_view_on_cascade = true",
   "SELECT remote_table, base_view, status FROM CREATE_REMOTE_TABLE() WHERE remote_table_name = '{tag_prefix}customer' AND replace_remote_table_if_exist = true AND query = 'SELECT 1 AS x FROM Dual()' AND datasource_database_name = '{write_datasource_database}' AND datasource_name = '{write_datasource_name}' AND datasource_catalog = '{write_catalog}' AND datasource_schema = '{write_schema}' AND base_view_database_name = '{database}' AND base_view_name = '{tag_prefix}customer_drop' AND replace_base_view_if_exist = true",
   "SELECT * FROM DROP_REMOTE_TABLE() WHERE base_view_database_name = '{database}' AND base_view_name = '{tag_prefix}customer_drop' AND drop_base_view_on_cascade = true",
+  # the incremental-load steps' source and copy
+  "SELECT remote_table, base_view, status FROM CREATE_REMOTE_TABLE() WHERE remote_table_name = '{tag_prefix}erp_orders' AND replace_remote_table_if_exist = true AND query = 'SELECT 1 AS x FROM Dual()' AND datasource_database_name = '{write_datasource_database}' AND datasource_name = '{write_datasource_name}' AND datasource_catalog = '{write_catalog}' AND datasource_schema = '{write_schema}' AND base_view_database_name = '{database}' AND base_view_name = '{tag_prefix}erp_orders_drop' AND replace_base_view_if_exist = true",
+  "SELECT * FROM DROP_REMOTE_TABLE() WHERE base_view_database_name = '{database}' AND base_view_name = '{tag_prefix}erp_orders_drop' AND drop_base_view_on_cascade = true",
+  "SELECT remote_table, base_view, status FROM CREATE_REMOTE_TABLE() WHERE remote_table_name = '{tag_prefix}dwh_orders' AND replace_remote_table_if_exist = true AND query = 'SELECT 1 AS x FROM Dual()' AND datasource_database_name = '{write_datasource_database}' AND datasource_name = '{write_datasource_name}' AND datasource_catalog = '{write_catalog}' AND datasource_schema = '{write_schema}' AND base_view_database_name = '{database}' AND base_view_name = '{tag_prefix}dwh_orders_drop' AND replace_base_view_if_exist = true",
+  "SELECT * FROM DROP_REMOTE_TABLE() WHERE base_view_database_name = '{database}' AND base_view_name = '{tag_prefix}dwh_orders_drop' AND drop_base_view_on_cascade = true",
   # the one-row-in-database step's copy of the store history
   "SELECT remote_table, base_view, status FROM CREATE_REMOTE_TABLE() WHERE remote_table_name = '{tag_prefix}store' AND replace_remote_table_if_exist = true AND query = 'SELECT 1 AS x FROM Dual()' AND datasource_database_name = '{write_datasource_database}' AND datasource_name = '{write_datasource_name}' AND datasource_catalog = '{write_catalog}' AND datasource_schema = '{write_schema}' AND base_view_database_name = '{database}' AND base_view_name = '{tag_prefix}store_drop' AND replace_base_view_if_exist = true",
   "SELECT * FROM DROP_REMOTE_TABLE() WHERE base_view_database_name = '{database}' AND base_view_name = '{tag_prefix}store_drop' AND drop_base_view_on_cascade = true",
@@ -2266,6 +2271,98 @@ substitute = { sales_analytics = "{database}", "VIEW iv_store_latest" = "VIEW iv
 database = "{database}"
 # The same rows as the anti-join over the file, and the window runs in the database.
 check = "SELECT 1 FROM GET_QUERY_EXECUTION_PLAN() p, (SELECT COUNT(*) AS n FROM iv_dwh_store_latest w INNER JOIN iv_store_latest f ON w.store_id = f.store_id AND w.store_sk = f.store_sk) m WHERE p.input_query = 'SELECT * FROM iv_dwh_store_latest' AND p.execution_plan LIKE '%row_number() OVER%' AND m.n = 12"
+
+# --- Incremental loads: skills/materialize/references/incremental.md --------------------------
+# A source "ERP" table and its copy, both made in the cache database by CREATE_REMOTE_TABLE from
+# the fixture's income bands: twenty orders, then the source changes as an ERP's does — two new
+# orders, one without updated_at, two changed, one deleted. The template's upsert must leave the
+# copy with every source order once (22 keys: the 21 in the source and the deleted one, which an
+# upsert never removes) and the two changes applied.
+
+[[step]]
+id = "writes-incremental-tables"
+kind = "fixture"
+channel = "vql"
+writes = true
+database = "{database}"
+check = "SELECT 1 FROM (SELECT COUNT(*) AS n FROM bv_erp_orders) e, (SELECT COUNT(*) AS n FROM bv_dwh_orders) d WHERE e.n = 21 AND d.n = 20"
+vql = """
+CONNECT DATABASE {database};
+
+SELECT phase, status, error, inserted_rows
+FROM CREATE_REMOTE_TABLE()
+WHERE remote_table_name = '{tag_prefix}erp_orders'
+  AND replace_remote_table_if_exist = false
+  AND query = 'SELECT ib_income_band_sk AS order_id, CONCAT(''C-'', ib_income_band_sk) AS customer_id, CAST(ib_upper_bound AS decimal(12,2)) AS order_amount, ''open'' AS status, ADDDAY(TIMESTAMP ''2026-09-01 10:00:00'', ib_income_band_sk) AS updated_at FROM bv_income_band'
+  AND datasource_database_name = '{write_datasource_database}'
+  AND datasource_name = '{write_datasource_name}'
+  AND datasource_catalog = '{write_catalog}'
+  AND datasource_schema = '{write_schema}'
+  AND base_view_database_name = '{database}'
+  AND base_view_name = 'bv_erp_orders'
+  AND base_view_folder = '/01 - connectivity'
+  AND replace_base_view_if_exist = false;
+
+SELECT phase, status, error, inserted_rows
+FROM CREATE_REMOTE_TABLE()
+WHERE remote_table_name = '{tag_prefix}dwh_orders'
+  AND replace_remote_table_if_exist = false
+  AND query = 'SELECT order_id, customer_id, order_amount, status, updated_at FROM bv_erp_orders'
+  AND datasource_database_name = '{write_datasource_database}'
+  AND datasource_name = '{write_datasource_name}'
+  AND datasource_catalog = '{write_catalog}'
+  AND datasource_schema = '{write_schema}'
+  AND base_view_database_name = '{database}'
+  AND base_view_name = 'bv_dwh_orders'
+  AND base_view_folder = '/01 - connectivity'
+  AND replace_base_view_if_exist = false;
+
+INSERT INTO bv_erp_orders
+SELECT ib_income_band_sk + 20 AS order_id, CONCAT('C-', ib_income_band_sk + 20) AS customer_id,
+       CAST(ib_lower_bound AS decimal(12,2)) AS order_amount, 'open' AS status,
+       CASE WHEN ib_income_band_sk = 3 THEN CAST(NULL AS timestamp) ELSE TIMESTAMP '2026-10-05 09:00:00' END AS updated_at
+FROM bv_income_band
+WHERE ib_income_band_sk <= 3 AND ib_income_band_sk >= 2;
+
+UPDATE bv_erp_orders SET status = 'paid', updated_at = TIMESTAMP '2026-10-05 10:00:00' WHERE order_id = 5 OR order_id = 6;
+
+DELETE FROM bv_erp_orders WHERE order_id = 1;
+"""
+
+[[step]]
+id = "incremental-before"
+kind = "template"
+channel = "vql"
+writes = true
+needs = ["writes-incremental-tables"]
+address = "skills/materialize/references/incremental.md#Before the first run: what it will write"
+substitute = { sales_analytics = "{database}" }
+database = "{database}"
+# The deleted order is the one key the copy has and the source no longer has.
+check = "SELECT d.order_id FROM bv_dwh_orders d LEFT OUTER JOIN bv_erp_orders e ON e.order_id = d.order_id WHERE e.order_id IS NULL AND d.order_id = 1"
+
+[[step]]
+id = "incremental-load"
+kind = "template"
+channel = "vql"
+writes = true
+needs = ["writes-incremental-tables"]
+address = "skills/materialize/references/incremental.md#The load"
+substitute = { sales_analytics = "{database}" }
+database = "{database}"
+# Every order once — the new, the undated and the deleted one included — and the changes applied.
+check = "SELECT 1 FROM (SELECT COUNT(*) AS n, COUNT(DISTINCT order_id) AS k FROM bv_dwh_orders) c, (SELECT COUNT(*) AS paid FROM bv_dwh_orders WHERE status = 'paid') p WHERE c.n = 22 AND c.k = 22 AND p.paid = 2"
+
+[[step]]
+id = "incremental-after"
+kind = "template"
+channel = "vql"
+writes = true
+needs = ["incremental-load"]
+address = "skills/materialize/references/incremental.md#After a run"
+substitute = { sales_analytics = "{database}" }
+database = "{database}"
+check = "SELECT 1 FROM (SELECT SUM(CASE WHEN d.order_id IS NULL THEN 1 ELSE 0 END) AS m, SUM(CASE WHEN d.order_id IS NOT NULL AND (e.status <> d.status OR e.order_amount <> d.order_amount OR e.updated_at <> d.updated_at) THEN 1 ELSE 0 END) AS x FROM bv_erp_orders e LEFT OUTER JOIN bv_dwh_orders d ON d.order_id = e.order_id) r WHERE r.m = 0 AND r.x = 0"
 
 [[step]]
 id = "materialize-summary"

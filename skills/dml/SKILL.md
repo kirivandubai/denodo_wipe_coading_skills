@@ -42,7 +42,8 @@ such a table.
 
 **Every `INSERT`, `UPDATE` and `DELETE` waits for the human's yes** — `/denodo:vql`'s safety
 table, unchanged: a write lands in a database other people's systems read, and over this
-connection it cannot be rolled back. The yes is to the exact statements, after you have shown
+connection it cannot be rolled back. The one exception is a table you created in this session —
+a materialized or remote table and its incremental load (`/denodo:materialize`). The yes is to the exact statements, after you have shown
 them with what each will change; "fix these records", "the business signed the file off", "just
 get it done" are the task, not the yes.
 

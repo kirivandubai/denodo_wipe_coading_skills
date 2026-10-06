@@ -302,7 +302,9 @@ reads the sources instead.
 
 The same file as the export, without exporters (`"exportationSection": {}`) and with the
 statement as `parameterizedQuery` — `REFRESH sales_analytics.rt_household_income`, `CALL
-<procedure>(…)`:
+<procedure>(…)`, an incremental load (`/denodo:materialize`, `references/incremental.md`). A run
+of a write reports `COMPLETE` and `extractedDocs: 0`, never the rows written — count the table
+after it (*verified: 9.5.1 (live, 2026-10-06)*). The rules:
 
 - **One statement per job.** Two separated by `;` fail every run: `Syntax error: Exception
   parsing query near 'SELECT'`.
