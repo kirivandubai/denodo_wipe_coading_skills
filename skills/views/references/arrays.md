@@ -12,9 +12,11 @@ views (`/denodo:datasources`) and from `NEST` and `REGISTER` in a derived view.
 through `SELECT *` and through `FLATTEN` of another column.
 
 One element of an array by position: `lines[0].sku` — from 0, no parentheses; past the end it
-is `NULL`. A condition on the elements without `FLATTEN` (`WHERE lines.sku = …`) is `Field not
-found 'lines.sku'`. There is no array-length function (`SIZE`, `CARDINALITY`, `ARRAY_LENGTH`
-do not exist) and `COUNT(lines)` counts rows, not elements: count elements after `FLATTEN`.
+is `NULL`. `WHERE lines.sku = …` is `Field not found 'lines.sku'`; parenthesised, `WHERE
+(lines).sku = 'x'` keeps the parents with at least one such element, so `(lines).sku <> 'x'`
+keeps a parent that has an `'x'` too — *verified: 9.5.1 (live, 2026-10-07)*. There is no
+array-length function (`SIZE`, `CARDINALITY`, `ARRAY_LENGTH` do not exist) and
+`COUNT(lines)` counts rows, not elements: count elements after `FLATTEN`.
 `lines IS NULL` tells a missing array from an empty one, which `FLATTEN` makes look the same —
 *verified: 9.5.1 (live, 2026-09-30)*.
 

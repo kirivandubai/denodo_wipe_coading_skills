@@ -4,11 +4,12 @@ An association is a declaration about two views: how their rows correspond, whic
 the parent, and whether the correspondence is a foreign key. It stores no data and changes
 no query result on its own.
 
-**The public VQL Guide 9.5 has no `CREATE ASSOCIATION` page.** The documentation covers
-the Design Studio dialog (*Creating an Association*, *Multiplicity of Associations*,
-*Referential Integrity in Associations*, *Role Preconditions*) and the procedure
-`GET_ASSOCIATIONS()`; the statement itself is documented only by the server. Everything
-below was taken off a live 9.5.1 instance.
+**The VQL Guide 9.5 documents the statement** under *RESTful Architecture → Associations*
+(*Syntax of the CREATE ASSOCIATION statement*, and `ALTER ASSOCIATION` for a rename or a
+description). The Administration Guide covers the Design Studio dialog (*Creating an
+Association*, *Multiplicity of Associations*, *Referential Integrity in Associations*, *Role
+Preconditions*) and the procedure `GET_ASSOCIATIONS()`. The grammar below is the documented
+one with what a live 9.5.1 instance adds: `PRINCIPAL`, and the multiplicities `0,*` and `1,*`.
 
 ## Grammar as the server accepts it
 
@@ -17,14 +18,19 @@ CREATE [ OR REPLACE ] ASSOCIATION <name> [ REFERENTIAL CONSTRAINT ]
     [ FOLDER = <literal> ]
     [ DESCRIPTION = <literal> ]
     ENDPOINT <role name> [<database>.]<view> [ PRINCIPAL ] ( <multiplicity> )
-        [ PRECONDITION ( <condition> ) ]
+        [ PRECONDITION <condition> ] [ DESCRIPTION = <literal> ]
     ENDPOINT <role name> [<database>.]<view> [ PRINCIPAL ] ( <multiplicity> )
-        [ PRECONDITION ( <condition> ) ]
-    ADD MAPPING <left column> = <right column>
-    [ ADD MAPPING <left column> = <right column> ]*
+        [ PRECONDITION <condition> ] [ DESCRIPTION = <literal> ]
+    ADD MAPPING <left> = <right>
+    [ ADD MAPPING <left> = <right> ]*
+
+<multiplicity> ::= 1 | 0,1 | * | 0,* | + | 1,*
+<left>, <right> ::= a column of that side's view, or an expression or CASE over its columns
 ```
 
-*verified: 9.5.1 (live, 2026-09-10)*, every clause including the optional ones.
+*verified: 9.5.1 (live, 2026-09-10)*, every clause including the optional ones. The
+endpoint `DESCRIPTION`, a mapping by expression or `CASE`, and `(+)` — *verified: 9.5.1
+(live, 2026-10-07)*; the server writes `(*)` back as `(0,*)` and `(1,*)` as `(+)`.
 `FOLDER` may be omitted — the association then lands at the root of the database.
 `DESCRIPTION` goes right after `FOLDER` — *verified: 9.5.1 (live, 2026-09-30)*; an existing
 association takes one with `ALTER ASSOCIATION <name> DESCRIPTION = '…'` (`/denodo:semantics`).
@@ -45,9 +51,9 @@ ENDPOINT households  bv_income_band PRINCIPAL (1)
   other.** A band has zero or more households → the households endpoint is `(0,*)`. A
   household has exactly one band → the bands endpoint is `(1)`. Getting these the wrong
   way round produces no error and a wrong model.
-- Forms: `(0,*)`, `(*)`, `(1)`, `(0,1)`, `(1,*)`. The `0..1` and `*` notation in the
-  documentation is the dialog's, and `(0..1)` in VQL is `Syntax error … near '0.'` —
-  *verified: 9.5.1 (live, 2026-09-10)*.
+- Forms: `(1)`, `(0,1)`, `(*)` or `(0,*)` for zero or more, `(+)` or `(1,*)` for one or
+  more — `(*)` and `(+)` are the documented VQL forms. `0..1` is the dialog's notation, and
+  `(0..1)` in VQL is `Syntax error … near '0.'` — *verified: 9.5.1 (live, 2026-09-10)*.
 - **Role names are unique per view.** A second association reusing a role name on the same
   view is rejected: `The association endpoint role name 'x' already exists for the selected
   view`. Naming each role after the other view makes the collision meaningful rather than
@@ -96,7 +102,7 @@ one thing about associations the server does check eagerly.
 
 A precondition restricts which rows show a link to the other end in
 `SELECT_NAVIGATIONAL` and the RESTful web service. It goes **after the multiplicity**, and
-the condition is parenthesised, not a string literal:
+the condition is written as one, not as a string literal:
 
 ```sql
 -- verified: 9.5.1 (live, 2026-10-06)
@@ -108,7 +114,8 @@ CREATE OR REPLACE ASSOCIATION a_income_band_household REFERENTIAL CONSTRAINT
 ```
 
 - A quoted condition is `Error executing CREATE operation: Operator 'is true' for type
-  'text' not found` — the parentheses are what makes it a condition rather than a string.
+  'text' not found` — the quotes make it a string. The parentheses are optional: the server
+  writes the condition back without them — *verified: 9.5.1 (live, 2026-10-07)*.
 - **The *other* endpoint must be `*` or `0..1`**, or the server refuses: `To set a
   precondition in an end point, the other end point must have cardinality * or 0..1.`
   The reasoning is in the documentation: a precondition means "there may be nothing on the

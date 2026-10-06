@@ -104,8 +104,10 @@ database as one `SQLSentence` — *verified: 9.5.1 (live, 2026-10-06)*, SQL Serv
 - **Where it runs.** Over one data source, in its database. Over a join of two data sources, only
   when Denodo can put the window on one side — partitioned by the join key and ordered by that
   side's columns: the plan then says `optimizationsApplied = [Analytic Functions Push-down]`.
-  Anywhere else — over a file, over `Dual()` — the view is created, `GET_VIEWS()` says `OK`, and
-  every `SELECT` fails with `Function row_number is not executable`. Then the next template.
+  Anywhere else — over a file, over `Dual()` — unless the server sends window functions to an MPP
+  engine or moves the data for them (documentation), the view is created, `GET_VIEWS()` says
+  `OK`, and every `SELECT` fails with `Function row_number is not executable`. The next
+  template runs everywhere.
 
 ## The latest version, from a file
 

@@ -105,9 +105,9 @@ Clause order: `FOLDER` → `DESCRIPTION` → `PRIMARY KEY` → `TAGS` → `( fie
   is a pair of validity columns** (`rec_start_date` / `rec_end_date`), and the `COUNT`
   decides: validity columns over one row per business key are not history.
 - **`INNER` drops facts, and nobody is told.** The template joins `INNER` because its two
-  sample files match completely; real files do not — in the TPC-DS returns, some store returns
-  carry no store key at all and some web returns name no reason. Decide which you want and
-  record the decision in the `DESCRIPTION`:
+  TPC-DS tables match completely; real data usually does not — in the TPC-DS returns, some
+  store returns carry no store key at all and some web returns name no reason. Decide which
+  you want and record the decision in the `DESCRIPTION`:
   - the unmatched rows matter → `LEFT OUTER JOIN` from the fact, with a label for the
     group: `COALESCE(TRIM(r.reason_desc), '(reason not specified)')`. Two different things
     land in that group — the fact's key is `NULL`, or the key has no row in the dimension —
@@ -357,9 +357,8 @@ CREATE OR REPLACE ASSOCIATION a_income_band_household REFERENTIAL CONSTRAINT
     ADD MAPPING hd_income_band_sk = ib_income_band_sk;
 ```
 
-There is **no `CREATE ASSOCIATION` page in the public VQL Guide 9.5** — the documentation
-covers the Design Studio dialog only. This template comes from the server itself. Read one
-endpoint like this:
+The VQL Guide's grammar (*RESTful Architecture → Associations*) has no `PRINCIPAL`; this
+template is the form the server writes back (`DESC VQL`). Read an endpoint like this:
 
 ```
 ENDPOINT <role name>  <view>  [PRINCIPAL]  (<multiplicity>)
@@ -367,7 +366,7 @@ ENDPOINT <role name>  <view>  [PRINCIPAL]  (<multiplicity>)
             │            │         │             └─ rows of THIS view per one row of the other
             │            │         └─ this view is the parent of the foreign key
             │            └─ the view at this endpoint
-            └─ what you reach FROM the other side — i.e. the other view's name
+            └─ what you reach FROM this endpoint's view — i.e. the other view's name
 ```
 
 The first identifier is the **role name of the other end, not an alias for this view** —
@@ -386,8 +385,8 @@ household has exactly one band `(1)`.
   (`/denodo:metrics`).
 - The `PRINCIPAL` endpoint must be `(1)` or `(0,1)`. Two `PRINCIPAL`s is
   `In a 1:N association, the principal endpoint must have multiplicity 1 or 0..1`.
-- Multiplicity is written `(0,*)`, `(1)`, `(0,1)`, `(1,*)`, `(*)`. The `0..1` from the
-  documentation is UI notation and a syntax error in VQL.
+- Multiplicity is `(1)`, `(0,1)`, `(*)` or `(0,*)`, and `(+)` or `(1,*)` for one or more; the
+  server writes `(0,*)` and `(+)`. The dialog's `0..1` is a syntax error in VQL.
 - In `ADD MAPPING`, the left column belongs to the **first** endpoint's view and the right
   to the second. Several mappings = several `ADD MAPPING` lines for a composite key.
 - **Role names are unique per view**: a second association reusing a role name on the same
@@ -396,12 +395,12 @@ household has exactly one band `(1)`.
 - Endpoints may be interface views, base views, derived views, and may live in different
   databases (`ENDPOINT band other_db.bv_income_band …`) — *verified: 9.5.1 (live,
   2026-09-10)*. An association does not make joins implicit: a query still writes its own
-  `ON`. What it changes is the catalog, and — for a `REFERENTIAL CONSTRAINT` — the foreign
-  keys the JDBC and ODBC drivers report to clients.
+  `ON`. What it changes is the catalog and, for a `REFERENTIAL CONSTRAINT`, the foreign keys
+  clients see and the optimizer: across two data sources it is the documented condition for
+  pushing a `GROUP BY` below their join (`references/delegation.md`).
 - A role precondition (which rows show the link in `SELECT_NAVIGATIONAL` and the RESTful
-  service) is `PRECONDITION ( <condition> )` **after** the multiplicity, and the condition
-  is parenthesised, not quoted. No public documentation covers the VQL form —
-  `references/associations.md` has the verified one.
+  service) is `PRECONDITION <condition>` **after** the multiplicity, as documented, and the
+  condition is not quoted — `references/associations.md`.
 
 ### Types: the names invert between a declaration and a `CAST`
 
@@ -414,19 +413,19 @@ The one thing here that costs attempts. A column *declaration* takes VQL type na
 | 64-bit integer | `long` | `bigint` |
 | string | `text` | `varchar` |
 | floating point | `double` | `double precision` |
+| date | `localdate` | `date` |
 
 `bigint` in a field list is `error while loading the type of the field 'bigint'`;
-`CAST(x AS int)` is `Syntax error … near 'int'`. If you would rather hold one set of names
-in your head, the two-argument cast `CAST('int', x)` takes the VQL ones, so the whole file
-can then be written in VQL names. Unchanged either way: `decimal`, `float`, `boolean`,
-`localdate`, `timestamp`.
+`CAST(x AS int)` is `Syntax error … near 'int'`. If you would rather hold one set of names in
+your head, the two-argument cast `CAST('int', x)` takes the VQL ones, so the whole file can
+then be written in VQL names. Unchanged either way: `decimal`, `float`, `boolean`, `timestamp`.
 
 ## What you need before filling a template
 
 | Slot | Where it comes from |
 |---|---|
 | The views underneath | read them, do not assume: `vql desc --env dev --database <db> <view>` gives the exact column names and types. A misremembered column is the most common failure of the whole skill. A view of another database is read by its qualified name, `FROM other_db.bv_x` — *verified: 9.5.1 (live, 2026-09-30)* |
-| Grain of the result | the human — "per customer" or "per band" decides whether there is a `GROUP BY` and what the primary key is. **One row per key among several** — the latest version, the current row of a history, a feed loaded twice — is `references/one-row-per-key.md`: a window runs only in a database, and the usual `MAX(<date>)` joined back keeps ties and drops undated keys, without an error |
+| Grain of the result | the human — "per customer" or "per band" decides whether there is a `GROUP BY` and what the primary key is. **One row per key among several** — the latest version, the current row of a history, a feed loaded twice — is `references/one-row-per-key.md`: a window runs only where it can be delegated (a database, or an MPP engine or data movement the server is set up for), and the usual `MAX(<date>)` joined back keeps ties and drops undated keys, without an error |
 | Which columns the consumer needs | the human. When the answer is "everything", say what everything is at the moment and let them cut |
 | Folder | `/02 - integration` for the joining and transforming layer, `/03 - business entities` for what consumers read, `/06 - associations` for associations — or `.denodo/conventions.md` if the project has one |
 | Name | conventions in `/denodo:vql`; the `iv_` / bare-name split above |
@@ -447,16 +446,16 @@ runs in that database is not one of them — Verify checks it.
 
 ## When the request asks for something the data does not have
 
-A mart is asked for in business words, and those words routinely name a dimension the files
-do not carry — "broken down by sales channel" over files with no channel column anywhere.
+A mart is asked for in business words, and those words routinely name a dimension the sources
+do not carry — "broken down by sales channel" over sources with no channel column anywhere.
 The failure to avoid is inventing it: a plausible-looking expression yields a mart that
 answers a different question and says nothing about the substitution.
 
 1. **Establish it, do not assume it.** Read every column of both sides — `vql desc`, or
    `SELECT column_name FROM GET_VIEW_COLUMNS() WHERE input_view_name = '<view>'` — then look
    for the attribute in the neighbouring objects, and check they can be joined to the same
-   key at all. In the sample data each returns file *is* a channel, but only the store one
-   carries a store key, so "returns per store per channel" exists for one channel only, and
+   key at all. In TPC-DS each returns table *is* a channel, but only the store one carries
+   a store key, so "returns per store per channel" exists for one channel only, and
    no expression changes that.
 2. **Then choose, and write the choice into the `DESCRIPTION`:**
    - the attribute is a constant across the data you have → keep the column as a literal
@@ -524,11 +523,12 @@ and `household_income_by_band` and the `household_income` contract with them.
   reached through it fails with `Error applying metric transformation.` — *verified: 9.5.1
   (live, 2026-09-30)*.
 - `USED_BY()` finds dependants in every database, and only views: no associations (step
-  3), no web services, nothing outside the catalog. A published web service that exposes
-  the view shows up only in the database's full definition: search `DESC VQL DATABASE <db>`
-  for the view's name before calling the list complete — it is one large text, so save it
-  and search it rather than reading it. What no query finds — reports, clients, jobs
-  reading the view — goes into the report as what the list cannot see.
+  3), no web services, nothing outside the catalog. The web services that publish the view,
+  in every database, with the fields each publishes: `SELECT DISTINCT database_name, ws_name,
+  ws_type, column_name FROM GET_CATALOG_METADATA_WS() WHERE schema_database = '<db>' AND
+  schema_name = '<view>' AND schema_type = 'view'` — *verified: 9.5.1 (live, 2026-10-07)*;
+  it shows only the services you hold `METADATA` on (documentation). What no query finds —
+  reports, clients, jobs reading the view — goes into the report as what the list cannot see.
 - The names you pass must be exact and in the right case: a pattern or a wrong case is an
   error that names nothing, not an empty result.
 - **Report it as a list the human can act on**: each object, how it uses the column
@@ -548,8 +548,8 @@ and `household_income_by_band` and the `household_income` contract with them.
 - **A remote table loaded from the view is not in `USED_BY()`** — a summary over it is. The
   remote table's query is text in its base view's `DATA_LOAD_QUERY`, and its next `REFRESH`
   after the change fails *after* emptying the table — *verified: 9.5.1 (live, 2026-10-02)*.
-  Search `DESC VQL DATABASE <db>` for the view's name, as for web services
-  (`/denodo:materialize`).
+  Search `DESC VQL DATABASE <db>` (an administrator or the `metadata_export` role) for the
+  view's name, saved to a file — it is one large text (`/denodo:materialize`).
 
 **"Where does this field come from"** is the question `COLUMN_DEPENDENCIES()` does answer:
 with `input_column_name` it walks one field down to the base view and the data source in one
@@ -617,7 +617,7 @@ the reason this skill exists.** After applying, always:
 | Are the associations still whole | `SELECT association_name, mappings, valid FROM GET_ASSOCIATIONS() WHERE input_database_name = '<db>' AND input_type = 'views'` — **`valid` must be `true`** |
 | One association in full | `vql desc --env dev --database <db> <name> --type association` — roles, multiplicities, mappings, principal side |
 | Who depends on this view | `SELECT view_name, used_by_database_name, used_by_name, depth FROM USED_BY() WHERE input_view_database_name = '<db>' AND input_view_name = '<view>'` — run it **before** a change, not after. For one column, "Before a column changes" |
-| **Does a view over a database run in the database** | for every view whose base views are JDBC: `SELECT execution_plan FROM GET_QUERY_EXECUTION_PLAN() WHERE input_query = 'SELECT * FROM <view>'`. Delegated whole: exactly one `SQLSentence =`, and it holds the joins and the `GROUP BY`. `noDelegationCauses = [The aggregate function 'median' cannot be delegated to this database]` names what keeps the rest in Denodo. Two or more `JDBC ROUTE (` blocks with **no cause printed** mean two data sources, joined in Denodo — then a `GROUP BY` in the big table's `SQLSentence` (`optimizationsApplied = [Aggregation Push-down]`) means groups travel, its absence means every row does. Anything but the first is Silent failure 3 |
+| **Does a view over a database run in the database** | for every view whose base views are JDBC: `SELECT execution_plan FROM GET_QUERY_EXECUTION_PLAN() WHERE input_query = 'SELECT * FROM <view>'`. Delegated whole: exactly one `SQLSentence =`, and it holds the joins and the `GROUP BY`. `noDelegationCauses = [The aggregate function 'median' cannot be delegated to this database]` names what keeps the rest in Denodo. Two or more `JDBC ROUTE (` blocks with **no cause printed** mean two data sources, joined in Denodo — unless `optimizationsApplied` names `Data Movement` and one `SQLSentence` joins the moved copy (`/denodo:materialize`) — then a `GROUP BY` in the big table's `SQLSentence` (`optimizationsApplied = [Aggregation Push-down]`) means groups travel, its absence means every row does. Anything but the first is Silent failure 3 |
 | **Does each branch of a union arrive whole** | `SELECT channel, COUNT(*), SUM(<measure>) FROM <union> GROUP BY channel` — or `GROUP BY` a `CASE` of the branch conditions when the split is a real column — against `COUNT(*)` and `SUM` of each source view under its own branch condition. It catches a branch whose columns are out of order and the rows a `NULL` partition key lost — neither raises an error |
 | **Is the declared primary key unique** | `SELECT <key columns>, COUNT(*) FROM <view> GROUP BY <key columns> HAVING COUNT(*) > 1` — no rows. Denodo does not enforce a `PRIMARY KEY`; over overlapping union branches or a flatten, this is the proof nothing was counted twice |
 | **Does a one-source query read one source** | `SELECT execution_plan FROM GET_QUERY_EXECUTION_PLAN() WHERE input_query = '<the query, quotes doubled>'`: `optimizationsApplied = [Branch Pruning]`, and one `BASE PLAN (` block per source read, its `name = …` on the next line; no block at all means the query reads nothing. It plans without running the query, so an ad-hoc union can be checked before the view exists. `DESC QUERYPLAN` answers with nothing through the tool, and `TRACE` with the plain result |
@@ -649,11 +649,11 @@ expression the database cannot run — `MEDIAN` on SQL Server, a `CAST` of text 
 PostgreSQL — keeps its node and everything above it in Denodo. The database still does the
 joins below it, and every joined row travels to Denodo to be aggregated there. The rows are
 right, nothing reports an error, and the cost grows with the fact table: a second on sample
-data, minutes in production — *verified: 9.5.1 (live, 2026-09-30)*. Views over two
-different data sources are never joined in the database, and the plan prints no cause for
-that at all; at best Denodo pre-aggregates per join key in each database, and the plan shows
-whether it did. Which expressions delegate depends on the database, so read the plan (Verify)
-instead of a list. Then:
+data, minutes in production — *verified: 9.5.1 (live, 2026-09-30)*. Views over two data
+sources are joined in Denodo, with no cause printed, unless a data movement or an MPP
+engine the server is set up for takes the join (`references/delegation.md`); at best Denodo
+pre-aggregates per join key in each database, and the plan shows whether it did. Which
+expressions delegate depends on the database, so read the plan (Verify), not a list. Then:
 
 - **Tell the human, and let them decide.** Name the expression and the column it computes,
   or the two data sources, and say that every row below that point is read into Denodo —
@@ -702,7 +702,7 @@ Denodo Testing Tool. A mart that will be rewritten later gets them before the re
 | `DROP VIEW v` with dependants | `error removing view: There are some elements that depend on this one` | `USED_BY()` first, then ask the human — `CASCADE` takes the dependants with it |
 | `DROP ASSOCIATION a` when there is none | `error removing association: Error loading association 'a'.` | `DROP ASSOCIATION IF EXISTS` — it has no `CASCADE`, unlike the view drops |
 | `WHERE input_database_name = …` on `VIEW_DEPENDENCIES()` | `Field not found 'input_database_name'` | that one is `input_view_database_name`, like `USED_BY()` |
-| `WHERE input_type IN ('view','association')` on `GET_ELEMENTS()` | nothing — zero rows | input parameters take `=` only; run one query per value |
+| `WHERE input_type IN ('view','association')` on `GET_ELEMENTS()` | nothing — zero rows | `input_type` takes the documented plural values, with `=` only: `input_type = 'views'`, then `input_type = 'associations'` — or filter the output column `type IN ('view','association')` |
 | union branches listing the same columns in a different order | nothing — accepted; queries then disagree about which value is which | same columns, same order, same aliases in every branch |
 | `SELECT 'web' AS channel, … FROM x UNION ALL …` with no `WHERE` per branch | nothing — `WHERE channel = 'web'` still reads every source | wrap each branch: `SELECT * FROM ( … ) w WHERE channel = 'web'` |
 | `SELECT 'web' AS channel … WHERE channel = 'web'` | `Field not found 'channel' in view with schema …` | the `WHERE` outside, around a subquery |
