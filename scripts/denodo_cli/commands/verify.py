@@ -556,6 +556,7 @@ def _select_calls(calls: list[dict], indexes: list[int]) -> list[dict]:
 
 
 MAX_ROWS = 10  # a check only proves rows exist or don't; it never needs to see them
+ABSENT = "<absent>"  # an expect_body value: the field must not be in the last response
 
 
 def run_chain(
@@ -1454,7 +1455,11 @@ def _run_http(profile: Profile, step: Step, *, body: str, values: dict[str, str]
     for field_name, expected in step.expect_body.items():
         wanted = render(expected, {}, values)
         got = _field(last_body, field_name)
-        if got is None or str(got) != wanted:
+        if wanted == ABSENT:
+            # A removal is proved by what is no longer there: "views.0" of an emptied list.
+            if got is not None:
+                mismatches.append(f"{field_name}: expected it absent, got {got!r}")
+        elif got is None or str(got) != wanted:
             mismatches.append(f"{field_name}: expected {wanted!r}, got {got!r}")
     if mismatches:
         return {"ok": False, "calls": executed, "partial": partial, "error": {

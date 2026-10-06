@@ -492,10 +492,10 @@ marketplace features with their own screens, not part of creating these objects.
 
 ## Reference
 
-- `references/tags.md` — the full tag surface, importing VDP tags into the marketplace and
-  why that call is the most destructive one here, webservice targets, `delete-multiple`.
-- `references/categories.md` — the tree endpoints, moving a category, assignment from the
-  view's side, what cascades.
+- `references/tags.md` — the full tag surface, taking a tag off one view, importing VDP tags
+  and why that call is the most destructive one here, webservice targets, `delete-multiple`.
+- `references/categories.md` — the tree endpoints, moving a category, taking a view out of one,
+  assignment from the view's side, what cascades.
 - `references/external-elements.md` — the element and provider type surface, the association
   record in detail, element-to-element associations, what synchronisation adds, updates and
   deletes, and how to read `/details`.

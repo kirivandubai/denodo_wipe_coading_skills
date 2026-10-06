@@ -389,7 +389,7 @@ api --server scheduler get /public/api/projects/<project_id>/jobs/<job_id>/repor
 The summary lists the runs with their counts; `reports` with `start` and `count` (both
 required) has each run, newest first — `reports[]` inside a run holds the detail of its load
 processes or queries when there is any (`hasIndividualDetails` in the summary). Deleting a job
-deletes its reports.
+deletes its reports — the steps before and after a delete: `references/rest-api.md`.
 
 ### A cache that doubles, a job that does nothing
 

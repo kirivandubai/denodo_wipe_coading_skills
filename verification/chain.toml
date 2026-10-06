@@ -1176,6 +1176,17 @@ substitute = { "<project_id>" = "{project_id}", "<job_id>" = "{job_id}" }
 expect_body = { total = "2" }
 
 [[step]]
+id = "scheduler-delete-job"
+kind = "template"
+channel = "http"
+scheduler = true
+needs = ["scheduler-export-run"]
+address = "skills/scheduler/references/rest-api.md#Deleting a job"
+substitute = { sales_analytics = "{tag_prefix}jobs", "<project_id>" = "{project_id}", "<job_id>" = "{export_job_id}" }
+# The export job goes; the project keeps the cache job alone, or nothing without a cache.
+expect_body = { "1" = "<absent>" }
+
+[[step]]
 id = "cache-off"
 kind = "template"
 channel = "vql"
@@ -2724,6 +2735,54 @@ marketplace = true
 calls = [1, 2, 3]
 substitute = { sales_analytics = "{database}" }
 expect_body = { id = "{renamed_view_id}" }
+
+# --- Taking a tag or a category off one view -------------------------------------------------
+# The renamed view above has a marketplace id the chain captured: the tag and the category of the
+# steps before get assigned to it (the calls those two steps left out for want of a view), then
+# taken off it again by the templates of the references — and the view's side must not list them.
+
+[[step]]
+id = "marketplace-tag-assign"
+kind = "template"
+channel = "http"
+address = "skills/marketplace/SKILL.md#Tag, with an assignment"
+marketplace = true
+needs = ["marketplace-tag", "marketplace-rename-before"]
+calls = [3]
+substitute = { "<tag_id>" = "{tag_id}", "<view_id>" = "{renamed_view_id}" }
+# [] is the success: no view refused.
+expect_body = { "0" = "<absent>" }
+
+[[step]]
+id = "marketplace-tag-unassign"
+kind = "template"
+channel = "http"
+address = "skills/marketplace/references/tags.md#Taking a tag off one view"
+marketplace = true
+needs = ["marketplace-tag-assign"]
+substitute = { sales_analytics = "{database}", household_income_by_band = "household_income_per_band", "<tag_id>" = "{tag_id}", "<view_id>" = "{renamed_view_id}" }
+expect_body = { "0" = "<absent>" }
+
+[[step]]
+id = "marketplace-category-assign"
+kind = "template"
+channel = "http"
+address = "skills/marketplace/SKILL.md#Category tree"
+marketplace = true
+needs = ["marketplace-category", "marketplace-rename-before"]
+calls = [2]
+substitute = { "<category_id>" = "{category_id}", "<view_id>" = "{renamed_view_id}" }
+expect_body = { "0" = "<absent>" }
+
+[[step]]
+id = "marketplace-category-unassign"
+kind = "template"
+channel = "http"
+address = "skills/marketplace/references/categories.md#Taking a view out of a category"
+marketplace = true
+needs = ["marketplace-category-assign"]
+substitute = { "<category_id>" = "{category_id}", "<view_id>" = "{renamed_view_id}" }
+expect_body = { "0" = "<absent>" }
 
 # --- Marked blocks the chain does not run ----------------------------------------------
 # Every block of skills/ with a verified: mark is a step above or a line here, with the reason;

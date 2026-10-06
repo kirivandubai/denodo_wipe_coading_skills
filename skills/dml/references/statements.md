@@ -93,7 +93,9 @@ reading the row back.
 - delegated to the source as a `MERGE` when the `SELECT` runs there; otherwise through a
   temporary table in the cache database (documentation);
 - `'@LAST_REFRESH_DATE'` in the `SELECT`'s `WHERE` is replaced by the time of the last
-  successful insert into the view — the incremental form for refreshes (documentation);
+  successful insert into the view (documentation) — a load's time, not the data's, and in a
+  Scheduler job `@` starts a variable: an incremental load reads its watermark from the table
+  (`/denodo:materialize`, `references/incremental.md`);
 - **it never deletes**, and a key that is not in the table becomes a new row;
 - **keyed on an identity column it fails** on SQL Server — `Cannot insert explicit value for
   identity column in table …` — even when every key in the `SELECT` exists already. Keyed on a

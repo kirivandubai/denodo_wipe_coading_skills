@@ -29,6 +29,16 @@ SELECT COUNT(*) AS gone_from_source
 FROM bv_dwh_shipments d
      LEFT OUTER JOIN bv_tms_shipments e ON e.shipment_id = d.shipment_id
 WHERE e.shipment_id IS NULL;
+
+-- 3. Changes under the watermark: rows older than it that differ from the copy. 0 is what makes
+--    a watermark safe; any other number is a change the load will never see.
+SELECT COUNT(*) AS changed_under_watermark
+FROM bv_tms_shipments e
+     INNER JOIN bv_dwh_shipments d ON d.shipment_id = e.shipment_id
+     CROSS JOIN ( SELECT MAX(changed_at) AS watermark FROM bv_dwh_shipments ) t
+WHERE e.changed_at < t.watermark
+  AND ( COALESCE(e.shipment_status, '~') <> COALESCE(d.shipment_status, '~')
+        OR COALESCE(e.weight_kg, -1) <> COALESCE(d.weight_kg, -1) );
 ```
 
 - **`at_watermark` is why the load reads `>=`, not `>`.** A row committed in the same second as the
@@ -39,7 +49,13 @@ WHERE e.shipment_id IS NULL;
   owner.
 - **`gone_from_source`** is what a full reload removed and an incremental load never will: deleted
   shipments stay in the copy. Keeping them, a nightly delete of the keys gone, or a periodic full
-  `REFRESH` is the human's choice; say it before the first run, not after.
+  `REFRESH` is the human's choice; say it before the first run. The first run removes nothing
+  and closes none of the three: when the human cannot answer, run it and put the question first
+  in the message.
+- **`changed_under_watermark`** above `0` is a source that changes rows without moving their
+  `changed_at`: a watermark misses them for ever. Say so; the full `REFRESH` stays the load.
+- The first run writes `after_watermark + at_watermark + without_changed_at` rows: that is the
+  `affected` to expect.
 
 ## The load
 
@@ -90,13 +106,16 @@ SELECT shipment_id, COUNT(*) AS copies FROM bv_dwh_shipments GROUP BY shipment_i
 -- 2. The copy against the source: keys missing from the copy, and rows that differ.
 SELECT SUM(CASE WHEN d.shipment_id IS NULL THEN 1 ELSE 0 END) AS missing_from_copy,
        SUM(CASE WHEN d.shipment_id IS NOT NULL
-                 AND ( e.shipment_status <> d.shipment_status OR e.weight_kg <> d.weight_kg
-                       OR e.changed_at <> d.changed_at ) THEN 1 ELSE 0 END) AS differing
+                 AND ( COALESCE(e.shipment_status, '~') <> COALESCE(d.shipment_status, '~')
+                       OR COALESCE(e.weight_kg, -1) <> COALESCE(d.weight_kg, -1)
+                       OR COALESCE(e.changed_at, TIMESTAMP '1900-01-01 00:00:00')
+                          <> COALESCE(d.changed_at, TIMESTAMP '1900-01-01 00:00:00') ) THEN 1 ELSE 0 END) AS differing
 FROM bv_tms_shipments e
      LEFT OUTER JOIN bv_dwh_shipments d ON d.shipment_id = e.shipment_id;
 ```
 
-Both `0` after a good run, and `gone_from_source` from the first block unchanged. A Scheduler job
+Both `0` after a good run — the `COALESCE`s count a value missing on one side only, which `<>`
+alone never does — and `gone_from_source` from the first block unchanged. A Scheduler job
 that runs the load reports `COMPLETE` with `extractedDocs: 0` — the report carries no count of
 the rows written (measured): these two reads are how the morning after is checked.
 
@@ -110,7 +129,10 @@ the rows written (measured): these two reads are how the morning after is checke
 - **The job that does the full reload today** goes off before the incremental one goes on — a
   `REFRESH` and an upsert at the same hour race each other, and the `REFRESH` empties the table
   under the upsert. That job is its owner's: name it in the message, with the call that disables
-  it. Two jobs loading one table is the question of `/denodo:scheduler`, step 4.
+  it. Two jobs loading one table is the question of `/denodo:scheduler`, step 4; when you cannot
+  see what does the full reload, the incremental job stays disabled and the message says why.
+- Whether the upsert runs in the database (a `MERGE`) or through a temporary table is not in any
+  plan — `GET_QUERY_EXECUTION_PLAN` refuses an `INSERT`; time the first run.
 - Schedule it after the source's own load, and tell the human that a failed run says nothing by
   itself: mail handlers are the Scheduler administration tool's.
 

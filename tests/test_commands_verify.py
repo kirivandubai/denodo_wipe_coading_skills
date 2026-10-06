@@ -1259,6 +1259,14 @@ expect_body = {expect_body}
         self.assertIn("4242", error["message"])
         self.assertIn("mp-tag", error["message"])
 
+    def test_absent_expects_the_field_to_be_missing(self):
+        # A removal is proved by what is no longer there: an assignment gone from a list.
+        doc, code = self._run('{ nope = "<absent>" }')
+        self.assertEqual(code, 0, doc)
+        doc, code = self._run('{ id = "<absent>" }')
+        self.assertEqual(code, 1)
+        self.assertIn("expected it absent", doc["steps"][0]["error"]["message"])
+
     def test_a_missing_field_fails_the_step(self):
         doc, code = self._run('{ nope = "x" }')
         self.assertEqual(code, 1)

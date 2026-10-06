@@ -16,7 +16,7 @@ Everything here is REST against `marketplace_url`, and every call takes `serverI
 | Delete | `DELETE /public/api/tags/{id}` | | `200`; again → `500` |
 | Delete several | `DELETE /public/api/tags/delete-multiple` + `tagsId` | | |
 | Assign to views (**adds**) | `POST /public/api/tags/{id}/views` | `[viewId, …]` | `200` + ids **not** assigned |
-| Unassign one | `DELETE /public/api/tags/{id}/views/{viewId}` | | `200` |
+| Unassign one | `DELETE /public/api/tags/{id}/views/{viewId}` | | `200`, empty, whether it was assigned or not |
 | Unassign several | `DELETE /public/api/tags/{id}/views` | `[viewId, …]` | |
 | Replace a view's tags (**replaces**) | `POST /public/api/views/{viewId}/tags` + `tagsId` | | destroys the view's other tags |
 | A view's tags | `GET /public/api/views/{viewId}/tags` | | array of tags |
@@ -29,6 +29,35 @@ Everything here is REST against `marketplace_url`, and every call takes `serverI
 All of the above is
 *verified: 9.5.1 (live, 2026-09-10)* except `delete-multiple`, the webservice endpoints and
 `available-tags`, which are *unverified: 9.5 documentation only* (the server's OpenAPI).
+
+## Taking a tag off one view
+
+```bash
+# verified: 9.5.1 (live, 2026-10-06)
+# 1. the view: its id on the server that holds it — per database and view, never per name
+api get --env dev /public/api/view-details --param databaseName=sales_analytics --param viewName=household_income_by_band
+# 2. what the tag is on now — the views that keep it
+api get --env dev /public/api/tags/<tag_id>/elements
+# 3. off this view only
+api delete --env dev /public/api/tags/<tag_id>/views/<view_id>
+# 4. read back from the view's side
+api get --env dev /public/api/views/<view_id>/tags
+```
+
+- **One assignment goes; the tag and the view stay.** Deleting the tag instead takes it off
+  every view it is on; `POST /views/{id}/tags` with the rest of the set rewrites the view's tags
+  and races anyone tagging it meanwhile. The `DELETE` per assignment is the call.
+- The tag by its **exact** name (`nameFilter` matches substrings — "Deprecated" also finds
+  "Deprecated API"), the view by `databaseName` and `viewName`: the same view name in two
+  databases is two elements, and the id from step 1 is the only handle.
+- The `DELETE` answers `200` and an empty body whether the assignment existed or not: step 4
+  is the answer — the tag gone from the view, the views of step 2 still there.
+- **An imported VDP tag** (`vdpTag: true`) refuses with `403`: it comes off in VDP (`ALTER TAG
+  … REMOVE_FROM`, `/denodo:catalog`) and the marketplace copy follows at the next import of VDP
+  tags — the call below, the human's.
+- An assignment someone else made, on a view older than the session, is the human's to remove:
+  show the four calls with what step 2 keeps. One the session made is yours. A "Deprecated" that
+  is not a tag — a deprecation endorsement, `deprecations` in `view-details` — is another object.
 
 ## Importing VDP tags — the most destructive call in this skill
 

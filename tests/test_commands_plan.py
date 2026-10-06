@@ -304,6 +304,17 @@ class ApiPlanTest(LedgerCase):
         self.assertEqual((get["needs_yes"], delete["needs_yes"], post["needs_yes"]), (False, True, None))
         self.assertEqual(rest.calls, [])
 
+    def test_an_unassignment_is_not_a_deletion_of_the_object(self):
+        rest = FakeRest({})
+        for path in ("/public/api/tags/648/views/7757", "/public/api/category-management/categories/365/views/7757",
+                     "/public/api/tags/648/views"):
+            doc, _ = api_call(profile(), "delete", path, transport_factory=rest, plan=True, ledger=None)
+            self.assertTrue(doc["needs_yes"])
+            self.assertIn("one assignment", doc["why"])
+            self.assertNotIn("everything attached", doc["why"])
+        tag, _ = api_call(profile(), "delete", "/public/api/tags/648", transport_factory=rest, plan=True, ledger=None)
+        self.assertIn("everything attached", tag["why"])
+
 
 if __name__ == "__main__":
     unittest.main()

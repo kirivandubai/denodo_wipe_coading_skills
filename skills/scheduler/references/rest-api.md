@@ -122,6 +122,40 @@ A run's report: `startTime`, `endTime` (UTC), `result`, `extractedDocs`, `cached
 entry per load process or query. The report exists only once the run has ended. The
 `timestamp` of an error answer is in a 12-hour format without AM/PM — never read a time from it.
 
+## Deleting a job
+
+```bash
+# verified: 9.5.1 (live, 2026-10-06)
+# 1. the project, then the job by its exact name inside it
+api --server scheduler get /public/api/projects --param name=sales_analytics --env dev
+api --server scheduler get /public/api/projects/<project_id>/jobs --env dev
+# 2. what goes with it, kept in the project's folder: the job as the server has it, and its runs
+api --server scheduler get /public/api/projects/<project_id>/jobs/<job_id> --env dev
+api --server scheduler get /public/api/projects/<project_id>/jobs/<job_id>/reports --param start=0 --param count=100 --env dev
+# 3. after the yes
+api --server scheduler delete /public/api/projects/<project_id>/jobs/<job_id> --env dev
+# 4. the project's jobs without it
+api --server scheduler get /public/api/projects/<project_id>/jobs --env dev
+```
+
+- **The job by its exact name inside the named project.** A name is unique only in its project:
+  the same name in another project is another team's job, and a name that only starts the same
+  (`…_v2`) is another job — take the `id` of the exact match, and check it again right before
+  the `DELETE`.
+- **What goes**: the job and every report of it — the only history of its runs. Step 2's answers,
+  saved as `scheduler/<project>/<job>.json` and `<job>.reports.json`, are what is left; the job's
+  `GET` re-creates it, under a new id and without its history.
+- **What stays**: the file an export wrote on the Scheduler host — still there after the delete
+  (measured); the cache the job loaded and the table it refreshed. A job that waited on this one
+  is disabled (documentation). Say each in the message.
+- A job `RUNNING` in `status` is stopped first (`stop`, the skill's "Stop, enable, disable").
+  `disable` keeps the job and its reports and is undone by `enable`: offer it beside the delete
+  when the human may want the job back.
+- Deleting a job is always the human's yes, a job of this session included: the message names the
+  job, its project and id, what each run does, its next run, and what goes and what stays. The
+  `DELETE` answers `204`; the job's `GET` then answers `404`, which the tool reports as `ok:
+  false` — the answer wanted here.
+
 ## Triggers
 
 `triggerSection.triggers[]`: `{"type": "cron", "cronExpression": …, "startTime", "endTime",

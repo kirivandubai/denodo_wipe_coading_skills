@@ -111,7 +111,8 @@ When you cannot ask — the human is away, the deadline is close — the answer 
 this message, with the impersonated checks the human can run after applying, not the
 statements applied. Say what waiting costs, and which file goes first. A file waiting for a
 yes keeps the template's `verified:` mark — the template was run, this file was not — and
-the message says it is not applied. Run its impersonated checks now anyway: today's answers
+the message says it is not applied. It waits whole: a statement the plan calls yours (a new tag)
+waits with the rest, or it is left behind with nothing to do. Run its impersonated checks now anyway: today's answers
 are the "before" the human compares with.
 
 | Rationalization | Reality |
@@ -349,6 +350,9 @@ WHERE dbname = 'sales_analytics' AND username = 'kchen';
 
 -- 2. Who else holds each role the first query names: revoking from the role cuts them off too.
 SELECT name FROM GET_USERS_WITH_ROLE() WHERE role = 'sales_analyst' AND include_indirect_roles = true;
+
+-- 3. Who holds it directly: someone only in 2 has it through another role, and that is the role to revoke.
+SELECT name FROM GET_USERS_WITH_ROLE() WHERE role = 'sales_analyst' AND include_indirect_roles = false;
 ```
 
 The file, one statement per path of query 1 — it waits for the yes (Who applies what):
@@ -367,9 +371,10 @@ ALTER USER kchen REVOKE CONNECT ON sales_analytics;
   `CONNECT`; a role with `EXECUTE` on the whole database reads every view.
 - **`REVOKE` of a role or a privilege the person does not have answers `ok`** — a misspelled role
   too. Query 1 again, after, is the answer: no row.
-- **The check as the person runs from another database**, naming the view with its database:
-  `SELECT COUNT(*) FROM sales_analytics.household_income CONTEXT ('impersonate_user' = 'kchen')`
-  answers `The user does not have CONNECT privileges on the database 'sales_analytics'`. Run in
+- **The check as the person runs from another database** — the profile's own — naming the view
+  with its database: `SELECT COUNT(*) FROM sales_analytics.household_income CONTEXT
+  ('impersonate_user' = 'kchen')` answers `The user does not have CONNECT privileges on the
+  database 'sales_analytics'` — that database, not the one you run from. Run in
   `sales_analytics` itself, an impersonated query does not check `CONNECT`: a person with nothing
   left but an `EXECUTE` on one view still read it there — *verified: 9.5.1 (live, 2026-10-06)*.
 - **What a revoke does not reach**: `dbadmin = true` in query 1 — a local administrator — and a

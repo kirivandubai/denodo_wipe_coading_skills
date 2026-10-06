@@ -83,6 +83,11 @@ def api_call(
     return doc, EXIT_OK if result.ok else EXIT_EXECUTION
 
 
+# The marketplace's unassignments: one tag or category taken off a view, a web service or an
+# external element — the tag or category itself stays (/denodo:marketplace).
+_UNASSIGN = re.compile(r"^/public/api/(tags|category-management/categories)/\d+/(views|webservices|external-elements)(/\d+)?$")
+
+
 def _plan_call(profile: Profile, method: str, path: str, body: Any, base: dict, *, transport_factory: Callable,
                server: str, ledger, timeout: float) -> tuple[dict, int]:
     """``api … --plan``: the call is not sent. Whether the core's table puts it under the human's yes,
@@ -109,6 +114,11 @@ def _plan_call(profile: Profile, method: str, path: str, body: Any, base: dict, 
     if sync and method == "POST":
         return _plan_radius(profile, body, doc, decide, transport_factory=transport_factory, ledger=ledger,
                             timeout=timeout)
+    if destructive == "delete" and _UNASSIGN.match(route):
+        return decide(True, "it removes one assignment — the tag or the category and the element stay; one "
+                            "the session did not make is the human's (/denodo:marketplace)",
+                      ["an assignment you made in this session is yours to remove — the ledger records no "
+                       "marketplace objects"])
     if destructive == "delete":
         return decide(True, "a DELETE removes the object and everything attached to it (/denodo:vql)")
     if destructive == "replace":
