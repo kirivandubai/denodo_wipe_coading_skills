@@ -78,17 +78,24 @@ the bottlenecks in trust on another server, in rules kept as prose, and in bulk 
 
 *T42 is done — under «Сделано» below.*
 
-- **T43. Narrow template gaps, by how often they are asked.** `next`, taken one at a time, each
-  with its RED/GREEN pair, a chain step and the eval suite when a description changes:
-  de-duplication and the current row per key (`views`); year-over-year, month-to-date and
-  running totals (`metrics`); revoking access and "each person sees their own rows"
-  (`security`); incremental loads (`materialize`, `scheduler`); deleting a Scheduler job;
-  removing a marketplace tag or category from a view.
+*T43 is done — under «Сделано» below. The development the review recommended is complete.*
 
 ---
 
 ## Открытые вопросы
 
+- **An incremental load into the session's own remote table is now the agent's** (T43, for the
+  owner). It follows from T34 — the `REFRESH` of that table, which empties it first, was already
+  the agent's — and both RED agents stopped on the contradiction. Say so if the narrower write
+  should stay under the yes.
+- **What T43 left unmeasured.** A row filter's reach to a view in another database built on the
+  tagged one (`VIEW_DATABASES` names one); how an assignment of an imported VDP tag removed in VDP
+  reaches the marketplace copy — at the next import of VDP tags only, or also at a catalog
+  synchronisation; a Scheduler job that waited on a deleted one (disabled, by the documentation);
+  whether a remote table's upsert runs as a `MERGE` (`GET_QUERY_EXECUTION_PLAN` refuses an
+  `INSERT`).
+- **The DF template declares `created_dt:date`** (`datasources`), a type `dialect.md` calls
+  deprecated — `localdate` reads the same file (T43, noticed by a GREEN review).
 - **A matched-rename synchronisation is still the human's yes — should it be?** (T30, for the
   owner.) **Decided 2026-10-05:** a matched-rename synchronisation of the session's own view is
   the agent's; for a view older than the session, one yes covers the rename and the
@@ -409,6 +416,73 @@ the bottlenecks in trust on another server, in rules kept as prose, and in bulk 
 ---
 
 ## Сделано
+
+- **T43. Narrow template gaps, by how often they are asked.** Six gaps, each with RED and GREEN
+  runs (Opus and Sonnet subagents on the test server, fixtures of their own), chain steps and,
+  for the three descriptions that changed (`metrics`, `security`, `scheduler`), the eval suite.
+
+  **What RED showed.** On these tasks the baseline agents mostly reached a right answer by
+  themselves — the gap was cost, fragile constructions and traps they never met, not discipline.
+  Views: all three found ties and filtered after the window; a file feed was de-duplicated with
+  a hand-built text rank key, one agent nearly sorting its separator after the digits. Metrics:
+  partial years and the server's clock past the data were found by Opus each time. Security:
+  revokes and own-row filters were written but not applied (right, the human was away); one
+  Opus took the policy syntax from a sibling run's probe, Sonnet left a sandbox on the server.
+  Incremental loads: both RED agents found the watermark traps and then stopped on a rule
+  contradiction (below). Marketplace and Scheduler, with a human reachable through an answer
+  file: right objects, no template, no read-back shape.
+
+  **What the skills got**, every template a chain step:
+  - `views/references/one-row-per-key.md` — the current row of a history, the latest version in
+    a database (`ROW_NUMBER` with a unique tie-breaker and a `NULL` flag) and from a file (an
+    anti-join), the checks. Measured on 9.5.1: `QUALIFY` is a syntax error; `NULLS FIRST/LAST`
+    after `ASC`/`DESC` is accepted and does nothing (dropped from the SQL sent to PostgreSQL and
+    SQL Server, ignored by Denodo's sort) — `dialect.md` said it was a syntax error; PostgreSQL
+    puts `NULL`s first on `DESC`, SQL Server last; a window view over a file is created `OK` and
+    fails on `SELECT`; `MAX` joined back keeps ties and drops undated keys, and the two errors
+    cancelled in `COUNT(*)` on the RED fixture.
+  - `metrics/references/periods.md` — periods as calendar dimensions, year over year with the
+    coverage of both years, to date against the same days of last year, a running total. Measured:
+    a query over a selection that reads no metric lists every member of the dimension view (the
+    coverage came back as the calendar's); grouping by `GETYEAR(<date>)` itself, not only its
+    alias, drops `COUNT(DISTINCT)` metrics over a database (silent failure 13 widened, 14 added);
+    a sum over an empty window is `NULL`; a running `SUM() OVER` ordered by a text month fails on
+    SQL Server's `RANGE` frame. The chain gained `store.csv` and `date_dim.csv` (TPC-DS layouts,
+    written without `random()` so the other fixture files keep their bytes).
+  - `security` — "Each person sees only their own rows" (a tag on the login column, a policy
+    filtering `UPPER(tag) = UPPER(GETSESSION('user'))`) and "Take someone's access away" (every
+    path, who else holds each role, a revoke per path). Measured: `GETSESSION('user')` is the
+    impersonated login, `__roles_impersonator_user__` under `impersonate_roles`; `VIEWS TAGGED`
+    with the tag on a column filters nothing; `REVOKE` of what is not held answers `ok`; an
+    impersonated query inside the database does not check `CONNECT` — from another database it
+    does.
+  - `materialize/references/incremental.md` — the upsert with the copy's own watermark (`>=`,
+    `COALESCE`, `OR changed_at IS NULL`), the reads before and after. Measured: a plain `INSERT`
+    by watermark duplicated every changed row (a `CREATE_REMOTE_TABLE` table has no primary key
+    in its database) and missed the rows at the watermark and without a date; a Scheduler job
+    runs the upsert and reports `extractedDocs: 0`, never the rows written.
+  - `marketplace/references/tags.md`, `categories.md` — taking a tag or a category off one view;
+    `scheduler/references/rest-api.md` — deleting a job (the export file stays on the Scheduler
+    host; a saved `GET` re-creates a job only without its `id`, enabled if it was).
+
+  **A rule made consistent, for the owner to see:** an `INSERT` or upsert into a remote table
+  created in this session is the agent's, as its `REFRESH` already was (T34's "own new — yourself"):
+  `vql plan`, the `vql` table, `dml`, `materialize` and the design spec (6.3). Both RED agents
+  stopped on the contradiction. `api --plan` now says an unassignment removes one assignment;
+  `verify`'s `expect_body` takes `<absent>`.
+
+  **Numbers.** Tool calls, RED → GREEN — views Opus 30/31 → 24/30, Sonnet 24 → 21; metrics Opus
+  36/29/28 → 32/28/33, Sonnet 15/17 → 14 (GREEN went deeper: like-for-like days, coverage,
+  checks at fixed dates; one template defect, the `NULL` sum, found by a GREEN review); security
+  Opus 30/43 (with 6/11 web pages) → 21/28, Sonnet 40 → 13; incremental Opus 35/29 → 36/21 (GREEN
+  applied the load, RED could not); marketplace 24 → 22/9, Scheduler 22 → 23/12. `verify` with
+  writes, marketplace and Scheduler: 136 verified, 0 failed; eval 71/71 and the Scheduler cases
+  4/4 after its description changed (about $17).
+
+  **Not done by the agents, not the skills:** the permission classifier of the harness refused
+  some subagent calls after the human's yes — the marketplace `DELETE`s (GREEN, both models; RED's
+  same calls went through), a Scheduler `DELETE` and an `enable` (GREEN), a read-back after a
+  delete (RED). Every `zq43` object of the task was removed from the server at the end.
 
 - **T42. Outcome evals beside the routing ones.** Folded into the design spec (11.3, and 6.3 for
   the plan's `yes`); the detail and what the runs found in

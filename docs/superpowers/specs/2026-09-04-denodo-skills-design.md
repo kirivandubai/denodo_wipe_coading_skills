@@ -992,7 +992,8 @@ top-level field of the last call's body with a value rendered from `[values]` (i
 what earlier steps captured) and fails the step, naming both, when they differ or the field
 is missing. It is a comparison, not a branch: the step model still cannot "read, then
 decide", for the reason given below. It is refused on a vql step, which has no response body
-to compare.
+to compare. The value `<absent>` asserts the opposite — the field must not be there (T43): a
+removal is proved by what is gone, `"0" = "<absent>"` on a list the step emptied.
 
 **Хвост маркетплейса не идемпотентен, и это принятое свойство, а не пробел.** Шаг тега
 исполняет lookup и create безусловно, у шага категории lookup-вызова нет вовсе, а модель
