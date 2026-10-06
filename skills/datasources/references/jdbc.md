@@ -12,10 +12,11 @@ are yours again once it answers.
 
 ## CREATE DATASOURCE JDBC
 
-The clause order is fixed. Everything below is optional except `DRIVERCLASSNAME` and
-`DATABASEURI`; the parser names the token where it stopped, not the clause that is out of
-place, so when it complains about a clause that is obviously fine, look at what precedes
-it.
+The clause order is fixed. Everything below is optional except `DRIVERCLASSNAME`,
+`DATABASEURI` and `USERNAME` — the documentation makes the credentials optional, but the 9.5.1
+parser refused the statement without `USERNAME` (measured; without `USERPASSWORD` alone it was
+accepted). The parser names the token where it stopped, not the clause that is out of place,
+so when it complains about a clause that is obviously fine, look at what precedes it.
 
 ```sql
 CREATE [ OR REPLACE ] DATASOURCE JDBC <name> [ EMBEDDED_MPP ]
