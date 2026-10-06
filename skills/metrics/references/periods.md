@@ -231,7 +231,8 @@ CREATE OR REPLACE VIEW store_returns_running
   over the selection, the whole query one `SQLSentence` — but order it by a number or a date: by a
   text label (`FORMATDATE('yyyy-MM', …)`) SQL Server refuses it, `ORDER BY list of RANGE window
   frame …`, unless the frame is `ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW` — *verified:
-  9.5.1 (live, 2026-10-06)*, SQL Server. Over files: `Function sum is not executable`.
+  9.5.1 (live, 2026-10-06)*, SQL Server. Over files, on a server not set up to move the data to an
+  MPP or the cache, it was `Function sum is not executable`.
 - A month with no returns has no row, so the running total of a chart skips it; when the human
   wants every month, take the months from the calendar view and `LEFT OUTER JOIN` the totals.
 
