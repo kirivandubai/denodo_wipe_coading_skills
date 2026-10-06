@@ -5,13 +5,15 @@ description: Use when the views of an existing Denodo 9.5 database have to be un
 
 # Make views understandable: descriptions, keys, associations, visibility
 
-AI consumers of Denodo build their prompts from the metadata of a view, not from its rows.
-The Denodo MCP Server, Assisted Query and the AI SDK all read the view's description, each
-field's description, type, primary-key and nullable flags, the names and descriptions of its
-tags, and its direct associations — joins are built only from associations. The MCP Server
-also shows a view at all only when it carries the tag it is configured with. A view with a
-cryptic name and no description is answered with a guess; a wrong description or a primary
-key that is not unique is answered with confidence.
+AI consumers of Denodo build their prompts from the metadata of a view and a few of its
+values (the MCP Server always; Assisted Query and the AI SDK when sample data is on), not
+from reading the view. The Denodo MCP Server, Assisted Query and the AI SDK all read the
+view's description, each field's description, type, primary-key and nullable flags, the
+names of its tags (Assisted Query and the Denodo Assistant also their descriptions), and its
+direct associations, the only joins they are told about. The MCP Server also shows a view at
+all only when it carries the tag it is configured with. A view with a cryptic name and no
+description is answered with a guess; a wrong description or a primary key that is not
+unique is answered with confidence.
 
 **This skill audits a database and fills that metadata in:** view, field, association and
 tag descriptions, primary keys, the associations that are missing, and the MCP visibility
@@ -24,8 +26,9 @@ working loop and the safety rule are `/denodo:vql`.
 profile it (section 2), write the texts (section 3), put them in its `CREATE OR REPLACE VIEW`
 (section 5), apply and verify — no approval step for the texts, the view is yours. The MCP tag
 goes in too only when the human asked for the view to be visible to agents: the tag publishes
-its rows to every agent on the server (MCP visibility, below). What the data cannot settle
-stays out of the text and goes to the human as a question.
+the view (its sample values and its rows) to every agent whose Denodo user may read it (MCP
+visibility, below). What the data cannot settle stays out of the text and goes to the human
+as a question.
 
 ## The rule: from the data, approved before it is written
 
@@ -52,7 +55,7 @@ stays out of the text and goes to the human as a question.
 | "The request was exactly to describe these views" | They asked for descriptions. The yes is to the texts, after they read them. |
 | "A wrong description misleads the AI, so fixing it cannot wait" | Show the wrong one with the evidence first; the owner may know why it says what it says. |
 | "The wrong key tells the AI the view has one row per customer" | True — and the fix is a proposal with the counts, not an `ALTER` nobody reviewed. |
-| "The view is not in the MCP tag yet, so tagging it is harmless" | The tag publishes the view's rows to every agent on that server. Which views get it is the owner's decision, view by view. |
+| "The view is not in the MCP tag yet, so tagging it is harmless" | The tag publishes the view (its sample values and its rows) to every agent whose Denodo user may read it. Which views get it is the owner's decision, view by view. |
 
 ## 1. Audit — read-only
 
@@ -105,12 +108,14 @@ will read:
 - **A view with no key to give it** — an aggregate grouped by a label two keys share, or
   with a `NULL` group — gets none; its description says what one row is instead.
 - **Missing associations**: a column that carries another view's key (same values, 0
-  orphans — the check is in `/denodo:views`) with no association between the two. The AI
-  cannot join them. Creating one is the association template in `/denodo:views`; between
-  views you did not create it goes into the proposal like the texts — it becomes a
-  dependant of both views, and their owner's `DROP VIEW` then needs `CASCADE`.
-- **Tags**: `DESC TAG <tag>` gives its name and description only, no assignments — the AI
-  reads that description; a tag without one tells it nothing.
+  orphans — the check is in `/denodo:views`) with no association between the two. Assisted
+  Query cannot join them (it is sent only the view's direct associations); an MCP agent is not
+  told they join and has to guess the condition from column names. Creating one is the
+  association template in `/denodo:views`; between views you did not create it goes into
+  the proposal like the texts — it becomes a dependant of both views, and their owner's
+  `DROP VIEW` then needs `CASCADE`.
+- **Tags**: `DESC TAG <tag>` gives its name and description only, no assignments — Assisted
+  Query reads that description; a tag without one tells it nothing.
 - `column_remarks` is the description a consumer sees, **inherited ones included**: a field
   that passes a column through unchanged shows the description of the column below. `DESC
   VQL` shows only the view's own. Base views: their field descriptions reach every view
@@ -151,7 +156,7 @@ What to read out of it, and where it goes:
 |---|---|---|
 | `distinct_keys` = `row_count`, no `NULL` key | the grain | "One row per household (`household_sk`)" |
 | a value far outside the rest (`-1`, `0`, `9999`, `'Unknown'`) | a sentinel | what it stands for — if the data or the human says; otherwise a question |
-| `…_padded` above 0 | padded text — counted with `LIKE '% '`: `LEN` pushed down to SQL Server ignores trailing spaces (*verified: 9.5.1 (live, 2026-10-06)*) | "compare with `TRIM(x) = '…'`" — an equality on the raw value finds nothing |
+| `…_padded` above 0 | padded text — counted with `LIKE '% '`: `LEN` pushed down to SQL Server ignores trailing spaces (*verified: 9.5.1 (live, 2026-10-06)*) | "compare with `TRIM(x) = '…'`" — Denodo's own equality misses padded values, a delegated one may not; only the `TRIM` form holds everywhere |
 | a short value list | codes | each code with its meaning, when known |
 | `NULL`s in a column | missing values | what a `NULL` stands for, when known |
 | an aggregate grouped by a label | one row per label, not per key | two keys with the same text are one row — compare the label's distinct count with the key's |
@@ -159,9 +164,9 @@ What to read out of it, and where it goes:
 
 Each query reads the whole view. Over a view with statistics gathered, `SELECT * FROM
 GET_VIEW_STATISTICS() WHERE input_database_name = '<db>' AND input_name = '<view>'` gives
-rows, distinct values, `NULL`s and ranges without reading it (0 rows = not gathered) — one view
-per call: without `input_name` it answers `The following fields are obligatory: input_name` —
-*verified: 9.5.1 (live, 2026-10-06)*.
+rows, distinct values, `NULL`s and ranges without reading it (0 rows: statistics not gathered,
+a misspelt view, or no `EXECUTE` on it) — one view per call: without `input_name` it answers
+`The following fields are obligatory: input_name` — *verified: 9.5.1 (live, 2026-10-06)*.
 
 ## 3. The texts
 
@@ -276,11 +281,16 @@ ALTER TAG mcp
 
 The MCP Server shows only views tagged with one of the tags in `mcp.visibility.tags` of its
 `config/application.properties`; the file it ships with sets `mcp`. When the property is not
-set, it shows every view its user may read, in every database, base views included. That
-file is on the MCP Server's host, not in Denodo: ask the human which tag, or read their copy
-of it. "We run the shipped configuration" settles it as `mcp`, and the tag carried by the
-views the agent does see confirms it. Otherwise do not guess a tag name, and do not create
-one to make a view appear.
+set, it shows every view the client's Denodo user may read, in every database, base views
+included. That file is on the MCP Server's host, not in Denodo: ask the human which tag, or
+read their copy of it. "We run the shipped configuration" settles it as `mcp`, and the tag
+carried by the views the agent does see confirms it. Otherwise do not guess a tag name, and
+do not create one to make a view appear.
+
+VDP tags need the Enterprise Plus subscription bundle (`env check --env dev` →
+`features.enterprise_plus`). On a server without it `ALTER TAG` fails and no view can be made
+visible by tag: say so, leave out the tag lines of the audit and of section 5, and treat which
+views the MCP Server shows as the administrator's configuration (`mcp.visibility.tags`).
 
 In order:
 
@@ -288,25 +298,28 @@ In order:
    `SELECT view_name, column_name FROM GET_VIEW_TAGS() WHERE input_database_name = '<db>' AND input_view_name = '<view>' AND tag_name = '<tag>'`
    — a row with an empty `column_name` (*verified: 9.5.1 (live, 2026-10-05)*). A tag on a column leaves the view hidden
    (documentation).
-2. **The agent's user may read it.** The MCP Server runs everything with the Denodo
-   credentials its client sends, so the user is the agent's own account (ask the human
+2. **The agent's user may read it.** The MCP Server works as the Denodo user its client
+   authenticates with (Basic or OAuth), so the user is the agent's own account (ask the human
    which). `SELECT dbconnect, elementname, elementexecute FROM GET_CATALOG_EFFECTIVE_PERMISSIONS()
    WHERE input_user_name = '<user>' AND input_database_name = '<db>'` — the database row
-   needs `dbconnect = true`, the view's row `elementexecute = true` (*verified: 9.5.1 (live, 2026-10-05)*). A user that exists only
-   in the identity provider is not returned (documentation). Granting is a change of who
-   reads what: `/denodo:security`, after the human's yes.
+   needs `dbconnect = true`, the view's row `elementexecute = true` (*verified: 9.5.1 (live, 2026-10-05)*).
+   For a user that exists only in the identity provider it fails with an error that the user
+   does not exist, unless you run it as that user (documentation). Granting is a change of
+   who reads what: `/denodo:security`, after the human's yes.
 3. **The server has picked the change up**: it refreshes its schema while
-   `mcp.schema-refresh.enabled` is on; otherwise it needs a restart. A new client session
-   lists views again.
+   `mcp.schema-refresh.enabled` is on (the default; not immediate), and a new client session
+   lists views again. Off, the server does not detect the change; the manual names no way to
+   force it, so ask the administrator.
 4. The view's file does not carry the tag → the next apply of that file hides the view
    again (section 5).
 
-Adding the tag is a write to a shared object that publishes the view's rows to every agent on
-that server: the human names the views. "Make `<view>` visible to the agent" names one — that
-is the yes for the tag on that view, and only for it; its missing description, and every
-other view, go into the proposal. The statement is `ALTER TAG … ADD_TO`, plus `TAGS ( <tag> )`
-in the view's file if it has one — never a re-declared view. The tag is server-wide, but
-`ADD_TO` one view changes nothing else about it: its description and other assignments stay.
+Adding the tag is a write to a shared object that publishes the view (its sample values and
+its rows) to every agent whose Denodo user may read it: the human names the views. "Make
+`<view>` visible to the agent" names one — that is the yes for the tag on that view, and
+only for it; its missing description, and every other view, go into the proposal. The
+statement is `ALTER TAG … ADD_TO`, plus `TAGS ( <tag> )` in the view's file if it has one —
+never a re-declared view. The tag is server-wide, but `ADD_TO` one view changes nothing else
+about it: its description and other assignments stay.
 With the shipped configuration (`mcp.tools.view-tag=mcp`, deprecated) the same tag also makes
 the MCP Server create a query tool of its own for the view.
 
