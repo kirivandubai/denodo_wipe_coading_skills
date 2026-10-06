@@ -223,8 +223,8 @@ RETURNING order_id;
 - **Times:** write the value the column means. For a column kept in UTC or any fixed zone,
   convert it yourself and write a `TIMESTAMP '…'` literal: it is stored as written. A
   `TIMESTAMP WITH TIME ZONE '…'`, `NOW()` or `CURRENT_TIMESTAMP` is converted to a zone of the
-  server — its process's on the server measured (UTC), not the zone your session shows and a
-  `CAST` in a query uses — so it fits the column only on a server running in the column's
+  server — its process's on the server measured (UTC), not the zone your session shows, which a
+  `CAST` in a query also uses — so it fits the column only on a server running in the column's
   zone; read one written row back before relying on it. `LOCALTIMESTAMP` is stored as your
   session's local time.
 - Several rows without their keys back: one `VALUES (…), (…), (…)` list; `affected` counts them.

@@ -117,7 +117,7 @@ reading the row back.
 | `TIMESTAMP '2026-01-15 10:00:00'`, `'2026-01-15 10:00:00'` into `datetime2` | `10:00:00` |
 | `DATE '2026-01-15'` into `datetime2` | `00:00:00` |
 | `TIMESTAMP WITH TIME ZONE '2026-01-15 10:00:00 +02:00'` | `08:00:00` — converted to the Denodo server process's zone (UTC on the server measured) |
-| `NOW()`, `CURRENT_TIMESTAMP`, `CAST(NOW() AS timestamp)` | the time in the Denodo server process's zone (UTC on the server measured), while the session showed the same moment in its own zone (`-07:00` there) |
+| `NOW()`, `CURRENT_TIMESTAMP`, `CAST(NOW() AS timestamp)` | the time in the Denodo server process's zone (UTC on the server measured) as a written value, while the session showed the same moment in its own zone (`-07:00` there); the same cast in a `SELECT` shows the session's zone |
 | `LOCALTIMESTAMP` | the session's local time |
 
 The source's refusal is cut by the server at a fixed length, and `TRACE` does not bring the
