@@ -41,8 +41,10 @@ class PlanContext:
 # What "the human's yes" means, said where the agent decides (T42): an outcome scenario's agent read
 # "a DROP waits for the human's yes" in a plan and took the request that asked for the DROP as it.
 YES_NOTE = ("needs_yes: show these statements to the human and wait for their yes to them, in this "
-            "conversation. The request that asked for the change is not that yes, however clear; when nobody "
-            "can answer, the file and your message are the result, not the statement run (/denodo:vql).")
+            "conversation. The request that asked for the change is not that yes, however clear — except where "
+            "/denodo:vql's table makes the request itself the yes (naming a view to be made visible to an agent "
+            "is the yes for its tag) or where a statement's conditions name an exception that holds. When nobody "
+            "can answer, the file and your message are the result, not the statement run.")
 
 
 def _head(text: str) -> str:

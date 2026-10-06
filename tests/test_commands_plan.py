@@ -179,6 +179,10 @@ class PlanCommandTest(LedgerCase):
         # What the yes is, where the agent decides (T42: an agent read "waits for the human's yes" and
         # took the request that asked for the DROP as that yes).
         self.assertIn("not that yes", doc["yes"])
+        # ... without contradicting the table's own exceptions (review of T42): naming a view to be
+        # made visible to an agent is the yes for its tag; a condition can name an exception.
+        self.assertIn("visible to an agent", doc["yes"])
+        self.assertIn("conditions", doc["yes"])
 
     def test_a_plan_that_waits_for_nothing_says_nothing_about_the_yes(self):
         doc, _ = plan_input(profile(), ["CREATE OR REPLACE VIEW fresh AS SELECT 1 AS a FROM Dual()"],

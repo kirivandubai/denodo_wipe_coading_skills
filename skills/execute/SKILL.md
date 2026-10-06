@@ -181,9 +181,10 @@ human's yes and the flag.
 every other profile it runs whatever it is given. Whether a flagged statement may run is
 `/denodo:vql`'s safety table, on every profile — the few that are yours are named there, and a
 `DROP` is never one of them, whatever it hits. The yes answers the statements after you have
-shown them; the request that asked for them is not it, however plainly it names them. When the
-human cannot answer — away, a deadline — the statements go into a file and into your message,
-not into `vql run`.
+shown them; the request that asked for them is not it, however plainly it names them — unless
+that table makes the request itself the yes, as it does for the tag of a view named to be made
+visible to an agent. When the human cannot answer — away, a deadline — the statements go into a
+file and into your message, not into `vql run`.
 
 `DROP`, `ALTER`, `DELETE`, `TRUNCATE`; `INSERT` and `UPDATE` (a write through a view lands in
 the source behind it — `INSERT … ON DUPLICATE KEY UPDATE` included, VQL has no `MERGE`); the
