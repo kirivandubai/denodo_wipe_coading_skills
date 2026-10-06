@@ -142,8 +142,8 @@ watermark, the rows it cannot see and the checks are `references/incremental.md`
 
 - Whether a name is taken: `GET_JDBC_DATASOURCE_TABLES()` answers `catalog_name`,
   `schema_name`, `table_name`, `type` (`TABLE`, `VIEW`); its `table_name` filter is exact —
-  `'HOUSEHOLD_INCOME'` does not find `household_income` — while SQL Server names are not, so compare `UPPER` of both
-  (*measured*).
+  `'HOUSEHOLD_INCOME'` does not find `household_income` — while SQL Server under its default
+  case-insensitive collation is not, so compare `UPPER` of both (*measured*).
 - A table's readers: the base views whose wrapper points at it. `GET_SOURCE_TABLE()` answers
   `source_catalog_name`, `source_schema_name`, `source_table_name` (and `sqlsentence` for a base
   view over a query) for one JDBC base view (`input_database_name`, `input_view_name`, both

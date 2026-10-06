@@ -146,10 +146,11 @@ SELECT COUNT(*) AS will_load
 FROM iv_household_income;
 ```
 
-- **No row means the name is free.** A row means a table of that name exists — someone's,
-  whatever its name suggests: stop and ask (the rule above). `UPPER` on both sides because
-  Denodo compares the name exactly and SQL Server does not: `HOUSEHOLD_INCOME` is the same
-  table there. The answer's columns are `catalog_name`, `schema_name`, `table_name`, `type`.
+- **No row means the name is free.** A row means a table of that name exists — someone's, whatever
+  its name suggests: stop and ask (the rule above). `UPPER` on both sides because Denodo compares
+  the name exactly and SQL Server under its default case-insensitive collation does not:
+  `HOUSEHOLD_INCOME` is the same table there. The answer's columns are `catalog_name`,
+  `schema_name`, `table_name`, `type`.
 - Run these reads **before** the create, as reads: inside a file a `SELECT` that finds a row
   stops nothing — what stops the create is `replace_remote_table_if_exist = false`.
 - **Who reads it:** the base views over it. `SELECT database_name, name FROM GET_VIEWS() WHERE
@@ -360,10 +361,9 @@ WHERE input_query = 'SELECT buy_potential, COUNT(*) AS households FROM household
   whose `SQLSentence` joins a `t_bv_income_band_<id>` table: that is the copy. It is dropped
   when the query ends.
 - **Every query of the view creates and drops that table**, in the schema the data source's
-  data-load configuration names (`DATA_LOAD_CONFIGURATION … TARGET_SCHEMA` in its `DESC VQL`),
-  so its account needs `CREATE TABLE` there, and every query pays for moving the small side: a
-  side of millions of rows is not small. Answers stay current — nothing is stored between
-  queries.
+  data-load configuration names (`DATA_LOAD_CONFIGURATION … TARGET_SCHEMA` in its `DESC VQL`), so
+  its account needs `CREATE TABLE` there, and every query pays for moving the small side: a side of
+  millions of rows is not small. Answers stay current — nothing is stored between queries.
 - The plan goes into the view's own `CONTEXT`, which `CREATE OR REPLACE VIEW` keeps; a query can
   set or switch one off for itself: `CONTEXT ( DATAMOVEMENTPLAN = bv_income_band : OFF )`.
 

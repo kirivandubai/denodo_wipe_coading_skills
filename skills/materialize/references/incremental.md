@@ -140,6 +140,6 @@ the rows written (measured): these two reads are how the morning after is checke
 - Schedule it after the source's own load, and tell the human that a failed run says nothing by
   itself: mail handlers are the Scheduler administration tool's.
 
-A summary's incremental refresh (`CUSTOM LOAD QUERY` with `LAST_DATE_REFRESH`) is
+A summary's incremental load through a `CUSTOM LOAD QUERY` is
 `references/summaries.md`; an incremental cache load (`'@LAST_REFRESH_DATE'`, `'matching_pk'`)
 stays in Design Studio (`/denodo:cache`).
