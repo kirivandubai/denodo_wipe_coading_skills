@@ -139,10 +139,11 @@ CREATE [ OR REPLACE ] WRAPPER JDBC <name>
 ## A wrapper by hand, when the database cannot be reached
 
 When the server cannot reach the database (a different network zone, credentials not issued
-yet), introspection is not available: write the wrapper and the base view by hand, on the data
-source of the `SKILL.md` template (`ds_orders_db`), from the schema the human gives you. The
-DDL still parses and the objects still get created; only `SELECT` fails, on the connection. Java
-types in the wrapper, VQL types in the base view, and a subset of the columns is fine (above):
+yet), introspection is not available: write the wrapper and the base view by hand, on the
+data source of the `SKILL.md` template (`ds_orders_db`), from the schema the human gives you.
+The DDL still parses and the objects still get created; only `SELECT` fails, on the
+connection. Java types in the wrapper, VQL types in the base view, and a subset of the columns
+is fine (above):
 
 ```sql
 -- verified: 9.5.1 (live, 2026-10-07) — created against an unreachable host

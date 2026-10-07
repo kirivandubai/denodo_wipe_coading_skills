@@ -211,8 +211,8 @@ CREATE OR REPLACE TABLE bv_crm_customers I18N us_pst (
   view.** A base view with fewer columns creates and reads fine, but an equality `WHERE` on
   it is handed to the DF wrapper **by position** and filters another column of the file,
   without an error; the `(any) OPT ANY` block `DESC VQL` prints does not prevent it. If the
-  human wants the narrow base view anyway, give it `CONSTRAINTS ( ADD <column> NOS ZERO () … )`
-  for every one of its columns: Denodo then filters itself, and the answer is right.
+  human wants it narrow anyway, give it `CONSTRAINTS ( ADD <column> NOS ZERO () … )` for
+  every one of its columns: Denodo then filters itself, and the answer is right.
   *verified: 9.5.1 (live, 2026-09-30)*
 - The `CONSTRAINTS ( … )` block that the server prints in `DESC VQL` is optional for a
   delimited file whose base view mirrors the wrapper — the DF wrapper does filter what the
@@ -490,9 +490,9 @@ They can also pipe it from a password manager (`op read op://vault/db/password |
 way the answer carries one field, `encrypted`, and the project file then reads
 `USERPASSWORD = '<that string>' ENCRYPTED`.
 
-The server decrypts and uses such a ciphertext: a wrong password encrypts just as happily, and
-the source answers later with its database's own authentication error, not a format error — a
-source on a Virtual DataPort server, `The username or password is incorrect`. *verified: 9.5.1 (live, 2026-09-12)*
+A wrong password encrypts just as happily, and the source answers later with its database's
+own authentication error, not a format error — a source on a Virtual DataPort server,
+`The username or password is incorrect`. *verified: 9.5.1 (live, 2026-09-12)*
 
 **Never assemble `ENCRYPT_PASSWORD '<password>'` yourself** — neither with `-e` nor through
 a file written by a heredoc or `printf`: both put the plaintext into a Bash argument, and Bash
@@ -588,8 +588,8 @@ the data back, every time:
 prefix, the output ones do not.
 
 A detail of the three sources no template covers: read an existing object's `vql desc …
---type "<type>" --vql` — for a file, its base view (**When you cannot see the file**). Another
-kind of source stays Design Studio's, whatever a donor shows.
+--type "<type>" --vql` — for a file, its base view (**When you cannot see the file**).
+Another kind of source stays Design Studio's, whatever a donor shows.
 
 ## Common mistakes
 
