@@ -88,8 +88,7 @@ ALTER DATABASE <name> [ '<description>' ]
     [ <grant> ]*
 ```
 
-`ALTER` is a change to an existing object: the human confirms it first (`/denodo:vql`),
-and on a production profile the tool refuses it without `--allow-destructive`. For a
+`ALTER`: `vql plan` says whether it waits for the human's yes (`/denodo:vql`). For a
 database that only this project's file has configured, re-applying the file's `CREATE OR
 REPLACE DATABASE` is enough. For any other database, change only the clause in question with
 `ALTER DATABASE`, after the human's yes: `CREATE OR REPLACE` is not documented to keep the

@@ -14,9 +14,6 @@ one the human means. Data sources, wrappers and base views live in `/denodo:data
 derived and interface views in `/denodo:views`. The working loop, the naming defaults and the
 safety rule are in `/denodo:vql`; apply files with `/denodo:execute`.
 
-Build order: **database → folders (parent before child) → objects → tags**. A tag is
-attached to views that must already exist.
-
 ## Templates
 
 ### Database
@@ -30,9 +27,8 @@ The description literal comes **before** `CHARSET`; the other way round is
 `Syntax error: Exception parsing query near '''`. Everything after the description is
 optional. `CHARSET RESTRICTED`: Design Studio takes names of `a`-`z`, digits and `_` only
 (capitals become lowercase); `UNICODE`: any character — capitals, dashes, spaces, non-ASCII;
-`DEFAULT`: the server setting. Only Design Studio is affected. No `AUTHENTICATION` clause
-means local authentication, the same as every database created from Design Studio without
-LDAP. `CREATE OR REPLACE DATABASE` keeps the objects inside.
+`DEFAULT`: the server setting. Only Design Studio is affected. `CREATE OR REPLACE DATABASE`
+keeps the objects inside.
 
 ### Folders
 
@@ -61,11 +57,10 @@ A user who is not an administrator needs the role `manage_tags` to create, chang
 tag, and `assign_tags` plus `METADATA` on the view — or admin rights on its database — to
 assign one. Either refusal is the administrator's to fix: stop and report it.
 
-One tag per statement; each carries its own targets. Read the targets first
-(`vql desc --env dev --database <db> <view>`): a target that `DESC` did not show is not
-listed — ask the human about it — because a misspelled or missing target is accepted
-silently (see Verify). Check the tag too: `vql desc --env dev <tag> --type tag` fails
-with `Error loading tag` when it does not exist yet. If it does exist, `CREATE OR REPLACE`
+Read the targets first (`vql desc --env dev --database <db> <view>`): a target that `DESC`
+did not show is not listed — ask the human about it — because a misspelled or missing target
+is accepted silently (see Verify). Check the tag too: `vql desc --env dev <tag> --type tag`
+fails with `Error loading tag` when it does not exist yet. If it does exist, `CREATE OR REPLACE`
 rewrites its description for every database that uses it — that is a change to an
 existing object, show it and get a yes first. The targets get the same check, whatever the tag:
 putting a tag — a new one included — on a view or column you did not create in this session
@@ -90,10 +85,9 @@ CREATE OR REPLACE TAG finance_sensitive
   `COLUMNS ()` is `Exception parsing query near ''`.
 - Views and columns are **database-qualified**: `db.view` and `db.view.column`. A bare
   `view.column` is a syntax error near `)`.
-- One statement does creation and assignment, and it is idempotent: re-applying keeps
-  the assignments already there and adds the listed ones. Prefer it over
-  `CREATE TAG` + `ALTER TAG`: `ALTER` is a change to an existing object and is marked
-  destructive by the tool.
+- One statement creates the tag and assigns it, and re-applying it keeps the assignments
+  already there. On a tag that already exists, `ALTER TAG … ADD_TO … REMOVE_FROM ( VIEWS ()
+  COLUMNS () )` adds without rewriting its description.
 - Tags are **server-wide**, not per database. `pii` created while connected to one
   database is the same `pii` everywhere; `LIST TAGS` shows all of them. The assignments
   are what carry the database name, so a tag file needs no `CONNECT DATABASE`.
@@ -165,7 +159,7 @@ SELECT e.name AS view_name, d.column_name, d.dependency_name, d.dependency_colum
 |---|---|
 | Database name, description | the human; name per conventions (`sales_analytics`, no environment suffix) |
 | `CHARSET` | `DEFAULT` unless the human says names need anything beyond lowercase letters, digits and `_` → `UNICODE` |
-| Authentication | omit: no clause means the server's global authentication settings, which is what Design Studio's "Global authentication settings" does — if the server is on LDAP globally, the database follows. A per-database `AUTHENTICATION LDAP` needs an LDAP data source and six values (two base DNs, two attribute names, two search patterns — `references/database.md`); if the human asks for that, ask for those values, do not invent them. "Same login as everyone else" means omit: `GET_DATABASES()` shows what the other databases do |
+| Authentication | omit: no clause means the server's global authentication settings, which is what Design Studio's "Global authentication settings" does — if the server is on LDAP globally, the database follows. Per-database LDAP: `references/database.md` — ask for every value. "Same login as everyone else" means omit: `GET_DATABASES()` shows what the other databases do |
 | Folder tree | `.denodo/conventions.md` if the project has one, else the layer folders from `/denodo:vql` |
 | Folder for a new tag's targets | not needed: tags have no folder |
 | Tag name, description | the human; name is the concept (`pii`, `gdpr`), lowercase unless quoted |
@@ -192,7 +186,7 @@ Success of the statement is not success of the object. After applying, read back
 | Object | Read-back |
 |---|---|
 | Database | `vql desc --env dev <db> --type database` → `name, description`; settings: `SELECT db_name, description, charset, authentication FROM GET_DATABASES() WHERE db_name = '<db>'` |
-| Folder tree | `SELECT name, type, subtype, folder, description FROM GET_ELEMENTS() WHERE input_database_name = '<db>' AND type <> 'type'` — `folder` is the parent path, in lowercase; the full path is `'/' + name` at the top level (`folder = '/'`) and `folder + '/' + name` below it, so compare paths with `lower()`. Types: `folder`, `datasource`, `wrapper`, `view` (subtype `base`, `derived`, `interface`, `materialized`, `metric`), `association`, `storedProcedure`, `webService`; rows with type `type` are registers and arrays — your own `CREATE TYPE`s, and the `_register_…` and `_array_register_…` types a view with `NEST` or `REGISTER` leaves behind (`/denodo:views`) |
+| Folder tree | `SELECT name, type, subtype, folder, description FROM GET_ELEMENTS() WHERE input_database_name = '<db>' AND type <> 'type'` — `folder` is the parent path, in lowercase; the full path is `'/' + name` at the top level (`folder = '/'`) and `folder + '/' + name` below it, so compare paths with `lower()`. The `type` values: `references/folders.md` |
 | What is inside a folder before a drop | the same query **without a type filter**: `WHERE input_database_name = '<db>' AND (lower(folder) = lower('/<path>') OR lower(folder) LIKE lower('/<path>/%'))` — `folder` comes back in lowercase, so `folder LIKE '/Sales Data%'` misses a folder named with capitals; a type filter hides exactly the object you did not think of |
 | One folder | `vql desc --env dev --database <db> "'/03 - business entities'" --type folder` → `name, path, description` |
 | Tag | `vql desc --env dev <tag> --type tag` → `name='pii' description=…` (description only) |
