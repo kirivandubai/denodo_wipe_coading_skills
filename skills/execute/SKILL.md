@@ -49,8 +49,8 @@ work**: the tool reads every row the query returns, so the server computes all o
 only a `LIMIT` in the query bounds that, which matters when a column calls the server's LLM
 (`/denodo:ai`).
 
-**`-e` does not repeat.** Two `-e` flags in one command run only the last one, silently —
-`total: 1`. Several statements go into a file, or into one `-e` separated by `;`.
+**`-e` repeats.** Every `-e` runs, in order — in `vql plan` too — and one `-e` may hold several
+statements separated by `;`.
 
 ## Reading the result
 
