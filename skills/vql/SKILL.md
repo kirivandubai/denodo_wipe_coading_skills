@@ -37,11 +37,13 @@ Every `CREATE`, `ALTER` and `DROP` goes through a file, including the first expl
 
 **Never create a probe object to test a hypothesis.** A `probe_a` view is an object: it
 stays in the catalog, it is not in any file, and removing it needs the human's confirmation
-like any other drop. Test the real statement in the real file — re-applying it is safe.
+like any other drop. Test the real statement in the real file — a view re-applies safely.
 
 **One file per change, applied whole.** Do not keep a second "cleaned" copy next to it.
-Templates are `CREATE OR REPLACE`, so when a statement fails, fix that statement and
-re-apply the same file from the top.
+When a statement fails, fix it in the file and re-apply the file from the top. The statements
+before it stay applied: a `CREATE OR REPLACE` of a view re-applies safely, but a write, a cache
+or AI load, or `OR REPLACE` over a table that holds rows runs again (`/denodo:dml`,
+`/denodo:materialize`).
 
 **A request for a set** — every table of a schema, every column that holds an email, every
 view of a database — runs the same loop over a list, with a plan file: **Many objects at
