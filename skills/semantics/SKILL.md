@@ -1,6 +1,6 @@
 ---
 name: semantics
-description: Use when the views of an existing Denodo 9.5 database have to be understood by people and by AI consumers — the Denodo MCP Server, Assisted Query in the Data Marketplace, the AI SDK. Auditing a database for views and fields without descriptions, primary keys that are missing or not unique, missing associations and the VDP tag the MCP Server shows views by; writing view, field, association and tag descriptions from the data (ALTER VIEW … DESCRIPTION, ALTER COLUMN … ADD (DESCRIPTION …), ADD PRIMARY KEY). Also for "describe / document these views", "prepare this database for AI, MCP or Assisted Query", "why does the agent not see this view through MCP", a description that says the wrong thing. Not for building or changing what a view computes — /denodo:views; not for marketplace-only metadata (logical names, property groups, marketplace tags) — /denodo:marketplace.
+description: Use when the views of an existing Denodo 9.5 database have to be understood by people and by AI consumers — the Denodo MCP Server, Assisted Query in the Data Marketplace, the AI SDK. Auditing a database for views and fields without descriptions, primary keys that are missing or not unique, missing associations and the VDP tag the MCP Server shows views by; writing view, field, association and tag descriptions from the data, and primary keys. Also for "describe / document these views", "prepare this database for AI, MCP or Assisted Query", "why does the agent not see this view through MCP", a description that says the wrong thing. Not for building or changing what a view computes — /denodo:views; not for marketplace-only metadata (logical names, property groups, marketplace tags) — /denodo:marketplace.
 ---
 
 # Make views understandable: descriptions, keys, associations, visibility
@@ -25,10 +25,8 @@ Applying files is `/denodo:execute`; the working loop and the safety rule are `/
 **A view you are building now** (`/denodo:views`) gets the same metadata in its own file:
 profile it (section 2), write the texts (section 3), put them in its `CREATE OR REPLACE VIEW`
 (section 5), apply and verify — no approval step for the texts, the view is yours. The MCP tag
-goes in too only when the human asked for the view to be visible to agents: the tag publishes
-the view (its sample values and its rows) to every agent whose Denodo user may read it (MCP
-visibility, below). What the data cannot settle stays out of the text and goes to the human
-as a question.
+goes in too only when the human asked for the view to be visible to agents (MCP visibility,
+below). What the data cannot settle stays out of the text and goes to the human as a question.
 
 ## The rule: from the data, approved before it is written
 
@@ -40,10 +38,8 @@ as a question.
    in a description.
 2. **Nothing is written to a view you did not create in this session until the human says
    yes to the texts** — whatever the statement: `ALTER VIEW`, `ALTER TAG`, or the view
-   re-declared with `CREATE OR REPLACE VIEW`. Re-declaring a view to change its metadata is
-   still writing to it, and it rewrites its stored definition besides. The texts are what
-   every consumer will believe; the human who owns the views approves them. Whose view it
-   is, is the `own` of `vql plan` on the file (`/denodo:vql`).
+   re-declared with `CREATE OR REPLACE VIEW`. Whose view it is, is the `own` of `vql plan` on
+   the file (`/denodo:vql`).
 3. **When you cannot ask** — the human is away, the go-live is close — the answer is the
    audit, the proposal and the statement file, not the statements applied. Say which file
    to apply and what applying it changes. The one exception is a view the human named to be
@@ -53,8 +49,7 @@ as a question.
 |---|---|
 | "`CREATE OR REPLACE` is mine to do; only `ALTER` needs a yes" | Re-declaring someone's view to change its description is a write to their view. The rule is about the object, not the keyword. |
 | "The request was exactly to describe these views" | They asked for descriptions. The yes is to the texts, after they read them. |
-| "A wrong description misleads the AI, so fixing it cannot wait" | Show the wrong one with the evidence first; the owner may know why it says what it says. |
-| "The wrong key tells the AI the view has one row per customer" | True — and the fix is a proposal with the counts, not an `ALTER` nobody reviewed. |
+| "A wrong description or key misleads the AI, so fixing it cannot wait" | Show it with the evidence and the counts first — a proposal, not an `ALTER` nobody reviewed; the owner may know why it says what it says. |
 | "The view is not in the MCP tag yet, so tagging it is harmless" | The tag publishes the view (its sample values and its rows) to every agent whose Denodo user may read it. Which views get it is the owner's decision, view by view. |
 
 ## 1. Audit — read-only
@@ -207,19 +202,15 @@ The whole database is still audited and every view profiled — batches cut how 
 reads at once, not how much of the data is read (`/denodo:vql`, **Many objects at once**):
 
 - The audit's field query returns a row per field: run it with `--max-rows 5000` and check
-  `truncated`. The profile is a file of reads, one all-columns statement per view, run with
-  `--continue-on-error` — one view that fails to read does not stop the others. A view whose
-  columns call the server's LLM is profiled from its cache or not read at all: every row read is
-  a paid request (`/denodo:ai`).
-- A batch is a statement file and its part of the proposal, `semantics/<database>/batch_NN_<group>.vql`:
-  what one sitting reads — count the texts, not the views: field texts are most of the reading
-  — grouped the way the human thinks of them, a folder, a source, a subject. Base views go in
-  the first batches: a field passed through unchanged inherits their text, so one description
-  there covers the views above.
+  `truncated`; the profile is a file of reads, one all-columns statement per view, run with
+  `--continue-on-error`. A view whose columns call the server's LLM is profiled from its cache
+  or not read at all: every row read is a paid request (`/denodo:ai`).
+- A batch is a statement file and its part of the proposal, `semantics/<database>/batch_NN_<group>.vql`,
+  sized by its texts, not its views — field texts are most of the reading. Base views go in
+  the first batches: their field texts are inherited above (section 1).
 - Reads saved into the project keep counts and value lists of codes, not the rows of columns
   that hold people's data: a sample with names and emails in a profile file is that data in git.
-- The plan file lists every view with its batch and status; the proposal's questions stay
-  with the batch they block, so a yes to one batch is not held up by another's question.
+- A question stays with the batch it blocks, so a yes to one batch is not held up by another's.
 - After a batch is applied, the audit query over its views is its check: `view_description =
   'yes'` and `undescribed_fields` down to the fields left to inherit — per view, into the plan.
 
@@ -265,17 +256,9 @@ ALTER TAG mcp
 - Each statement changes that metadata and nothing else: the cache, the views built on it,
   their status and the privileges granted on it stay as they were — *verified: 9.5.1 (live,
   2026-09-30)*. The tool marks each one `destructive: alter`.
-- `ALTER TABLE <base view> ( ALTER COLUMN a ADD ( DESCRIPTION = '…' ) ALTER COLUMN b ADD ( … ) )`
-  takes several fields in one statement, as `ALTER VIEW` does — *verified: 9.5.1 (live, 2026-10-06)*.
-- **`ADD PRIMARY KEY` replaces a declared key** without an error — the old columns lose
-  the flag and their `NOT NULL`. `ALTER VIEW <view> DROP PRIMARY KEY` removes it.
-- `ALTER TAG … ADD_TO` adds to the tag's assignments and keeps the others. The tag must
-  exist (`/denodo:catalog`). `ALTER TABLE <base view> ( ALTER TAGS ( … ) )` replaces the whole
-  set of the view's tags — do not use it to add one.
-- A field description on a view whose field passes a column through replaces the inherited
-  one for that view only; `ALTER COLUMN <field> DROP DESCRIPTION` brings the inherited one
-  back. A field computed by an expression, a cast or an aggregate inherits nothing.
-- An empty text, `DESCRIPTION = ''`, removes a view's description.
+- `ALTER TAG … ADD_TO` keeps the tag's other assignments; the tag must exist
+  (`/denodo:catalog`). Replacing a key, `ALTER TAGS` and inheritance: Silent failures, below;
+  `DROP PRIMARY KEY`, `DROP DESCRIPTION` and the base-view forms: `references/metadata.md`.
 
 ## MCP visibility — "the agent does not see this view"
 
@@ -319,10 +302,7 @@ its rows) to every agent whose Denodo user may read it: the human names the view
 `<view>` visible to the agent" names one — that is the yes for the tag on that view, and
 only for it; its missing description, and every other view, go into the proposal. The
 statement is `ALTER TAG … ADD_TO`, plus `TAGS ( <tag> )` in the view's file if it has one —
-never a re-declared view. The tag is server-wide, but `ADD_TO` one view changes nothing else
-about it: its description and other assignments stay.
-With the shipped configuration (`mcp.tools.view-tag=mcp`, deprecated) the same tag also makes
-the MCP Server create a query tool of its own for the view.
+never a re-declared view.
 
 ## After writing: when each consumer sees it
 
@@ -345,7 +325,7 @@ the MCP Server create a query tool of its own for the view.
 | Primary key | the same query with `column_is_primary_key` | the key you proposed, and only it |
 | The key holds | `SELECT COUNT(*), COUNT(DISTINCT <key>) FROM <view>` | equal |
 | Association descriptions | `SELECT association_name, association_description FROM GET_ASSOCIATIONS() WHERE input_database_name = '<db>' AND input_type = 'views'` | your texts, `valid = true` |
-| MCP tag | `SELECT view_name FROM GET_VIEW_TAGS() WHERE input_database_name = '<db>' AND tag_name = '<tag>' AND column_name IS NULL` | exactly the views the human named — `ADD_TO` a view that does not exist succeeds and records nothing |
+| MCP tag | `SELECT view_name FROM GET_VIEW_TAGS() WHERE input_database_name = '<db>' AND tag_name = '<tag>' AND column_name IS NULL` | exactly the views the human named |
 | The file agrees | `vql desc --env dev --database <db> <view> --vql` against the view's file | the same clauses — or the next apply undoes them |
 
 ## Silent failures
@@ -360,9 +340,6 @@ Each runs without an error — *verified: 9.5.1 (live, 2026-09-30)*.
 | 4. `ALTER TAG … ADD_TO` a misspelt view | `ok`, no assignment | read `GET_VIEW_TAGS()` back |
 | 5. `ALTER TABLE <base view> ( ALTER TAGS ( VIEW ( mcp ) COLUMNS () ) )` | every other tag of that view and of its columns removed | `ALTER TAG <tag> ADD_TO` |
 | 6. `ADD PRIMARY KEY` on a view that has one | the old key silently replaced | read the key first (audit, section 1) |
-
-A tag on a column only, not on the view, leaves the view hidden from the MCP Server
-(documentation only — the MCP Server manual speaks of views tagged).
 
 ## Common mistakes
 

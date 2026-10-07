@@ -46,8 +46,6 @@ Denodo user the MCP client authenticates with; the AI SDK's synchronisation user
 | `DESC VQL VIEW <view>` | the view's own clauses: `DESCRIPTION`, `PRIMARY KEY`, `TAGS`, field properties — not the inherited descriptions |
 | `GET_VIEW_STATISTICS()` | per field: rows, distinct values, `NULL`s, min, max, average size — only when statistics were gathered; 0 rows also for a misspelt view or no `EXECUTE` |
 
-The `input_…` parameters take `=` only; `IN` returns zero rows.
-
 ## Writing — every form
 
 All *verified: 9.5.1 (live, 2026-09-30)*; each is marked `destructive: alter` by the tool.
@@ -79,7 +77,6 @@ ALTER TAG <tag>
     REMOVE_FROM ( VIEWS () COLUMNS () );
 ```
 
-- `DESCRIPTION` needs `=`; without it: `Syntax error: Exception parsing query near '''`.
 - A view description of 4,001 characters fails with `Error storing views modified during
   transaction: Error storing view '<view>': Error accessing the metadata while
   loading/storing objects`; 4,000 is stored. A field description of 4,001 was stored.
