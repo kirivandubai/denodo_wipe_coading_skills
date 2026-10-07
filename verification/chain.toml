@@ -240,7 +240,7 @@ kind = "template"
 channel = "vql"
 address = "skills/datasources/SKILL.md#Delimited file (CSV) — DF"
 # The template's file is the chain's CRM export (verification/data/customers.csv), so the step
-# proves the template reads, not only that it parses (T40).
+# proves the template reads, not only that it parses.
 substitute = { sales_analytics = "{database}", "LOCAL 'LocalConnection' '/data/exports/crm/customers.csv'" = "{fixture_route} '{fixture_base}/customers.csv'" }
 database = "{database}"
 # Every row of the file, every date parsed, and the empty emails NULL through NULLVALUE ''.
