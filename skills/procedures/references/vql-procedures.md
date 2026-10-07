@@ -14,11 +14,11 @@ Everything marked `verified` below was created and called on a 9.5.1 server on 2
 CREATE [OR REPLACE] VQL PROCEDURE <name>
     [ FOLDER = '<path>' ]
     ( <param> [IN|OUT|IN OUT] <type> [NULLABLE] [, <param> …] )
-AS (
+[ AS (
     [ <local variable> <type>; ]*
     [ CURSOR <cursor name> IS '<SELECT statement>'; ]*
     [ <exception name> EXCEPTION; ]*
-)
+) ]
 BEGIN
     <commands>
 [EXCEPTION
@@ -49,9 +49,7 @@ Types: `BIGINT`, `DECIMAL`, `DOUBLE PRECISION`, `FLOAT`, `INT`, `INTEGER`, `NUMB
 `TIMESTAMP WITH TIMEZONE`, `TIMESTAMP WITH LOCAL TIMEZONE`, `INTERVAL YEAR TO MONTH`,
 `INTERVAL DAY TO SECOND`; `BOOL`, `ROWTYPE`, `EXCEPTION`.
 
-Local variables are declared in `AS ( … )`, **each closed by its own `;`**. An empty
-`AS ( )` is a syntax error near `)`; a procedure that needs no variables still needs the
-block with something in it.
+Local variables are declared in `AS ( … )`, **each closed by its own `;`**.
 
 ## Commands
 

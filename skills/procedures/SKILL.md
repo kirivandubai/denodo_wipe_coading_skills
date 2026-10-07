@@ -90,8 +90,8 @@ END;
   object differs from every other `CREATE` in the set. The other way round is
   `Syntax error: Exception parsing query near 'FOLDER'`. (`DESC VQL PROCEDURE` prints it
   this way too, which is how you confirm it on any server.)
-- `AS ( … )` declares the local variables, **each closed by its own `;`**. The block is
-  required even when you declare nothing useful — an empty `AS ( )` is a syntax error.
+- `AS ( … )` declares the local variables, **each closed by its own `;`**. A procedure with
+  none leaves the block out — an empty `AS ( )` is a syntax error.
 - `BEGIN … END` is the body; `:=` assigns, `RETURN ROW (out1, out2) VALUES (v1, v2)`
   returns a row through the `OUT` parameters. A procedure with no `RETURN ROW` is legal: it
   runs, does its work and returns zero rows.
@@ -171,7 +171,7 @@ without a complaint and fails on the first call — with `Error executing query.
 |---|---|---|
 | `CREATE OR REPLACE PROCEDURE p (a IN INT, b OUT VARCHAR) AS ( … ) BEGIN … END` | `Syntax error … near '('` | `CREATE OR REPLACE VQL PROCEDURE` — without `VQL` it is the Java statement |
 | `CREATE OR REPLACE VQL PROCEDURE p (a IN INT) FOLDER = '/x' AS …` | `Syntax error … near 'FOLDER'` | `FOLDER =` goes before the parameter list |
-| `CREATE OR REPLACE VQL PROCEDURE p (…) AS ( ) BEGIN … END` | `Syntax error … near ')'` | declare at least one local variable (a placeholder such as `tmp VARCHAR;`); the `AS ( … )` block itself is required |
+| `CREATE OR REPLACE VQL PROCEDURE p (…) AS ( ) BEGIN … END` | `Syntax error … near ')'` | declare a local variable in it, or leave the whole `AS ( )` out |
 | `SELECT * FROM USED_BY()` | `No search methods ready to be run. The following fields are obligatory: …` | pass the mandatory `input_…` parameters in `WHERE` |
 | `SELECT status FROM PING_DATA_SOURCE() WHERE input_database_name = 'db' …` | `Error in select view conditions: Field not found 'input_database_name' …` | its parameters have no prefix: `WHERE database_name = 'db' AND data_source_type = 'JDBC' AND data_source_name = 'ds'`. A bare `Error executing query. Total time …` from it comes, for example, from a database or data source that does not exist |
 | `SELECT band FROM order_size_band()` | `View without search methods: The following obligatory fields cannot be removed: amount` | pass the parameter, or declare it `NULLABLE` |
