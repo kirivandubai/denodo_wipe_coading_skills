@@ -41,7 +41,9 @@ if one of them answers `inLocal: true`, you had the wrong id and nothing needs
 synchronising. Getting this backwards means changing a shared catalog to fix a query
 parameter. `VIEWS/changes` does not shortcut the round: a server that never carried the
 database lists its views under `serverElements` too, as views it would import —
-*verified: 9.5.1 (live, 2026-10-01)*.
+*verified: 9.5.1 (live, 2026-10-01)*. The server list does not say which server carries a
+database; under a wrong id everything is created happily and only the import fails, naming a
+view that "does not exist".
 
 ## Name the server: `serverId`
 
@@ -71,15 +73,8 @@ works against any marketplace. One registered server needs no id at all.
 
 `--param serverId=<id>` overrides the profile for one call, and the transport then leaves
 that call alone. Reach for it only when you genuinely mean a different server than the
-profile's — asking each registered server which one holds a view, just below, is the case
+profile's — asking each registered server which one holds a view, rule 2, is the case
 that needs it. Putting it on ordinary calls silently pins the environment into a command.
-
-**Which id is the right one is not visible in the list** — the names and urls describe the
-VDP connection, not which databases a server carries. Ask the object you care about:
-`GET /public/api/view-details?databaseName=…&viewName=…` against each id, and take the one
-answering `inLocal: true`. Guessing is expensive rather than merely wrong: everything is
-created happily under the wrong server and only the import fails, with a message about a view
-that "does not exist".
 
 ## Templates
 
@@ -476,7 +471,7 @@ that does not match it, and only the `SELECT` shows it (`/denodo:views`).
 | Tag or category name, description | the human. Both are shown to consumers browsing the marketplace, so they read as labels, not as identifiers |
 | A new category's parent | `GET …/categories/tree` first; a *domain* the human names is a category of this tree, usually a root one. A live marketplace's tree is a taxonomy somebody designed — hang the new category inside the branch it belongs to. A **new top-level** category is a question for the human, not a default: it adds an axis to what everybody browsing sees. (`GET …/categories/{id}/potential-parent` is for moving an existing one) |
 | Every numeric id | never a template, never memory: a `GET` in this session. Ids differ per installation and per server |
-| View ids to assign to | `GET /public/api/view-details?databaseName=…&viewName=…`; `id:null` means synchronise first. Save the answer to a file and read `id`, `inLocal` and `inVDP` out of it with a script — it carries the view's whole field list and its connection URIs, and truncating it instead is how the three fields get missed |
+| View ids to assign to | `GET /public/api/view-details?databaseName=…&viewName=…`; `id:null`: rule 2, the other servers first, then synchronise. Save the answer to a file and read `id`, `inLocal` and `inVDP` out of it with a script — it carries the view's whole field list and its connection URIs, and truncating it instead is how the three fields get missed |
 | Whether the catalog may be synchronised | you, when the call with `--plan`, right before it, says `needs_yes: false` — both `changes` hold only databases and views you created in this session (`modifiedElements` aside) and the profile is not production; the human for any other radius — it is a shared catalog |
 | Whether a view about to be renamed, recreated or moved is in the marketplace | `view-details` on it **before** the change — `id` not null and `inLocal: true`. The answer is also what to keep: it is the only copy of the element's metadata |
 | Which removed element is which new one | you renamed it, or the human says so. The same database and the same columns are a hint, not proof |
