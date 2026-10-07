@@ -49,9 +49,10 @@ ALTER TAG <name>
 Same rules as `CREATE TAG`. `REMOVE_FROM` with a target detaches the tag from it:
 `ALTER TAG pii ADD_TO ( VIEWS () COLUMNS () ) REMOVE_FROM ( VIEWS () COLUMNS ( db.v.email ) )`.
 `ALTER` is a change to an existing object: human's confirmation first, and the tool
-refuses it on a production profile without `--allow-destructive`. There is no
-`ALTER VIEW … TAGS` or `ALTER VIEW … ADD TAGS` — the tag side is the only ALTER path;
-the view side is `TAGS ( <tag> [, …] )` inside `CREATE OR REPLACE VIEW`.
+refuses it on a production profile without `--allow-destructive`. Derived views have no
+ALTER for tags: their side is `TAGS ( <tag> [, …] )` inside `CREATE OR REPLACE VIEW`. A base
+view has `ALTER TABLE <bv> ( ALTER TAGS ( VIEW (…) COLUMNS (…) ) )`, which replaces every tag
+of the view and its columns (`/denodo:semantics`). `ALTER TAG … ADD_TO` is the additive path.
 
 ## DROP TAG / DROP TAGS
 
@@ -75,7 +76,7 @@ DROP TAGS [ IF EXISTS ] ( <name> [, <name> ]* ) [ CASCADE ]
 ## Reading tags back
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 LIST TAGS;                                        -- name, all tags on the server
 DESC TAG <name>;                                  -- one cell: name='pii' description=…
 DESC VQL TAG <name>;                              -- CREATE OR REPLACE TAG … without assignments

@@ -38,7 +38,7 @@ Without a mapping, fields are matched to the implementation **by name**. With on
 interface field is bound explicitly:
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 CREATE OR REPLACE INTERFACE VIEW household_income (
         household_sk:int,
         income_band_sk:int,
@@ -112,7 +112,7 @@ also how you publish a subset of a wide view — *verified: 9.5.1 (live, 2026-09
 Two ways, same result:
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 ALTER INTERFACE VIEW household_income SET IMPLEMENTATION iv_household_income_v2
     ( household_sk = household_key, income_band_sk = band_key, … );
 ```

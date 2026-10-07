@@ -36,7 +36,7 @@ The parenthesised list after `TAGS` documents individual columns. It carries the
 description that Data Marketplace and Design Studio show, and the per-column tags:
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 CREATE OR REPLACE VIEW customer_contact
     FOLDER = '/03 - business entities'
     DESCRIPTION = 'One row per customer, contact details only.'
@@ -56,7 +56,7 @@ Only the columns you want to annotate need listing. The tags must already exist
 directly** in the SELECT — not through `GETVAR` — and it appears as a column of the result:
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 CREATE OR REPLACE VIEW household_in_band
     FOLDER = '/02 - integration'
     AS SELECT household_sk, income_band_sk, buy_potential
@@ -73,9 +73,12 @@ the parameter optional and `MULTIVALUED` takes a list of values — both
 *unverified: 9.5 documentation only*.
 
 A parameterised view is the wrong tool for a filter that a consumer could write themselves
-in a `WHERE`. It earns its place when the parameter has to reach the source — a mandatory
-search field of a web service, a partition key — because a plain `WHERE` over a full scan
-would be the alternative.
+in a `WHERE`. The documentation names four cases where it earns its place: a filter forced
+on every query of a large fact (a date range); a filter that must act under a `GROUP BY` on
+a column that is not grouped; a filter on the inner side of an outer join, set on a view
+below the join so it drops no outer rows (a `WHERE` on the join would); and the region of a
+partitioned `UNION` whose tables have no column for it (`SKILL.md`, Union, does that with a
+constant column).
 
 ## Clauses that are rarely worth using
 
@@ -85,7 +88,7 @@ would be the alternative.
 | `OFFSET` / `FETCH FIRST … ROWS ONLY` | the SQL-standard spelling of the same thing | same caveat |
 | `WITH CHECK OPTION` | rejects `INSERT`/`UPDATE` through the view that would not satisfy its own `WHERE` | *verified: 9.5.1 (live, 2026-10-02)*. Only meaningful for a view an application writes through. It evaluates the filter on the values a statement writes; a column left out counts as `NULL`, and a filter that is unknown for `NULL` lets the row through — `/denodo:dml` |
 | `CONTEXT ( … )` | pins execution options into the view definition | *verified: 9.5.1 (live, 2026-09-10)*. Design Studio emits `CONTEXT ('i18n' = '<map>')` on views it generates; do not copy it into hand-written VQL without a reason. The one every view carries is `CONTEXT ('formatted' = 'yes')`, which keeps the `SELECT` as written — `SKILL.md`, Derived view |
-| `CHECK_INDIRECT_ACCESS ON` | makes the server check the `INDIRECT_ACCESS` privilege for this view | *verified: 9.5.1 (live, 2026-09-10)*. Privileges are `/denodo:security` |
+| `CHECK_INDIRECT_ACCESS ON` | makes the server check the `INDIRECT_ACCESS` privilege for this view — only when indirect access is enabled server-wide, which it is not by default (documentation) | *verified: 9.5.1 (live, 2026-09-10)*. Privileges are `/denodo:security` |
 
 ## `ALTER VIEW`: what it cannot do
 
@@ -97,10 +100,11 @@ What `ALTER VIEW` does change: cache configuration (`CACHE`, `TIMETOLIVEINCACHE`
 `CACHE_TABLE_NAME`, `ONSCHEMACHANGE` — the full cache is `/denodo:cache`, the rest Design
 Studio), swapping (`SWAP`, `SWAPSIZE`, `MAXRESULTSIZE`),
 `DECLARE CACHE INDEX`, `DATAMOVEMENTPLAN`, the primary key, `DELEGATESTATSQUERY`,
-`CHECK_INDIRECT_ACCESS`, `LAYOUT`, and the name:
+`CHECK_INDIRECT_ACCESS`, the view's `DESCRIPTION` and a column's (`ALTER COLUMN <c> ADD
+( DESCRIPTION = '…' )` — `/denodo:semantics`), `LAYOUT`, and the name:
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 ALTER VIEW household_in_band RENAME household_by_band;
 ```
 

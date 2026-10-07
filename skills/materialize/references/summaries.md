@@ -1,9 +1,9 @@
 # Summaries and data movement
 
-Grammar from the VQL Guide 9.5 ("Summaries", "Data Movement") and the Administration Guide
-("Smart Query Acceleration Using Summaries", "Managing Summaries", "Summary Rewrite
-Optimization", "Data Movement"); behaviour marked *measured* was observed on 9.5.1 against SQL
-Server, 2026-10-02. Everything else is documentation only.
+Grammar from the VQL Guide 9.5 ("Summaries", "CONTEXT Clause", "Modifying a Derived View") and
+the Administration Guide ("Smart Query Acceleration Using Summaries", "Managing Summaries",
+"Summary Rewrite Optimization", "Data Movement"); behaviour marked *measured* was observed on
+9.5.1 against SQL Server, 2026-10-02. Everything else is documentation only.
 
 ## CREATE SUMMARY VIEW
 
@@ -27,9 +27,9 @@ CREATE [ OR REPLACE ] SUMMARY VIEW <name>
     [ CONTEXT ( … ) ] [ TRACE ]
 ```
 
-- Only server administrators create, change and drop summaries; the feature is off outside the
-  Enterprise Plus bundle; the server needs *Data Movement* and *Automatic simplification of
-  queries* enabled (documentation).
+- Only server administrators create, change and drop summaries; the feature is off in the
+  Professional and Standard bundles; the server needs *Data Movement* and *Automatic
+  simplification of queries* enabled (documentation).
 - *Measured*: it answers no rows. `DESC VQL` shows it as a JDBC wrapper plus `CREATE SUMMARY
   VIEW <name> ( <typed fields> ) … AS SELECT <aliases> FROM ( <your query> )` — the server wraps
   the query in an outer `SELECT` that aliases every column (alias them yourself and it reads as
@@ -89,8 +89,9 @@ unloaded summary is considered only with `CONTEXT ('consider_all_summaries' = 'o
 planned query.
 
 **Switches** (documentation): server-wide in *Server configuration → Queries optimization*;
-per database `CREATE OR REPLACE DATABASE … SUMMARY REWRITE { ON | OFF | DEFAULT }` (`/denodo:catalog`);
-per query `CONTEXT ('summary_rewrite' = 'off')` (*measured*: the query then reads the views).
+per database `ALTER DATABASE <db> SUMMARY REWRITE { ON | OFF | DEFAULT }` (`/denodo:catalog`) —
+an `ALTER`, for the human's yes; per query `CONTEXT ('summary_rewrite' = 'off')` (*measured*:
+the query then reads the views).
 
 ## Staleness (measured)
 
@@ -118,13 +119,16 @@ matched nothing.
 
 ## Loading and incremental loads
 
-`REFRESH <summary>` truncates the table and runs the summary's query (*measured*). A `CUSTOM LOAD
-QUERY` turns a refresh into an incremental load: a query that returns only the new rows,
-filtered on a timestamp against `LAST_DATE_REFRESH` — `CUSTOM LOAD QUERY 'SELECT <the summary's
-columns, named> FROM sales WHERE sale_date >= LAST_DATE_REFRESH'`.
-*unverified: 9.5 documentation only* It is not the cache's
-`@LAST_REFRESH_DATE`. Rows can also be added with `INSERT` into the summary (documentation).
-After a promotion to another environment a summary is unused until its first `REFRESH`.
+`REFRESH <summary>` truncates the table and runs the summary's query (*measured*). How a `CUSTOM
+LOAD QUERY` is used is documented inconsistently (*unverified: 9.5 documentation only*): the
+Scheduler loads incrementally with `INSERT INTO <summary> [ ON DUPLICATE KEY ( <key> ) UPDATE ]
+SELECT * FROM ( <custom load query> )` and keeps `REFRESH` for the full load, which the first
+load must be; the VQL Guide says an outdated custom query makes `REFRESH` fail or load
+inconsistent values. Example from the documentation: `CUSTOM LOAD QUERY 'SELECT <the summary's
+columns, named> FROM sales WHERE sale_date >= LAST_DATE_REFRESH'`. After a load with one,
+compare the summary's `COUNT(*)` and totals with the views (`summary_rewrite` off) before saying
+it was incremental. After a promotion, a summary is unused until a `REFRESH` when its table does
+not exist yet on the target or no longer matches its definition (documentation).
 
 ## Dropping
 

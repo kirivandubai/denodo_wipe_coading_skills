@@ -83,7 +83,7 @@ own column, and the consumer's filter on the alias still prunes (the wrapper in 
 exists only because a constant is an alias):
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
     AS SELECT sr_item_sk AS item_sk, sr_returned_date_sk AS returned_date_sk, sr_return_amt AS return_amount
        FROM bv_store_returns_live
        WHERE sr_returned_date_sk >= <first key of the live period> OR sr_returned_date_sk IS NULL
@@ -114,7 +114,7 @@ about authority, not speed: range queries prune the same whichever branch holds 
 Studio). The plan comes from a procedure:
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 SELECT execution_plan
   FROM GET_QUERY_EXECUTION_PLAN()
  WHERE input_query = 'SELECT COUNT(*) FROM returns WHERE channel = ''web''';

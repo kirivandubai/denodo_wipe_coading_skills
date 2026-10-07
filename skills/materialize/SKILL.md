@@ -146,10 +146,11 @@ SELECT COUNT(*) AS will_load
 FROM iv_household_income;
 ```
 
-- **No row means the name is free.** A row means a table of that name exists — someone's,
-  whatever its name suggests: stop and ask (the rule above). `UPPER` on both sides because
-  Denodo compares the name exactly and SQL Server does not: `HOUSEHOLD_INCOME` is the same
-  table there. The answer's columns are `catalog_name`, `schema_name`, `table_name`, `type`.
+- **No row means the name is free.** A row means a table of that name exists — someone's, whatever
+  its name suggests: stop and ask (the rule above). `UPPER` on both sides because Denodo compares
+  the name exactly and SQL Server under its default case-insensitive collation does not:
+  `HOUSEHOLD_INCOME` is the same table there. The answer's columns are `catalog_name`,
+  `schema_name`, `table_name`, `type`.
 - Run these reads **before** the create, as reads: inside a file a `SELECT` that finds a row
   stops nothing — what stops the create is `replace_remote_table_if_exist = false`.
 - **Who reads it:** the base views over it. `SELECT database_name, name FROM GET_VIEWS() WHERE
@@ -162,9 +163,8 @@ FROM iv_household_income;
 - `will_load` is the number `inserted_rows` must equal — and the number you tell the human
   before a big load: every row passes through Denodo unless the query runs entirely in the
   target data source.
-- The target the human named is the data source **and** the schema. A data source's default
-  target (`DATA_LOAD_CONFIGURATION … TARGET_SCHEMA` in its `DESC VQL`) is not a name the human
-  gave.
+- The target the human named is the data source **and** the schema. A data source's default target
+  (`DATA_LOAD_CONFIGURATION … TARGET_SCHEMA` in its `DESC VQL`) is not a name the human gave.
 
 ### A remote table
 
@@ -211,7 +211,8 @@ WHERE remote_table_name = 'household_income'
   never REFRESH" at the top. A second period is a second table. The procedure still beats the
   command here — the count, a base view to compare the copy with, a clean drop — but its base
   view is a `REFRESH` handle and writable: put "frozen, never REFRESH" in its `DESCRIPTION`,
-  and tell the human that only the database's owner can make the table read-only (a `DENY`).
+  and tell the human that only the database's owner can make the table read-only (a `DENY` on
+  SQL Server, a `REVOKE` of the write privileges elsewhere).
 - When the query runs entirely in the target data source, the copy happens inside the database
   (measured once: sixty thousand rows in under a second); otherwise every row passes through
   Denodo.
@@ -293,8 +294,8 @@ WHERE input_query = 'SELECT income_band_sk, COUNT(*) AS households FROM iv_house
   re-appliable while the summary is unloaded and refuses once a table of that name exists —
   anyone's, the summary's own after its load included. A change to a loaded summary is `… IF
   RELATION EXISTS REPLACE` and a load, both for the human's yes.
-- Summaries are created by a server administrator only, on the Enterprise Plus bundle
-  (*documentation*).
+- Summaries are created by a server administrator only; they are not available in the Denodo
+  Professional or Standard bundles (*documentation*).
 
 **Load it — on the human's yes**, and check it against the views themselves:
 
@@ -316,10 +317,10 @@ ORDER BY income_band_sk
 CONTEXT ('summary_rewrite' = 'off');
 ```
 
-- **The two answers must be equal, row for row.** The first comes from the summary, the second
-  from the sources. Run the same pair after every change upstream: a difference is a stale
-  summary, and every rewritten query in the meantime returned it. Sums from the summary come
-  back with many decimals (`numeric(38,20)`) — compare values, not text.
+- **The two answers must be equal, row for row.** The first comes from the summary, the second from
+  the sources. Run the same pair after every change upstream: a difference is a stale summary, and
+  every rewritten query in the meantime returned it. Sums from the summary may come back with more
+  decimals than through the views (`numeric(38,20)` on SQL Server): compare values, not text.
 - **A failed `REFRESH` leaves the summary empty and in use**: every query sent to it answers
   0 rows, a total `NULL` and `0`, while the sources are fine. The job that loads it checks the
   pair above after each run and, when the load failed, runs `ALTER SUMMARY VIEW
@@ -360,10 +361,9 @@ WHERE input_query = 'SELECT buy_potential, COUNT(*) AS households FROM household
   whose `SQLSentence` joins a `t_bv_income_band_<id>` table: that is the copy. It is dropped
   when the query ends.
 - **Every query of the view creates and drops that table**, in the schema the data source's
-  data-load configuration names (`DATA_LOAD_CONFIGURATION … TARGET_SCHEMA` in its `DESC VQL`),
-  so its account needs `CREATE TABLE` there, and every query pays for moving the small side: a
-  side of millions of rows is not small. Answers stay current — nothing is stored between
-  queries.
+  data-load configuration names (`DATA_LOAD_CONFIGURATION … TARGET_SCHEMA` in its `DESC VQL`), so
+  its account needs `CREATE TABLE` there, and every query pays for moving the small side: a side of
+  millions of rows is not small. Answers stay current — nothing is stored between queries.
 - The plan goes into the view's own `CONTEXT`, which `CREATE OR REPLACE VIEW` keeps; a query can
   set or switch one off for itself: `CONTEXT ( DATAMOVEMENTPLAN = bv_income_band : OFF )`.
 

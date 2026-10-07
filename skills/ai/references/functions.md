@@ -1,10 +1,10 @@
 # LLM functions in full
 
 Everything `/denodo:ai` leaves out of its templates: each function's arguments and defaults,
-what it returned on 9.5.1, and what the documentation gets wrong. Every call below is one
-paid request per row it is evaluated on — the counting rules and the human's number are in
-the skill, and they apply to every example here. Lines marked *documentation only* were not
-run.
+what it returned on 9.5.1 (the wording of each answer is the configured model's; the rules
+hold for any), and what the documentation gets wrong. Every call below is one paid request
+per row it is evaluated on — the counting rules and the human's number are in the skill, and
+they apply to every example here. Lines marked *documentation only* were not run.
 
 ## Before any of them
 
@@ -50,8 +50,9 @@ FROM Dual();
 
 `SENTIMENT_AI(<text>[, <scale>][, <temperature>]) → text`
 
-- Default answers: `negative`, `neutral`, `mixed`, `positive`, in lower case. *verified: 9.5.1
-  (live, 2026-10-02)*
+- Default answers: `negative`, `neutral`, `mixed`, `positive`, in lower case where measured
+  (*verified: 9.5.1 (live, 2026-10-02)*); the documentation's screenshots capitalise them. Read
+  the case off a `Dual()` call, or `LOWER(…)` it, before anything filters on it.
 - A custom scale is an array of `ROW(name [, description [, example]])`, like
   `CLASSIFY_AI`'s (documentation only).
 - `''` answers `neutral` — after a request.
@@ -136,7 +137,6 @@ only*. `<mime type>` is one of `image/jpeg`, `image/jpg`, `image/png`, `image/gi
 
 ## What the documentation gets wrong
 
-- The examples of the LLM functions page are screenshots; the scale syntax is in them only.
 - `use_large_language_model_role`, named in some pages for the Assistant procedures, does not
   exist on 9.5.1: `DESC ROLE use_large_language_model_role` → `Error loading role`. The role
   is `use_large_language_model`.

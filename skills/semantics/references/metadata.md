@@ -11,7 +11,7 @@ consumers: the Denodo MCP Server and Denodo AI SDK user manuals (Denodo Connects
 | Reads from | Denodo, over JDBC, live | the Data Marketplace catalog | the Data Marketplace, into its own vector store |
 | Which views | tagged with one of `mcp.visibility.tags`; all the user may read when unset | the view the user asks about, plus its direct associations | the databases or tags named in its `getMetadata` call (`vdp_database_names` / `vdp_tag_names`) |
 | View | name, database, description, tags | name, database, subtype, description, tags with their descriptions, property groups (if included in AI context) | everything in the view's schema |
-| Field | name, type, description, tags, `[PK]`, `[NOT NULL]`, sample values | name, logical name, type, source type, description, primary key, nullable, obligatory, tags with descriptions | the same, plus sample rows (needs the cache) |
+| Field | name, type, description, tags, `[PK]`, `[NOT NULL]`, sample values | name, logical name, type, source type, description, primary key, nullable, obligatory, tags with descriptions, view data if sample data is enabled | the same; its sample data needs the cache |
 | Joins | associations, as `JOINs` with their descriptions | direct associations, with the same metadata as the view | associations |
 | Picks up a change | on its schema refresh (`mcp.schema-refresh.enabled`) | after the marketplace is synchronised | after synchronisation and a new `getMetadata` run |
 
@@ -25,10 +25,12 @@ MCP Server configuration that decides visibility, in its `config/application.pro
 |---|---|
 | `mcp.visibility.tags` | comma-separated tags; only views carrying one are visible, from any database. The shipped file sets `mcp`. Unset: every view the user may read |
 | `mcp.tools.view-tag` | deprecated; also `mcp` in the shipped file; creates one query tool per tagged view |
-| `mcp.schema-refresh.enabled` | off: changes to views and tags are not seen until a restart |
+| `mcp.schema-refresh.enabled` | off: changes to views and tags are not detected |
 
 Privileges are the final filter: `CONNECT` on the database and `EXECUTE` on the view for the
-MCP Server's user; the AI SDK's synchronisation user also needs `METADATA`.
+Denodo user the MCP client authenticates with; the AI SDK's synchronisation user needs
+`CONNECT` and `METADATA` on the database, and with sample data also `EXECUTE` there and
+`CONNECT` and `CREATE VIEW` on the cache database.
 
 ## Reading the metadata
 
@@ -42,7 +44,7 @@ MCP Server's user; the AI SDK's synchronisation user also needs `METADATA`.
 | `GET_ASSOCIATIONS()` with `input_type = 'views'` | `association_name`, `association_description`, `mappings`, `valid` |
 | `DESC TAG <tag>` | the tag's description |
 | `DESC VQL VIEW <view>` | the view's own clauses: `DESCRIPTION`, `PRIMARY KEY`, `TAGS`, field properties — not the inherited descriptions |
-| `GET_VIEW_STATISTICS()` | per field: rows, distinct values, `NULL`s, min, max, average size — only when statistics were gathered, 0 rows otherwise |
+| `GET_VIEW_STATISTICS()` | per field: rows, distinct values, `NULL`s, min, max, average size — only when statistics were gathered; 0 rows also for a misspelt view or no `EXECUTE` |
 
 The `input_…` parameters take `=` only; `IN` returns zero rows.
 
@@ -127,10 +129,12 @@ The MCP Server prints both as `[PK] [NOT NULL]` (documentation).
 
 `DENODO_ASSISTANT_GENERATE_VIEW_DESCRIPTION(<db>, <view>, <max words>)` and
 `DENODO_ASSISTANT_GENERATE_FIELDS_DESCRIPTION(<db>, <view>, <array of fields>)` call the
-LLM configured for the Denodo Assistant and return text; they need that configuration and the
-role `use_large_language_model` — the documentation of these procedures says
-`use_large_language_model_role`, which does not exist on 9.5.1 (`Error loading role`). Each
-call is a paid LLM request (*documentation only*; the role, measured). The LLM functions in a
-query are `/denodo:ai`.
-What they return is a draft built from names and sample values, held to the same rule as
-yours: every sentence confirmed by the profile, approved by the human before it is written.
+LLM configured for the Denodo Assistant and return text; they need the Enterprise Plus bundle,
+that configuration and the role `use_large_language_model` — the documentation of these
+procedures says `use_large_language_model_role`, which does not exist on 9.5.1
+(`Error loading role`). Each call is a paid LLM request (*documentation only*; the role,
+measured). The LLM functions in a query are `/denodo:ai`.
+What they return is a draft built from the view's metadata (names, types, existing
+descriptions, tags, associations), plus sample values only when data usage and the cache are
+enabled for the Denodo Assistant — held to the same rule as yours: every sentence confirmed
+by the profile, approved by the human before it is written.

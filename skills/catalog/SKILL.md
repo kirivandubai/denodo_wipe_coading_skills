@@ -7,11 +7,11 @@ description: Use when creating or changing the structure of a Denodo 9.5 catalog
 
 This skill is about the three objects that give a Virtual DataPort catalog its structure:
 the **database**, the **folder** inside it and the **VDP tag** that is attached to views
-and columns. Everything here is VQL, sent to the Virtual DataPort port of the profile
-(9996 by default). If you need a *marketplace* tag or category (REST, the profile's
-`marketplace_url`), go to `/denodo:marketplace` — a "tag" alone does not say which one the
-human means. Data sources, wrappers and base views live in `/denodo:datasources`; derived
-and interface views in `/denodo:views`. The working loop, the naming defaults and the
+and columns. Everything here is VQL, sent over the profile's ODBC (PostgreSQL-protocol) port
+of Virtual DataPort (9996 by default). If you need a *marketplace* tag or category (REST, the
+profile's `marketplace_url`), go to `/denodo:marketplace` — a "tag" alone does not say which
+one the human means. Data sources, wrappers and base views live in `/denodo:datasources`;
+derived and interface views in `/denodo:views`. The working loop, the naming defaults and the
 safety rule are in `/denodo:vql`; apply files with `/denodo:execute`.
 
 Build order: **database → folders (parent before child) → objects → tags**. A tag is
@@ -22,21 +22,22 @@ attached to views that must already exist.
 ### Database
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 CREATE OR REPLACE DATABASE sales_analytics 'Sales data products' CHARSET DEFAULT;
 ```
 
 The description literal comes **before** `CHARSET`; the other way round is
 `Syntax error: Exception parsing query near '''`. Everything after the description is
-optional. `CHARSET UNICODE` when identifiers must carry non-ASCII characters;
-`RESTRICTED` for ASCII only; `DEFAULT` for the server setting. No `AUTHENTICATION` clause
+optional. `CHARSET RESTRICTED`: Design Studio takes names of `a`-`z`, digits and `_` only
+(capitals become lowercase); `UNICODE`: any character — capitals, dashes, spaces, non-ASCII;
+`DEFAULT`: the server setting. Only Design Studio is affected. No `AUTHENTICATION` clause
 means local authentication, the same as every database created from Design Studio without
 LDAP. `CREATE OR REPLACE DATABASE` keeps the objects inside.
 
 ### Folders
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 CONNECT DATABASE sales_analytics;
 
 CREATE OR REPLACE FOLDER '/01 - connectivity' DESCRIPTION 'data sources, wrappers, base views';
@@ -55,6 +56,11 @@ without `DESCRIPTION` clears it, so keep the description in the file.
 
 ### Tags, with their assignments
 
+VDP tags need the Enterprise Plus bundle (`env check --env dev` → `features.enterprise_plus`).
+A user who is not an administrator needs the role `manage_tags` to create, change or drop a
+tag, and `assign_tags` plus `METADATA` on the view — or admin rights on its database — to
+assign one. Either refusal is the administrator's to fix: stop and report it.
+
 One tag per statement; each carries its own targets. Read the targets first
 (`vql desc --env dev --database <db> <view>`): a target that `DESC` did not show is not
 listed — ask the human about it — because a misspelled or missing target is accepted
@@ -67,7 +73,7 @@ changes that view's metadata, and is a yes too (`/denodo:vql`); a tag that a sec
 names changes who reads what (`/denodo:security`). `vql plan` checks both for the file.
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 CREATE OR REPLACE TAG pii
     DESCRIPTION = 'Personal data, GDPR scope'
     ADD_TO      ( VIEWS () COLUMNS ( sales_analytics.customer.email, sales_analytics.customer.phone ) )
@@ -115,10 +121,10 @@ views carry it, and why an agent does not see a view — is `/denodo:semantics`.
 
 "Every column that holds an email", across a database, is a list first (`/denodo:vql`, **Many
 objects at once**). Two reads give it whole — every field, and for every field of a derived view
-the base columns its value comes from:
+each column under it that its value comes from, down to the base view:
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 SELECT view_name, column_name, column_vdp_type
   FROM GET_VIEW_COLUMNS() WHERE input_database_name = 'sales_analytics';
 
@@ -127,7 +133,8 @@ SELECT e.name AS view_name, d.column_name, d.dependency_name, d.dependency_colum
        INNER JOIN COLUMN_DEPENDENCIES() AS d
        ON (d.input_view_database_name = e.database_name AND d.input_view_name = e.name)
  WHERE e.input_database_name = 'sales_analytics' AND e.input_type = 'views'
-   AND e.subtype = 'derived' AND d.dependency_column_name IS NOT NULL;
+   AND e.subtype = 'derived' AND d.view_name = e.name
+   AND d.dependency_column_name IS NOT NULL;
 ```
 
 - A name pattern finds candidates, not the list. A field renamed on the way up
@@ -157,13 +164,13 @@ SELECT e.name AS view_name, d.column_name, d.dependency_name, d.dependency_colum
 | Slot | Where it comes from |
 |---|---|
 | Database name, description | the human; name per conventions (`sales_analytics`, no environment suffix) |
-| `CHARSET` | `DEFAULT` unless the human says identifiers need non-ASCII characters → `UNICODE` |
-| Authentication | omit: no clause means the server's global authentication settings, which is what Design Studio's "Global authentication settings" does — if the server is on LDAP globally, the database follows. A per-database `AUTHENTICATION LDAP` needs an LDAP data source and six DN patterns; if the human asks for that, ask for those values, do not invent them. "Same login as everyone else" means omit: `GET_DATABASES()` shows what the other databases do |
+| `CHARSET` | `DEFAULT` unless the human says names need anything beyond lowercase letters, digits and `_` → `UNICODE` |
+| Authentication | omit: no clause means the server's global authentication settings, which is what Design Studio's "Global authentication settings" does — if the server is on LDAP globally, the database follows. A per-database `AUTHENTICATION LDAP` needs an LDAP data source and six values (two base DNs, two attribute names, two search patterns — `references/database.md`); if the human asks for that, ask for those values, do not invent them. "Same login as everyone else" means omit: `GET_DATABASES()` shows what the other databases do |
 | Folder tree | `.denodo/conventions.md` if the project has one, else the layer folders from `/denodo:vql` |
 | Folder for a new tag's targets | not needed: tags have no folder |
 | Tag name, description | the human; name is the concept (`pii`, `gdpr`), lowercase unless quoted |
 | Tag targets | the exact `db.view` / `db.view.column` — read them first: `vql desc --env dev --database <db> <view>` |
-| Which "tag" | VDP tag = visible in Design Studio and `LIST TAGS`; marketplace tag = visible in the Data Marketplace UI. When the request does not say, ask |
+| Which "tag" | VDP tag = `CREATE TAG`, visible in Design Studio and `LIST TAGS`; marketplace tag = created in the Data Marketplace (an imported VDP tag shows there too, read-only). When the request does not say, ask |
 
 Do not ask for VCS, credentials vault, data-movement or cache settings — they are not
 part of creating a database and have server defaults. They are in the reference if the
@@ -185,8 +192,8 @@ Success of the statement is not success of the object. After applying, read back
 | Object | Read-back |
 |---|---|
 | Database | `vql desc --env dev <db> --type database` → `name, description`; settings: `SELECT db_name, description, charset, authentication FROM GET_DATABASES() WHERE db_name = '<db>'` |
-| Folder tree | `SELECT name, type, subtype, folder, description FROM GET_ELEMENTS() WHERE input_database_name = '<db>' AND type <> 'type'` — `folder` is the parent path (`/` for top level), the full path is `folder + '/' + name`. Types: `folder`, `datasource`, `wrapper`, `view` (subtype `base`, `derived`, `interface`, `metric`), `association`, `storedProcedure`; rows with type `type` are registers and arrays — your own `CREATE TYPE`s, and the `_register_…` and `_array_register_…` types a view with `NEST` or `REGISTER` leaves behind (`/denodo:views`) |
-| What is inside a folder before a drop | the same query **without a type filter**, `WHERE folder LIKE '/<path>%'` — a type filter hides exactly the object you did not think of |
+| Folder tree | `SELECT name, type, subtype, folder, description FROM GET_ELEMENTS() WHERE input_database_name = '<db>' AND type <> 'type'` — `folder` is the parent path, in lowercase; the full path is `'/' + name` at the top level (`folder = '/'`) and `folder + '/' + name` below it, so compare paths with `lower()`. Types: `folder`, `datasource`, `wrapper`, `view` (subtype `base`, `derived`, `interface`, `materialized`, `metric`), `association`, `storedProcedure`, `webService`; rows with type `type` are registers and arrays — your own `CREATE TYPE`s, and the `_register_…` and `_array_register_…` types a view with `NEST` or `REGISTER` leaves behind (`/denodo:views`) |
+| What is inside a folder before a drop | the same query **without a type filter**: `WHERE input_database_name = '<db>' AND (lower(folder) = lower('/<path>') OR lower(folder) LIKE lower('/<path>/%'))` — `folder` comes back in lowercase, so `folder LIKE '/Sales Data%'` misses a folder named with capitals; a type filter hides exactly the object you did not think of |
 | One folder | `vql desc --env dev --database <db> "'/03 - business entities'" --type folder` → `name, path, description` |
 | Tag | `vql desc --env dev <tag> --type tag` → `name='pii' description=…` (description only) |
 | Tag assignments | `SELECT database_name, view_name, column_name, tag_name FROM GET_VIEW_TAGS() WHERE input_database_name = '<db>'` — `column_name` is `null` for a whole-view assignment |
@@ -197,8 +204,7 @@ column that does not exist is accepted without an error and is silently not reco
 *verified: 9.5.1 (live, 2026-09-09)*. A typo in a column name looks exactly like
 success until you read the assignments back.
 
-`DESC VQL TAG` shows the tag without its assignments, and `DESC VQL DATABASE` lists the
-contents without a `CREATE DATABASE` line — neither tells you what you want here.
+`DESC VQL TAG` shows the tag without its assignments — not what you want here.
 `LIST FOLDERS` does not exist; `GET_ELEMENTS()` is the folder listing.
 
 ## Common mistakes

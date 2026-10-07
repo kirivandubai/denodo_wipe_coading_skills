@@ -39,7 +39,7 @@ delegation: search for `noDelegationCause`, whole. Three outcomes:
 |---|---|
 | exactly one `SQLSentence = …` line, holding the joins and the `GROUP BY`, and no `noDelegationCause` | delegated whole: the database does all of it |
 | `noDelegationCauses = [The aggregate function 'median' cannot be delegated to this database]` near the top, and `noDelegationCause = …` on the node where it stops | one expression stopped it. The `SQLSentence` below that node is what the database still does — typically the joins without the `GROUP BY` — and the nodes above it (`GROUPBY PLAN`, `PROJECTION PLAN`) run in Denodo |
-| two or more `JDBC ROUTE (` blocks, each with its own `datasource = …` and `SQLSentence`, under an `INNER JOIN PLAN` (`type = MERGE`, `HASH`, `NESTED`) — **and no cause printed anywhere** | the views come from **different data sources** and Denodo joins them. A check that only searches for `noDelegationCause` passes this one. It holds even when both data sources point at the same database server: the Denodo data source object decides, not the server behind it. What travels is in each `SQLSentence` — see below |
+| two or more `JDBC ROUTE (` blocks, each with its own `datasource = …` and `SQLSentence`, under an `INNER JOIN PLAN` (`type = MERGE`, `HASH`, `NESTED`) — **and no cause printed anywhere** | the views come from **different data sources** and Denodo joins them. A check that only searches for `noDelegationCause` passes this one. It holds even when both data sources point at the same database server: the Denodo data source object decides, not the server behind it. What travels is in each `SQLSentence` — see below. A data movement is the exception: `optimizationsApplied = [Data Movement …]` and one `SQLSentence` that joins the moved copy (`/denodo:materialize`) |
 
 **Two data sources: groups or rows.** Denodo may still split the aggregate: with
 `optimizationsApplied = [Aggregation Push-down]` at the top, the fact's `SQLSentence` carries
@@ -49,7 +49,9 @@ aggregate. Without it the fact's `SQLSentence` is a plain `SELECT … ORDER BY <
 every line travels. Which one you get is not predictable from the view — the same join
 grouped by category alone got no push-down, grouped by category and month through a date
 dimension got it (*live, 2026-09-30*) — and an aggregate that cannot be split, such as
-`MEDIAN`, always sends every line. Read the `SQLSentence` of the biggest table.
+`MEDIAN`, always sends every line. The documentation ties pushing a `GROUP BY` below such a
+join to a `REFERENTIAL CONSTRAINT` association between the two views (the last option below).
+Read the `SQLSentence` of the biggest table.
 
 A filter still goes down on its own when an aggregate above it cannot: `WHERE store_sk = 110`
 over a mart whose `MEDIAN` stays in Denodo shows up as `WHERE t1.s_store_sk = ?` inside the
@@ -121,10 +123,17 @@ report:
   up to two places, the scale of the result. It also moves where a consumer's filter lands:
   over the rewrite a `WHERE store_sk = …` stays outside the grouped subquery, so a one-store
   query can get slower than with `MEDIAN`, whose filter reaches the database. Window
-  functions also stop working the moment the view is no longer delegated (`Function
-  row_number is not executable`);
+  functions also stop working the moment the view is no longer delegated, on a server with
+  no MPP engine or data movement for them (`Function row_number is not executable`);
 - **keep it** — when the volume stays small, or the consumer never reads that column;
-- **two data sources** — nothing inside the view changes it. Moving the data into one place
-  is outside this skill: a full cache on both views, which delegates their join to the cache
-  database (documentation), is `/denodo:cache`; a data movement or a copy as a table in one
-  database is `/denodo:materialize`.
+- **two data sources** — nothing inside the view's `SELECT` changes it. Where the fact's join
+  key really is a foreign key to the dimension's primary key, a `REFERENTIAL CONSTRAINT`
+  association — the fact's endpoint `(*)`, the dimension's `PRINCIPAL (1)` — is the condition
+  the documentation sets for grouping the fact in its own database before the join; declared
+  where the integrity does not hold, it gives wrong results (`associations.md`). Moving the
+  data into one place is outside this skill: a full cache on both views, which delegates their
+  join to the cache database (documentation), is `/denodo:cache`; a data movement — forced in
+  the view's `CONTEXT`, or chosen by the cost-based optimizer when it is on — or a copy as a
+  table in one database is `/denodo:materialize`. An MPP engine the server is set up for can
+  also take the join (documentation); `env check` shows whether data movement is switched on
+  (`features.data_movement`) — its `features.mpp` is the licence check only.

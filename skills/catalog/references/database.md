@@ -45,9 +45,9 @@ after it. With `CHARSET` before the description the parser stops at the quote.
 | Clause | Meaning | Default |
 |---|---|---|
 | `'<description>'` | free text, shown by `DESC DATABASE` and `GET_DATABASES()` | none |
-| `CHARSET` | which characters Design Studio lets users put in identifiers. `UNICODE` any; `RESTRICTED` a limited set; `DEFAULT` the server setting. Does not change the server's behaviour | `DEFAULT` — what that means is the server's setting; a database shows its own in `DESC VQL DATABASE` |
+| `CHARSET` | which characters Design Studio lets users put in identifiers. `UNICODE` any; `RESTRICTED` a limited set; `DEFAULT` the server setting. Does not change the server's behaviour | `DEFAULT` — what that means is the server's setting; `GET_DATABASES()` → `charset`, `charset_default` |
 | `AUTHENTICATION LOCAL` | users are VDP users. This is "Global authentication settings" in Design Studio | this, when the clause is absent |
-| `AUTHENTICATION LDAP …` | authentication and roles delegated to an LDAP server through an LDAP data source that already exists in `<db>`. Needs the six DN/pattern values — get them from the human or the Administration Guide setup, never guess | — |
+| `AUTHENTICATION LDAP …` | authentication and roles delegated to an LDAP server through an LDAP data source that already exists in `<db>`. Needs the six values — two base DNs, two attribute names, two search patterns — get them from the human or the Administration Guide setup, never guess | — |
 | `VCS` | per-database version-control integration | server setting |
 | `CREDENTIALS_VAULT` | HashiCorp / CyberArk configuration for this database | server setting |
 | `DATA_MOVEMENT ALLOWED_TARGETS DATABASES` | where the optimizer may move this database's data | `DEFAULT` (anywhere that allows it) |
@@ -90,8 +90,13 @@ ALTER DATABASE <name> [ '<description>' ]
 
 `ALTER` is a change to an existing object: the human confirms it first (`/denodo:vql`),
 and on a production profile the tool refuses it without `--allow-destructive`. For a
-description or charset change prefer re-applying the file with `CREATE OR REPLACE
-DATABASE` — same effect, contents kept, not marked destructive.
+database that only this project's file has configured, re-applying the file's `CREATE OR
+REPLACE DATABASE` is enough. For any other database, change only the clause in question with
+`ALTER DATABASE`, after the human's yes: `CREATE OR REPLACE` is not documented to keep the
+settings it does not name. On 9.5.1 it kept the `CHARSET`, `COST OPTIMIZATION`,
+`ODBC AUTHENTICATION` and `CHECK_VIEW_RESTRICTIONS` set before it —
+*verified: 9.5.1 (live, 2026-10-07)* — LDAP authentication, VCS, the vault and the cache were
+not tried.
 
 ## DROP DATABASE
 
@@ -109,7 +114,7 @@ before `DROP DATABASE x;` in the same file, and do not run it with `--database x
 ## Reading databases back
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 LIST DATABASES;                                   -- name
 DESC DATABASE <name>;                             -- name, description
 SELECT db_name, description, charset, authentication, odbc_authentication,
@@ -118,7 +123,12 @@ SELECT db_name, description, charset, authentication, odbc_authentication,
 FROM GET_DATABASES() WHERE db_name = '<name>';
 ```
 
-`GET_DATABASES()` has no `database_name` column; the name is `db_name`, and each
-setting comes with a `<setting>_default` boolean that says whether the server default is
-in force. `DESC VQL DATABASE <name>` prints the objects of the database as VQL, not the
-`CREATE DATABASE` statement itself; its first line carries the server version.
+`GET_DATABASES()` has no `database_name` column; the name is `db_name`. `charset`,
+`cost_optimization`, `query_simplification`, `summary_rewrite`, `cache` and
+`check_view_restrictions` each have a `<setting>_default` column, true only when the database
+is set to Default (false for an explicit value even if it equals the server's);
+`authentication`, `odbc_authentication` and `vcs` have none. `DESC VQL DATABASE <name>` prints
+the objects of the database as VQL, not the `CREATE DATABASE` statement itself, unless
+`('includeCreateDatabase' = 'yes')` adds `CREATE DATABASE` and `ALTER DATABASE` with its
+settings — behind a `DROP DATABASE IF EXISTS` line: read it, do not apply it. Its first line
+carries the server version.

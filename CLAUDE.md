@@ -47,8 +47,9 @@ fixtures at a branch's own `verification/data` while its data is unmerged), a st
 `requires` the server lacks is skipped with the reason, and every `verified`-marked block of
 `skills/` is a step or a line of `[not_run]` (a unit test holds it). A new marked block needs one
 of the two, and a step that uses what a skippable step creates declares `needs` (another unit
-test reads the manifest for it); `--without <feature>` rehearses a server without one. Drop probe databases before a `--with-marketplace` run: its sync puts whatever VDP
-has into the shared catalog. Сам инструмент:
+test reads the manifest for it); `--without <feature>` rehearses a server without one. Since T44 a `--with-marketplace` run reads the catalog's pending changes first and skips its
+tail when anything but its own database is pending (and fails, holding back cleanup's sync,
+if something appears meanwhile): drop probe databases before such a run, or the tail is skipped. Сам инструмент:
 `scripts/denodo --help`.
 
 ## Рабочий процесс

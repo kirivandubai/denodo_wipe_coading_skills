@@ -92,6 +92,14 @@ STATE_CHANGING_PROCEDURES = frozenset({
     "GENERATE_SMART_STATS_FOR_FIELDS",
     "COMPUTE_SOURCE_TABLE_STATS",
     "MAINTAIN_METADATA_TABLES",
+    # each also has a mode that only lists, and is flagged in it too: the name is all this reads
+    "GET_STATS_FOR_FIELDS",
+    "CHECK_METADATA",
+    "CHECK_CACHE_NAMES",
+    # no listing mode: it always changes
+    "MIGRATE_DATE_TYPES",
+    # with no arguments it deletes orphan files and expired snapshots of the cache control tables
+    "OPTIMIZE_LAKEHOUSE_ACCELERATOR_CACHE_TABLES",
 })
 # ``FROM name(`` anywhere in the statement (a view defined over the procedure would run it
 # on every query), ``CALL name(`` at the start; an optional ``database.`` qualifier.
@@ -195,7 +203,7 @@ def _classify_scheduler(method: str, route: str, body) -> str | None:
     if _SCHEDULER_SECURITY.match(route) and method in ("POST", "PUT"):
         return "security"
     if route == "/public/api/serverMetadata/import" and method == "POST":
-        return "replace"  # the whole metadata of the server: projects, jobs, data sources
+        return "replace"  # replaces the server's jobs, data sources, plugins and drivers with the file's
     if _SCHEDULER_SETTINGS.match(route) and method in ("POST", "PUT"):
         return "setting"
     if method == "PUT":

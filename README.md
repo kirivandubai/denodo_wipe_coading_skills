@@ -40,9 +40,9 @@ them to the next environment, or rebuild them after a rollback. Data Marketplace
 one exception to the VQL part — it is a separate server driven by REST — but the rest of
 the loop is the same.
 
-Naming follows Denodo's own *VDP Naming Conventions* out of the box (`ds_`, `bv_`, `iv_`,
-`a_`, numbered layer folders). A project that has its own standard overrides them in
-`.denodo/conventions.md` — plain markdown, no schema to learn.
+Naming follows conventions adapted from Denodo's *VDP Naming Conventions* out of the box
+(`ds_`, `bv_`, `iv_`, `a_`, numbered layer folders). A project that has its own standard
+overrides them in `.denodo/conventions.md` — plain markdown, no schema to learn.
 
 ## Requirements
 
@@ -53,9 +53,11 @@ Naming follows Denodo's own *VDP Naming Conventions* out of the box (`ds_`, `bv_
   account allowed to create objects. Data Marketplace (`9090` by default) only if you use
   `/denodo:marketplace`; the Scheduler administration tool, on the same web container, only if
   you use `/denodo:scheduler`.
-- **Python 3.11 or newer** on `PATH`. Nothing else: the plugin's own launcher builds its
-  environment on first run — with `uv` if you have it, otherwise a venv under
-  `~/.claude/plugins/data/denodo/`. Do not install database drivers by hand.
+- **Python 3.11 or newer** on `PATH`, and access to PyPI (or a mirror pip or uv is configured
+  for) on the first run: the plugin's own launcher installs its two database drivers then —
+  with `uv` if you have it, otherwise into a venv under `~/.claude/plugins/data/denodo/`.
+  Without index access, install them into an interpreter yourself and set `DENODO_CLI_PYTHON`
+  to it.
 - For `/denodo:testing` only: the **Denodo Testing Tool**, downloaded from the Denodo support
   site (Denodo Connects) and unzipped anywhere, with **Java 17** or newer, and the Virtual
   DataPort JDBC port (`9999` by default) reachable. The plugin does not ship the tool.
@@ -72,6 +74,11 @@ In Claude Code:
 The marketplace is `denodo-skills`, the plugin inside it is `denodo`, and the GitHub
 repository has a third name — all three are correct as written above.
 
+An update follows the repository's commits: `claude plugin marketplace update denodo-skills`,
+then `claude plugin update denodo@denodo-skills`, then `/reload-plugins` or a restart. An install
+that `claude plugin list` shows at version `0.1.0` predates that: update it once this way, and if
+the update says the plugin is already current, uninstall and install it once.
+
 ## Set up an environment profile
 
 Credentials never appear in a command, because command arguments are recorded in the
@@ -83,8 +90,12 @@ session transcript. They live in a profile file outside any repository — by de
 input, so nothing is echoed into the transcript. In Claude Code, prefix it with `!`:
 
 ```
-! ~/.claude/plugins/cache/denodo-skills/denodo/*/scripts/denodo env init
+! "$(for d in ~/.claude/plugins/cache/denodo-skills/denodo/*/; do [ -e "$d.orphaned_at" ] || echo "$d"; done | head -1 | grep . || echo /denodo-plugin-not-installed/)scripts/denodo" env init
 ```
+
+The loop finds the installed copy of the plugin: after an update the previous copy stays in the
+cache for 14 days, marked with an `.orphaned_at` file, and a plain `*` would match both. Without
+an installed copy the line fails on `/denodo-plugin-not-installed/`.
 
 Or write the file by hand:
 
@@ -120,18 +131,28 @@ The templates were run on one 9.5.1 server; yours may have another bundle, anoth
 database, no LLM. One command runs them on yours — ask Claude to run it, or run it yourself:
 
 ```
-~/.claude/plugins/cache/denodo-skills/denodo/*/scripts/denodo verify --env dev
+"$(for d in ~/.claude/plugins/cache/denodo-skills/denodo/*/; do [ -e "$d.orphaned_at" ] || echo "$d"; done | head -1 | grep . || echo /denodo-plugin-not-installed/)scripts/denodo" verify --env dev
 ```
 
 It creates its own database (`denodo_skills_test`), runs every verified template of the
-skills in dependency order, checks what each one claims, and removes everything it made — the
+skills in dependency order, checks what each one claims, and removes what it made — the
 database and the few server-wide objects it needs, all named `verify_…`. A step that needs
 something your server lacks is skipped and says what; the summary counts what was verified,
 failed and skipped. The tails that write outside that database or cost money are flags:
-`--with-writes` (tables in the cache database), `--with-marketplace`, `--with-scheduler`,
-`--with-ai` (about 50 paid requests to your LLM), `--testing-tool <dir>`; `--without <feature>`
-skips what needs a feature even when the server has it. On a profile marked `production = true`
-it refuses to start.
+`--with-writes` (tables in the cache database), `--with-marketplace`, `--with-scheduler` (its
+export job leaves one CSV file in the Scheduler's export folder; each run overwrites it and
+nothing removes it), `--with-ai` (about 50 paid requests to your LLM), `--testing-tool <dir>`;
+`--without <feature>` skips what needs a feature even when the server has it. On a profile
+marked `production = true` it refuses to start unless `--allow-destructive` is passed after a
+human has confirmed.
+
+`--with-marketplace` synchronises the whole marketplace catalog with VDP, at the start of its
+tail and again in cleanup, and whatever other people left pending would be published or removed
+with it. So the run reads the catalog's pending changes first: anything besides its own database
+skips the tail; if something appears while it runs, cleanup does not send its pair and the run's
+own entries stay in the catalog as orphans — the report says which. Two runs against one server must not overlap: `--database` gives a run its
+own database, but the few server-wide `verify_…` objects are shared by name, and each run's
+cleanup drops them.
 
 The values that belong to your installation are read from the server: the embedding model,
 the cache data source, the Scheduler's data source. The test data is a handful of small

@@ -87,37 +87,8 @@ into `views`; `version` leaves the manifests, so users track commits; `vql` keep
 the skills. Three tasks in this order; after them, development is driven by sessions only — no new
 object skill until a session asks for one. Low findings are made in the same passes, file by file.
 
-- **T44. What an agent would get wrong on another server** (points 1 and 4, the version, `verify`).
-  - **The version:** remove `version` from `.claude-plugin/plugin.json` and `metadata.version`
-    from `marketplace.json` (repo-3, scope-maintainer-8): by the Claude Code plugin reference a set
-    `version` "keeps users on that version until you change it". README: one note that existing
-    installs reinstall once, and a launcher path that cannot match an orphaned old version
-    (repo-13).
-  - **The five high findings of point 4 and the two of point 1:** the dependants check
-    (datasources-B1, datasources-A13 — `USED_BY`); `date` → `localdate`, `TO_DATE` →
-    `TO_LOCALDATE` (datasources-B2, datasources-B6, execute-B1, and the open question below);
-    procedure parameters under their own names, not `input_…` (procedures-B1); summaries outside
-    Professional and Standard (materialize-B1); the marketplace types — only Report is native,
-    plus `direction`, the Semantics FeaturePack, the Visualize permission and the stray id `7446`
-    (marketplace-A1, -A8, -A9, -B1, -B2, -B3, -B4, sweep-2); the time zone of writes (dml-A1,
-    -A2, -B2, -B3, sweep-1).
-  - **The medium findings of points 1 and 4** (the main document lists them by kind), with
-    side-3, side-4 and side-12; the low ones of the same files in the same pass, side-1 included.
-    To measure or settle against a manual: side-6 (the cursor loop's row count), side-7 (the MCP
-    Server's user), side-11 (`GET_VIEWS()` with a missing database).
-  - **Outside `skills/`, low:** CLI help texts that trail the code (repo-10), PyPI access on the
-    first run (repo-14), the fixture README (repo-15), task ids in `chain.toml` comments
-    (repo-16), fixtures from `main` against an older installed chain (repo-19), the fixed
-    `verify_` names on a shared server (repo-20).
-  - **`safety.py`:** `GET_STATS_FOR_FIELDS` and `CHECK_METADATA` join the state-changing
-    procedures, with the unit test that compares the two lists (procedures-B2, procedures-B3).
-  - **`verify`:** `--with-marketplace` reads both `changes` before the tail and before cleanup and
-    skips the synchronise pair when anything foreign is pending, as the outcome runner does
-    (repo-1); `jdbc-generate-schema` after `cache-load` (repo-4); README's production and
-    Scheduler-export statements (repo-11, repo-12); one figure for the AI tail (side-13).
-  - **Done when:** unit tests and lint pass; every changed template is a green chain step on the
-    test server (`--update-marks` rewrites the marks); the routing suite runs if a description
-    changed.
+*T44 is done — under «Сделано» below.*
+
 - **T45. The drifted duplicates, then the cuts** (point 3).
   - **First the ten duplicates that now contradict each other:** catalog-A2, catalog-A3,
     catalog-A4, catalog-A5, views-A13, marketplace-A4, procedures-A2 (with procedures-B4),
@@ -175,6 +146,26 @@ object skill until a session asks for one. Low findings are made in the same pas
 
 ## Открытые вопросы
 
+- **What T44 measured against the documentation, for the owner** (each now written into the
+  skill that needs it). The documentation contradicts itself or the 9.5.1 server in seven places:
+  a cast of a zoned value to `timestamp`, `LOCALTIMESTAMP` and `NOW()` follow the query's i18n (a
+  `CONTEXT ('i18n' = …)` changes them), where the cast page names the server's i18n;
+  `CURRENT_DATE` ignores that `CONTEXT` and, delegated to SQL Server or PostgreSQL, is sent as
+  Denodo's own date; `ALTER DATASOURCE JDBC` refuses the `FOLDER` and `ID` clauses its grammar
+  lists; `CREATE DATASOURCE JDBC` without `USERNAME`/`USERPASSWORD` does not parse, though the
+  credentials are documented optional; `PING_DATA_SOURCE` answers positional arguments; a bare
+  `LIST RESOURCES JDBC` lists the names a driver can be imported under, not what was imported;
+  `GET_STATS_FOR_FIELDS` is described as not storing and has an `input_save` that stores.
+  Worth reporting to Denodo if the owner wants.
+- **Left open by T44.** Something that becomes pending in the catalog in the middle of the
+  `--with-marketplace` tail (between the first read and `marketplace-rename-match`) is not
+  guarded. The README's note for installs made at version `0.1.0` was not tried on a real old
+  install. `features.mpp` in `env check` is the licence check only, not a configured engine —
+  T46 reads `features`. `CREATE OR REPLACE DATABASE` kept `CHARSET`, cost optimisation, ODBC
+  authentication and `CHECK_VIEW_RESTRICTIONS` set before it; LDAP, VCS, vault and cache settings
+  were not tried, so `catalog` still prefers `ALTER` for a database the project does not own.
+  The tails whose templates did not change were not re-run: writes, AI, Scheduler, Testing Tool.
+
 - **An incremental load into the session's own remote table is now the agent's** (T43, for the
   owner). It follows from T34 — the `REFRESH` of that table, which empties it first, was already
   the agent's — and both RED agents stopped on the contradiction. Say so if the narrower write
@@ -190,7 +181,8 @@ object skill until a session asks for one. Low findings are made in the same pas
   `INSERT`).
 - **The DF template declares `created_dt:date`** (`datasources`), a type `dialect.md` calls
   deprecated — `localdate` reads the same file (T43, noticed by a GREEN review). Confirmed by the
-  final review against the documentation ("should not be used anymore") — fixed in T44.
+  final review against the documentation ("should not be used anymore") — **fixed in T44**:
+  `localdate` and `TO_LOCALDATE` throughout, the chain's DF steps green on it.
 - **A matched-rename synchronisation is still the human's yes — should it be?** (T30, for the
   owner.) **Decided 2026-10-05:** a matched-rename synchronisation of the session's own view is
   the agent's; for a view older than the session, one yes covers the rename and the
@@ -512,6 +504,71 @@ object skill until a session asks for one. Low findings are made in the same pas
 ---
 
 ## Сделано
+
+- **T44. What an agent would get wrong on another server.** The 207 findings of points 1 and 4
+  of [the final review](superpowers/specs/2026-10-06-final-review-findings.md) assigned to T44
+  (with `scope-maintainer-8`, `datasources-A13` and eight side observations), the version, the
+  safety classifier and two guards of `verify`. Plan:
+  [2026-10-06-t44-final-review-fixes.md](superpowers/plans/2026-10-06-t44-final-review-fixes.md).
+
+  **How.** Seventeen implementers in parallel, one per skill and one for everything outside
+  `skills/`, each in its own worktree, each change reviewed against its findings and the
+  documentation (the 9.5 guides as text, the MCP Server, AI SDK and Testing Tool manuals), fixed
+  until clean and merged; then a whole-branch review for what the parallel edits could not see —
+  one fact said two ways in two skills — and one fix wave. A claim that neither the documentation
+  nor the file settled was measured on the test server in a `zq44_<skill>` database of its own,
+  dropped after; nothing server-wide was created.
+
+  **What changed.**
+  - `version` is gone from `plugin.json` and `marketplace.json`: installs follow the commits.
+    README tells a `0.1.0` install to update once, and its launcher lines skip the copy Claude
+    Code orphans after an update — `ls -dt` picks the orphan, which gets the newer mtime.
+  - The five high findings: `USED_BY` for the dependants of a base view; `localdate` and
+    `TO_LOCALDATE` in every template and row that taught `date`/`TO_DATE`; procedure parameters
+    under their own names; summaries off only in Professional and Standard; the marketplace's
+    element and provider types listed, not "built in" (only Report, Tableau and Power BI ship).
+    The time zone of writes is said as a property of the server process, apart from what a
+    query's cast shows.
+  - Licences and installation settings are said as such (Enterprise Plus for tags, policies and
+    the AI SDK; an administrator profile; people outside VDP; the LLM provider; SQL Server's
+    default collation, `NULL` order and decimals; maintenance switched on).
+  - `safety.py` flags `GET_STATS_FOR_FIELDS`, `CHECK_METADATA`, `CHECK_CACHE_NAMES`,
+    `MIGRATE_DATE_TYPES` and `OPTIMIZE_LAKEHOUSE_ACCELERATOR_CACHE_TABLES` as state-changing, in
+    `vql run` and `vql plan` alike.
+  - `verify --with-marketplace` reads both `changes` before its tail and skips it while anything
+    but its own database is pending; cleanup sends its synchronisation pair only after a tail ran,
+    and holds it back — failing the run, `summary.cleanup_failed` — if something foreign appeared
+    (design spec 11.1). `jdbc-generate-schema` runs after `cache-load`.
+  - CLI help, README, CONTRIBUTING and the fixture README say what the code does.
+
+  **Measured on 9.5.1 and written where it belongs.** A cast of a zoned value to `timestamp`,
+  `LOCALTIMESTAMP` and `NOW()` follow the query's i18n; `CURRENT_DATE` ignores a `CONTEXT` i18n
+  and is sent to SQL Server and PostgreSQL as Denodo's own date; `CAST(x AS localdate)` is a
+  syntax error and `CAST('date', x)` gives the deprecated `date`. `GET_VIEWS()` over a missing
+  database fails rather than answering no rows. The `p_cursor` template returns each row once
+  (its chain check now counts them). `impersonate_roles` takes a list with `allusers`.
+  `PING_DATA_SOURCE` answers positional arguments (procedures-B5 refuted); `ALTER DATASOURCE
+  JDBC` refuses `FOLDER` and `ID`; `CREATE DATASOURCE JDBC` needs `USERNAME`; a bare `LIST
+  RESOURCES JDBC` lists importable names; `GET_SOURCE_TABLE`/`GET_SOURCE_COLUMNS` answer over an
+  unreachable host; `GET_ELEMENTS()` gives `/` as a top-level folder and lower-cases the folder
+  path; `CREATE OR REPLACE DATABASE` kept four settings; an association precondition is not
+  quoted and takes no parentheses; the test server's marketplace lists 24 element and 27 provider
+  types, `REPORT`, `TABLEAU` and `POWERBI` first.
+
+  **Checked.** Unit tests (lint included) pass. `scripts/denodo verify --env lab
+  --with-marketplace --update-marks`: 103 verified, 0 failed, 58 skipped by flag — the writes,
+  AI, Scheduler and Testing Tool tails, none of whose templates changed; both `changes` empty
+  after. No `description` changed, so the routing suite was not run. The marks the run rewrote are
+  one commit; two prose marks over the `localdate` parse were re-dated by hand.
+
+  **Left for T45** (the duplicates and cuts it was going to touch anyway): the ciphertext's
+  portability worded two ways (`execute`, `datasources`); `CONTEXT ('cache' = 'off')` comparisons
+  in `scheduler` and `dml` without the caveat `cache` now carries; `view_name` of
+  `COLUMN_DEPENDENCIES` said two ways (`cache`, `views`); task ids in three `chain.toml` comments;
+  "Every row is a paid request" beside "billed when hosted" (`ai`); the long licence cell of
+  `security` and its `policies.md` heading; the `{ds:vdp}` clause of `testing`; `materialize`,
+  `scheduler` and `security` now at the 500-line limit. **For T46:** the remote-table steps of the
+  chain do not `require` data movement, which the documentation says creating one needs.
 
 - **T43. Narrow template gaps, by how often they are asked.** Six gaps, each with RED and GREEN
   runs (Opus and Sonnet subagents on the test server, fixtures of their own), chain steps and,

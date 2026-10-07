@@ -1021,6 +1021,19 @@ removal is proved by what is gone, `"0" = "<absent>"` on a list the step emptied
 писал, и трогать общий каталог ему незачем. Результат уборки — часть отчёта, а не строка
 в логе: прогон, не убравший за собой, обязан это сказать.
 
+**Both synchronisations take along whatever else is pending (T44).** A `synchronize` call has
+no radius: on a shared server it would publish other teams' new databases and views and
+remove what VDP no longer has, their marketplace tags with it. So the run reads
+`DATABASES/changes` and `VIEWS/changes` before the first marketplace step and, leaving out its
+own database, skips the whole tail when anything is left (`catalog` is the skip's cause); a
+catalog it cannot read fails the first marketplace step. Cleanup sends its pair only when a
+marketplace step ran; it reads the two `changes` again first, and if something foreign has
+appeared it holds the pair back and fails the run (`summary.cleanup_failed`), naming the run's
+own entries left as orphans and the `--cleanup-only --with-marketplace` that takes them out
+once nothing else is pending. The outcome runner guards the same way (`catalog_pending`,
+section 11.3). Not covered: something that becomes pending during the tail itself, between the
+first read and `marketplace-rename-match`, which synchronises the renamed view.
+
 **Прогон против production-профиля отклоняется целиком, до первого шага.** `CREATE OR
 REPLACE` разрушительным не считается (раздел 6.3), поэтому проверка «по каждому вызову»
 пропустила бы всю цепочку — база, представления и два *серверных* тега были бы созданы —

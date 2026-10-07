@@ -338,6 +338,31 @@ class StateChangingProcedureTest(unittest.TestCase):
         ):
             self.assertEqual(classify_vql(call), "procedure", call)
 
+    def test_procedures_with_a_writing_mode_are_flagged_in_every_mode(self):
+        # the name is all the classifier reads, so the listing mode is flagged with the writing
+        # one: stored statistics (input_save), fixed metadata and removed views, cache control
+        # rows rewritten in single-user mode, date columns retyped across databases
+        for call in (
+            "SELECT * FROM GET_STATS_FOR_FIELDS() WHERE input_database_name = 'd' AND input_save = true",
+            "SELECT * FROM GET_STATS_FOR_FIELDS() WHERE input_database_name = 'd' AND input_save = false",
+            "SELECT * FROM CHECK_METADATA() WHERE input_remove_broken_references = true",
+            "SELECT database_name, name FROM CHECK_METADATA()",
+            "SELECT view_name FROM CHECK_CACHE_NAMES('d', true)",
+            "SELECT view_name FROM CHECK_CACHE_NAMES('d', false)",
+            "SELECT * FROM MIGRATE_DATE_TYPES() WHERE input_database_name = 'd'",
+        ):
+            self.assertEqual(classify_vql(call), "procedure", call)
+
+    def test_lakehouse_cache_maintenance_is_flagged(self):
+        # with no arguments it removes orphan files and expired snapshots of the cache control
+        # tables and rewrites their data files and manifests
+        for call in (
+            "CALL OPTIMIZE_LAKEHOUSE_ACCELERATOR_CACHE_TABLES()",
+            "CALL OPTIMIZE_LAKEHOUSE_ACCELERATOR_CACHE_TABLES('d', 'ds', true, true, true, false, null, false, null, null)",
+            "SELECT \"table\", status FROM OPTIMIZE_LAKEHOUSE_ACCELERATOR_CACHE_TABLES()",
+        ):
+            self.assertEqual(classify_vql(call), "procedure", call)
+
     def test_reading_procedures_are_not_flagged(self):
         self.assertIsNone(classify_vql("SELECT name FROM GET_ELEMENTS() WHERE input_database_name = 'd'"))
         self.assertIsNone(classify_vql("SELECT 1 AS a FROM DUAL()"))

@@ -75,7 +75,9 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--max-rows", type=int, default=DEFAULT_MAX_ROWS, help="rows kept per result set")
     run.add_argument("--continue-on-error", action="store_true", help="keep going after a failed statement")
     run.add_argument("--allow-destructive", action="store_true",
-                     help="required on a production profile for DROP/ALTER/DELETE statements")
+                     help="required on a production profile for any statement the safety classifier marks "
+                          "destructive: DROP, ALTER, DELETE, writes, settings, state-changing procedures, "
+                          "cache loads, security objects, source tables")
     plan = vql.add_parser("plan", parents=[env_opt],
                           help="what a .vql file (or '-' / -e) would do on this server, statement by statement: "
                                "new or existing, this session's own, and whether the core's safety table puts it "
@@ -106,7 +108,8 @@ def build_parser() -> argparse.ArgumentParser:
                      help="multipart part (repeatable); implies multipart/form-data")
     api.add_argument("--timeout", type=float, default=300, help="seconds (synchronize calls can be slow)")
     api.add_argument("--allow-destructive", action="store_true",
-                     help="required on a production profile for DELETE and set-replacing POST calls")
+                     help="required on a production profile for DELETE, set-replacing POST calls, and "
+                          "Scheduler deletes, PUTs, status changes and new jobs")
     api.add_argument("--plan", action="store_true",
                      help="do not send the call: say whether the core's safety table puts it under the human's yes; "
                           "for a catalog synchronize, read both changes and check the radius against this session's ledger")
@@ -151,21 +154,26 @@ def build_parser() -> argparse.ArgumentParser:
 
     env = top.add_parser("env", help="environment profiles").add_subparsers(dest="action", required=True)
     env.add_parser("list", help="profiles known on this machine (never shows passwords)")
-    env.add_parser("check", parents=[env_opt], help="connect to VDP (and Data Marketplace if configured); report whether the user is an administrator and may impersonate")
-    env.add_parser("init", help="create a profile interactively — run it yourself, e.g. `! scripts/denodo env init`")
+    env.add_parser("check", parents=[env_opt],
+                   help="connect to VDP, and to the Data Marketplace and the Scheduler if configured; report "
+                        "whether the user is an administrator and may impersonate, and the server's features")
+    env.add_parser("init", help="create a profile interactively — run it yourself in a terminal, not through "
+                                "the agent")
 
     verify = top.add_parser("verify", parents=[env_opt],
                             help="run the chain of skill templates against a live server and clean up")
     verify.add_argument("--chain", help="manifest path (default: verification/chain.toml in the repo)")
     verify.add_argument("--database", help="test database to create and drop (default: from the manifest)")
     verify.add_argument("--with-marketplace", action="store_true",
-                        help="also run the Data Marketplace tail; it writes outside your own database")
+                        help="also run the Data Marketplace tail; it synchronises the whole marketplace "
+                             "catalog with VDP, at the start and again in cleanup, so it is skipped unless "
+                             "nothing but the run's own database is pending there")
     verify.add_argument("--with-ai", action="store_true",
                         help="also run the steps that call the server's LLM; every row they project is "
                              "a paid request")
     verify.add_argument("--with-writes", action="store_true",
-                        help="also run the steps that create a table in the source database named in the "
-                             "manifest and insert, update and delete its rows")
+                        help="also run the steps that create tables in the server's cache data source (or "
+                             "the one set in the values file) and insert, update and delete their rows")
     verify.add_argument("--with-scheduler", action="store_true",
                         help="also run the Scheduler tail: it creates a project on the shared Scheduler, "
                              "creates and runs jobs there, and deletes the project in cleanup")
@@ -245,9 +253,8 @@ def _read_password() -> str:
         if password.endswith("\r"):
             password = password[:-1]
     if not password:
-        raise UsageError("no password on stdin: pipe it in, or run the command yourself in a "
-                         "terminal (in Claude Code: `! scripts/denodo secret encrypt --env <env>`) "
-                         "to type it into a hidden prompt")
+        raise UsageError("no password on stdin: pipe it in, or run `secret encrypt --env <env>` yourself "
+                         "in a terminal, not through the agent, to type it into a hidden prompt")
     if "\n" in password or "\r" in password:
         raise UsageError("the password must be one line; got several, so nothing was encrypted")
     return password
@@ -282,9 +289,9 @@ def _dispatch(args) -> tuple[dict, int]:
         return list_environments(profiles_path())
     if args.group == "env" and args.action == "init":
         if not sys.stdin.isatty():
-            raise UsageError("env init is interactive: run it yourself in a terminal "
-                             "(in Claude Code: `! scripts/denodo env init`) so the password is typed "
-                             "into a hidden prompt and never enters a transcript")
+            raise UsageError("env init is interactive: run it yourself in a terminal, not through the "
+                             "agent, so the password is typed into a hidden prompt and never enters a "
+                             "transcript")
         def ask(prompt, default=""):
             suffix = f" [{default}]" if default else ""
             return input(f"{prompt}{suffix}: ") or default

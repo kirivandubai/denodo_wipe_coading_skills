@@ -21,8 +21,8 @@ and derived views over it:
 | `GROUP BY` / aggregate view, `UNION` view | none | `Error executing sentence: View '<v>'. No update methods ready to be run` |
 | `SELECT DISTINCT` view | **accepted** — the documentation lists it as not writable; an `UPDATE` changed the source row | — |
 | `FLATTEN` view | none (documentation) | — |
-| partitioned union, when a write's `WHERE` leaves one branch and that branch is writable | all three (documentation; needs query simplification on) | — |
-| view with parameters | when the write's `WHERE` gives every parameter (documentation) | — |
+| partitioned union, when a write's `WHERE` leaves one branch and that branch is writable | `UPDATE`, `DELETE` (documentation; needs query simplification on) | — |
+| view with parameters | `UPDATE` / `DELETE` whose `WHERE` gives every parameter (documentation) | — |
 | interface view | whatever its implementation takes, through the implementation's filter | — |
 | view with a full cache | `UPDATE`, `DELETE` — and the cache is emptied; `INSERT` refused | `View '<v>'. Insert operation is not allowed` |
 | a derived view over any view above that does not take writes | none | — |
@@ -68,7 +68,8 @@ CREATE OR REPLACE VIEW <name> AS SELECT … FROM <one view> WHERE <filter>
 - Without a keyword it is `CASCADED`: an `INSERT` through a view over `WHERE status = 'open'`,
   with its own filter on another column, was refused for `status = 'closed'`. `LOCAL` checked
   only its own filter and let the row in.
-- Placed after the `SELECT` (after `CONTEXT`, if the view has one — documentation).
+- Placed after the `SELECT` and its `ORDER BY` / `OFFSET` / `LIMIT`, before the view's
+  `CONTEXT` clause (documentation).
 
 ## The wrapper's switches
 
@@ -87,7 +88,8 @@ CREATE OR REPLACE WRAPPER JDBC <name> …
 | `ALLOWINSERT = false`, `ALLOWUPDATE = false` | the same for `Insert` / `Update` (documentation) |
 | `NOT UPDATEABLE` on a field | `UPDATE`: `The field '<f>' is not updateable`; `INSERT`: `Cannot insert a value into the non updateable field '<f>'` |
 
-`DEFAULT` (or no `SOURCECONFIGURATION`) allows all three. `DESC VQL WRAPPER JDBC <wrapper>
+`DEFAULT` (or no `SOURCECONFIGURATION`) takes a default that depends on the source
+(documentation); over SQL Server it allowed all three. `DESC VQL WRAPPER JDBC <wrapper>
 ('includeDependencies' = 'no', 'dropElements' = 'no')` shows what is set, without the data
 source and its encrypted password; the wrapper's name is in the base view's `WRAPPER ( jdbc … )`. Changing a wrapper someone else owns to make a
 write pass is not a fix — it is a change to their object, for their yes.

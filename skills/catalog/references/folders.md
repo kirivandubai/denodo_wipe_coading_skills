@@ -71,7 +71,7 @@ DROP FOLDER [ IF EXISTS ] '/<path>' [ CASCADE ]
 ## Reading folders back
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 DESC FOLDER '/<path>';                            -- name, path, description
 DESC VQL FOLDER '/<path>';                        -- CREATE OR REPLACE FOLDER … as the server writes it
 
@@ -81,13 +81,16 @@ WHERE input_database_name = '<db>' AND type IN ('folder', 'view', 'datasource', 
 ```
 
 `folder` in `GET_ELEMENTS()` is the **parent path** of the element (`/` for a top-level
-folder), so a folder `/a/b` appears as `name = 'b', folder = '/a'`; the full path is
-`folder + '/' + name`. `type` values on 9.5.1: `folder`, `datasource`, `wrapper`, `view`
-(subtype `base`, `derived`, `interface`, `metric`), `association`, `storedProcedure`,
-`tag`, and `type` — the last are server-internal type registers with `folder = null`,
-not objects of yours. Folder descriptions read back as `null` when unset, view
-descriptions as `''`. Before a `DROP FOLDER … CASCADE`, list with
-`WHERE folder LIKE '/<path>%'` and **no type filter**. There is no `LIST FOLDERS`. Through the tool: `vql desc --env dev --database <db> "'/<path>'" --type
+folder), in **lowercase** — `name` keeps its case: a folder `/Sales/EU` appears as
+`name = 'EU', folder = '/sales'`; the full path is `'/' + name` at the top level and
+`folder + '/' + name` below it, so compare paths with `lower()`. `type` values on
+9.5.1: `folder`, `datasource`, `wrapper`, `view` (subtype `base`, `derived`, `interface`,
+`materialized`, `metric`), `association`, `storedProcedure`, `webService`, `tag`, and
+`type` — registers and arrays (`CREATE TYPE`, or left by `NEST`/`REGISTER`), `folder = null`.
+Folder descriptions read back as `null` when unset, view descriptions as `''`. Before a
+`DROP FOLDER … CASCADE`, list with `WHERE input_database_name = '<db>' AND (lower(folder) =
+lower('/<path>') OR lower(folder) LIKE lower('/<path>/%'))` and **no type filter**. There is
+no `LIST FOLDERS`. Through the tool: `vql desc --env dev --database <db> "'/<path>'" --type
 folder` — the path keeps its single quotes inside the double quotes.
 
 Server-generated VQL (`DESC VQL DATABASE`) lists folders under `# FOLDERS` in creation

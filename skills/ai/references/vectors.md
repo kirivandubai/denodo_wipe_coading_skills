@@ -30,11 +30,13 @@ or in that field list. A derived view keeps it, renamed or not: `GET_VIEW_COLUMN
 `column_extra_properties = [embeddingmodel <model> ]` for the view's column.
 A column computed with `EMBED_AI` in a view has no property (`[]`).
 
-**A full cache cannot store a vector column**: `ALTER VIEW … CACHE FULL` over a view with one
-fails with `Cannot invoke "java.lang.Integer.toString()" because the return value of
-"…SQLSourceTypeInfo.getSourceTypeSize()" is null`. Vectors for a whole table are generated
-outside Denodo and stored in a vector-capable source — PostgreSQL with pgvector, Oracle,
-SQL Server 2025, Snowflake, Databricks, BigQuery (documentation) — which Denodo then reads.
+**A full cache over a vector column failed on 9.5.1** (the 9.4 release notes say vector values
+can be cached; the error names a missing source type size): `ALTER VIEW … CACHE FULL` over a
+view with one failed with `Cannot invoke "java.lang.Integer.toString()" because the return
+value of "…SQLSourceTypeInfo.getSourceTypeSize()" is null`. Vectors for a whole table are
+generated outside Denodo and stored in a vector-capable source — PostgreSQL with pgvector,
+Oracle, SQL Server 2025, Snowflake, Databricks, BigQuery (documentation) — which Denodo then
+reads.
 
 ## Distance functions
 

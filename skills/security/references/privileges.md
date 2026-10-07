@@ -30,12 +30,14 @@ ALTER ROLE <name> [ '<description>' ]
 - Role inheritance: `GRANT ROLE a, b` inside a role. A user's privileges are the **union** of
   their own and all their roles' — a role never narrows what another role or a direct grant
   gives.
-- `ALLOWED_PATHS ( '<folder>', … )` limits a role to folders (documentation only).
+- `ALLOWED_PATHS ( '<directory>', … )`: directories of the server's file system that the role may
+  use for uploads and file-based data sources. It replaces the `FILE` privilege, deprecated since
+  9.3, and has nothing to do with catalog folders (documentation only).
 
 ## Users
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 ALTER USER <name> GRANT ROLE <role> [, <role> ]*;
 ALTER USER <name> REVOKE ROLE <role>;
 ALTER USER <name> GRANT CONNECT, EXECUTE ON <db>;          -- a privilege of the user's own
@@ -62,7 +64,7 @@ ALTER USER <name> REVOKE EXECUTE ON <db>.<view>;            -- a grant on one vi
 ## Database grants from the database side
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 ALTER DATABASE <db> GRANT CONNECT, EXECUTE TO ROLE <role>;
 ALTER DATABASE <db> REVOKE EXECUTE TO ROLE <role>;
 ```
@@ -88,7 +90,7 @@ nothing — read the grant back with `CATALOG_PERMISSIONS()`.
 ## Who reads a database, and through what
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 SELECT username, userrolename, elementname, dbconnect, dbexecute, elementexecute, dbadmin
 FROM CATALOG_PERMISSIONS()
 WHERE dbname = 'sales_analytics';
@@ -124,17 +126,21 @@ CHOWN <user> FOLDER '<path>';
 CHOWN <user> DATASOURCE JDBC <name>;
 ```
 
-The owner of an element can change and drop it. Changing an owner needs a global
-administrator or a local administrator of the database. `GET_ELEMENTS()` shows the creator
-and last modifier; `DESC VQL VIEW <view> ('includeUserPrivileges' = 'yes')` includes the
-`CHOWN` line — and a `# USER CREATION` section with a `CREATE USER` for every user holding a
-privilege on the view or below it, which for a local user is where `DESC VQL USER` prints the
-password hash: filter its output down to the `CHOWN` lines before it reaches the transcript.
+For views, folders and data sources, ownership grants nothing by itself: only privileges are
+checked (since 7.0, unless `com.denodo.vdb.security.requirePrivilegesToOwners` is `false`). A
+creator who is a VDP user gets `METADATA` and `WRITE` automatically, and both can be revoked; a
+new owner set with `CHOWN` changes or drops the element only with `WRITE` on it. Changing an
+owner needs a global administrator or a local administrator of the database. `GET_ELEMENTS()`
+gives the owner in `user_creator` (`GET_VIEWS()` does too), so read it there.
+`DESC VQL VIEW <view> ('includeUserPrivileges' = 'yes')` also prints the `CHOWN` line, but adds
+a `# USER CREATION` section with a `CREATE USER` for every user holding a privilege on the view
+or below it, which for a local user is where `DESC VQL USER` prints the password hash: filter
+its output down to the `CHOWN` lines before it reaches the transcript.
 
 ## Checking as someone else
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 SELECT … FROM <view> CONTEXT ('impersonate_user' = '<user>');
 SELECT … FROM <view> CONTEXT ('impersonate_roles' = '<role>[,<role>…]');
 ```
@@ -146,8 +152,9 @@ the server property `com.denodo.vdb.security.allowImpersonateToRegularUsers`).
 **Only a `SELECT`.** An `INSERT`, `UPDATE` or `DELETE` carrying the same `CONTEXT` was
 executed with the profile's own privileges — a user with only `EXECUTE` on a view updated
 it, and a base view they had no grant on; a user without `DELETE` deleted a row
-(*verified: 9.5.1 (live, 2026-10-02)*). A write privilege is checked by the writer's own
-login, never by impersonation.
+(*verified: 9.5.1 (live, 2026-10-02)*). A write privilege is checked only in a session as the
+writer — their own login, or (documentation only) `CONNECT USER <u>` without a password from a
+profile with the `impersonator` role — never by the `CONTEXT`; both run real writes.
 
 | Answer | Meaning |
 |---|---|

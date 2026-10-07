@@ -33,10 +33,10 @@ Rules of the load itself:
 - `'cache_invalidate'` without `'cache_preload'` changes nothing on a full cache. *live*
 - Over a view whose cache is off, it answers `ok` and loads nothing: switching the cache on
   afterwards gives 0 rows. A refresh job left running after `CACHE OFF` fails silently. *live*
-- A Scheduler cache job builds this query from its options; its *Invalidate* option
-  (`cacheInvalidationMode`) defaults to `NONE` for a new job — in the API and in the 9.5.1
-  administration tool, against the documentation's *Matching rows* — so every run appends. Set
-  `ALL_ROWS` (`/denodo:scheduler`). *live*
+- A Scheduler *Simple Cache Management* job builds this query from its options; its
+  *Invalidate* option (`cacheInvalidationMode`) defaults to `NONE` for a new job — in the
+  API and in the 9.5.1 administration tool, against the documentation's *Matching rows* —
+  so every run appends. Set `ALL_ROWS` (`/denodo:scheduler`). *live*
 
 ## `ALTER VIEW … CACHE` (`ALTER TABLE … CACHE` for a base view)
 
@@ -46,8 +46,8 @@ Rules of the load itself:
 | `CACHE FULL NO_STATUS` | 0 until a load | created without it; **every `'all_rows'` load creates a new table and drops the old one** *live* | |
 | `CACHE FULL` (bare) | as one of the two above — the server decides. On 9.5.1 *live* it was `WITH_STATUS`; the documentation names `NO_STATUS` as the default since 9.4 | | |
 | `CACHE FULL WITH_STATUS` on a `NO_STATUS` cache | kept | kept, stops moving on loads *live* | kept |
-| `CACHE INVALIDATE` (cache on) | 0 | kept; rows marked, deleted by maintenance | `NULL` |
-| `CACHE INVALIDATE WHERE <condition>` | the matching rows go | kept | kept (documentation) |
+| `CACHE INVALIDATE` (cache on) | 0 | kept; rows marked, deleted by maintenance (`NO_STATUS`: deleted at once — documentation) | `NULL` |
+| `CACHE INVALIDATE WHERE <condition>` | the matching rows go (documentation) | kept | not measured |
 | `CACHE INVALIDATE` (cache off) | accepted, **no effect** — the next `CACHE FULL` serves the old rows *live* | | |
 | `CACHE OFF` | the sources | kept, rows still valid *live* — the maintenance-task page says they are marked invalid; the `CACHE_CONTENT` page and the server say otherwise | kept |
 | `CACHE FULL` again after `OFF` | **the old rows, at once** — no load *live* | same | the old date |
@@ -55,8 +55,8 @@ Rules of the load itself:
 | `CACHE INVALIDATE ON CASCADE` | not for a full cache: a full cache cannot be invalidated on cascade, and a cascade from above skips the full caches below (documentation) | | |
 
 The status column is the Design Studio option **Include control columns (legacy)**. The
-documentation recommends leaving it out; on 9.5.1, leaving it out breaks every view above the
-cache on every full reload — *verified: 9.5.1 (live, 2026-09-30)*:
+documentation recommends leaving it out; on 9.5.1 with a SQL Server cache, leaving it out
+broke every view above the cache on every full reload — *verified: 9.5.1 (live, 2026-09-30)*:
 
 ```
 view above, queried once → load with 'all_rows' → view above:
@@ -83,7 +83,7 @@ after the load worked until the load after that. The cached view itself kept ans
 
 | Question | Query |
 |---|---|
-| Is the cache enabled for the database, in which database do cached queries run, how often maintenance runs | `SELECT status, adapter_database_name, time_to_live, maintenance, maintainer_period FROM GET_CACHE_CONFIGURATION() WHERE database_name = '<db>'` — the row with `database_name` `NULL` is the server's |
+| Is the cache enabled for the database, which kind of database runs cached queries, whether and how often maintenance runs | `SELECT status, adapter_database_name, time_to_live, maintenance, maintainer_period FROM GET_CACHE_CONFIGURATION() WHERE database_name = '<db>'` — the row with `database_name` `NULL` is the server's |
 | Is the view's cache on, and its table | `SELECT cache_catalog_name, cache_schema_name, cache_table_name FROM GET_CACHE_TABLE('<db>', '<view>')` — when the view's cache is off: `Error executing query. … GET_CACHE_TABLE [STORED PROCEDURE] [ERROR] Received exception with message …` *live* |
 | `WITH_STATUS` or `NO_STATUS` | `DESC VQL` names it only when the statement did; otherwise the plan below: `rowStatus = ?` is `WITH_STATUS` *live* |
 | The table's columns and their types in the cache database | `SELECT column_name, cache_column_type_name, cache_column_type_size FROM GET_CACHE_COLUMNS() WHERE input_database_name = '<db>' AND input_view_name = '<view>'` — the control column is not listed. *live*: `text` became `VARCHAR(4000)` and `decimal` `NUMERIC(38,20)` on SQL Server |
@@ -91,8 +91,9 @@ after the load worked until the load after that. The cached view itself kept ans
 | Every cached view of a database | `CACHE_CONTENT('<db>', NULL)` — also lists views whose cache is off but whose rows are still there |
 | Whether a query reads the cache | `SELECT execution_plan FROM GET_QUERY_EXECUTION_PLAN() WHERE input_query = '<query>'` — the cache's SQL names the `C_<VIEW>…` table and, with the status column, `WHERE rowStatus = ?` |
 
-`CACHE_CONTENT` and `CLEAN_CACHE_DATABASE` need an administrator or a local administrator of
-the database; `GET_CACHE_TABLE` needs the Metadata privilege on the view (documentation).
+`CACHE_CONTENT` needs an administrator or a local administrator of the database;
+`CLEAN_CACHE_DATABASE` a global administrator; `GET_CACHE_TABLE` the Metadata privilege on
+the view (documentation).
 
 ## Freeing the space
 
@@ -114,10 +115,10 @@ the database; `GET_CACHE_TABLE` needs the Metadata privilege on the view (docume
 |---|---|
 | Virtual | `CACHE OFF` |
 | Full | `CACHE FULL` |
-| Query results | `CACHE PARTIAL` (with *explicit loads*: `PRELOAD`; *match exact*: `EXACT`) |
+| Query results | `CACHE PARTIAL` (with *explicit loads*: `PRELOAD`; *Match Exact Queries Only*: `EXACT`) |
 | Include control columns (legacy) | `WITH_STATUS` |
 | Delete stored results → Invalidate all / partially | `CACHE INVALIDATE [WHERE …]` |
-| Store results in cache + Invalidate existing results | `'cache_preload' = 'true'` + `'cache_invalidate'` |
+| Execute dialog: Store results in cache + Invalidate existing results | `'cache_preload' = 'true'` + `'cache_invalidate' = 'matching_rows'` |
 
 ## Outside this skill
 

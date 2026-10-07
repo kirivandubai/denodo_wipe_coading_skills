@@ -1,7 +1,7 @@
 # VQL procedures
 
 Denodo's procedural language: variables, branches, loops, cursors, exceptions and DDL, with
-no Java and no JAR. **Requires the Denodo Enterprise or Enterprise Plus bundle** (VQL Guide,
+no Java and no JAR. **Requires the Denodo Enterprise or Enterprise Plus bundle** (Developer Guide,
 *Developing VQL Stored Procedures*) — the syntax is not the thing that fails on a server
 without it.
 
@@ -85,7 +85,7 @@ cursor below). A procedure without `RETURN ROW` is legal and returns zero rows.
 ## EXECUTE: DDL from inside a procedure
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 CREATE OR REPLACE VQL PROCEDURE p_params (n IN INTEGER, made OUT VARCHAR)
 AS (
     tmp VARCHAR;
@@ -109,7 +109,7 @@ stored happily and fails only when called — and the failure the client sees is
 ## Cursors: walking rows
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 CREATE OR REPLACE VQL PROCEDURE p_cursor (n OUT INTEGER, label OUT VARCHAR)
 AS (
     CURSOR rows_of_v IS 'SELECT n, label FROM v_rows';
@@ -139,7 +139,7 @@ END;
 ## Exceptions
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 CREATE OR REPLACE VQL PROCEDURE p_others (msg OUT VARCHAR)
 AS (
     tmp VARCHAR;

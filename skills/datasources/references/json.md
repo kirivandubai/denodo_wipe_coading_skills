@@ -21,8 +21,9 @@ CREATE [ OR REPLACE ] DATASOURCE JSON <name>
   *verified: 9.5.1 (live, 2026-09-09)*
 - `NDJSON` switches the parser to newline-delimited JSON (one document per line).
   *unverified: 9.5 documentation only*
-- `FILENAMEPATTERN` is **not** available for JSON — that clause is DF-only. A directory of
-  JSON files needs one source per file.
+- `FILENAMEPATTERN` is **not** available for JSON — that clause is DF-only. A route to a
+  directory reads every file in it, all assumed to share the first file's structure
+  (*unverified: 9.5 documentation only*), so the directory must hold only those files.
 
 `ALTER DATASOURCE JSON` takes `ROUTE`, `DESCRIPTION` and `NDJSON`; it is an `ALTER`, so the
 human confirms it (`/denodo:vql`). Re-applying `CREATE OR REPLACE` does not need that.
@@ -48,7 +49,7 @@ CREATE [ OR REPLACE ] WRAPPER JSON <name>
 ### The shape that works
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 TUPLEROOT '/JSONFile/JSONArray'
 OUTPUTSCHEMA (jsonfile = 'JSONFile' : REGISTER OF (
     order_id = 'JSONFile.JSONArray.order_id' : 'java.lang.String',
@@ -77,7 +78,7 @@ OUTPUTSCHEMA (jsonfile = 'JSONFile' : REGISTER OF (
 as catalog objects first:
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 CREATE OR REPLACE TYPE oms_shipping AS REGISTER OF (country:text, city:text, zip:text);
 CREATE OR REPLACE TYPE oms_order_line AS REGISTER OF (line_no:int, sku:text, qty:int, price:double);
 CREATE OR REPLACE TYPE oms_order_line_array AS ARRAY OF oms_order_line;

@@ -167,10 +167,10 @@ summary over plain views is measured; one over a metric view was not tried.
   dimensions and metrics, a query wizard that adds `evaluate_metric` and the `GROUP BY` for
   you, data model, assisted query). Data preparation cannot sample a metric view; it needs
   live data enabled for it (*documentation*).
-- **Assisted Query and the AI SDK** receive per field a flag dimension or metric
-  (*documentation*) — the field descriptions matter as much as for any view.
-- **The MCP Server** shows a metric view like a view, under the same visibility tag
-  (`/denodo:semantics`).
+- **Assisted Query and the MCP Server** receive per field a flag dimension or metric
+  (*documentation*); the MCP Server also labels the view's type `Metric` and applies the same
+  visibility tags as to any view (`/denodo:semantics`) — the field descriptions matter as much
+  as for any view.
 
 ## Procedures that describe it
 

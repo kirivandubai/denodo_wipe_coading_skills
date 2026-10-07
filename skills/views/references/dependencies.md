@@ -22,8 +22,9 @@ Rules common to all three — *verified: 9.5.1 (live, 2026-09-30)*:
   `input_name = 'store%'` lists every view whose name starts with `store`, and `_` matches any
   one character.
 - `USED_BY()` lists dependants in **other databases** too, in `used_by_database_name`.
-- **It lists views only.** Associations are `GET_ASSOCIATIONS()`; web services and anything
-  outside the catalog — a report, a client, a scheduled job — are not listed anywhere here.
+- **It lists views only.** Associations are `GET_ASSOCIATIONS()`, web services
+  `GET_CATALOG_METADATA_WS()` (below); anything outside the catalog — a report, a client, a
+  scheduled job — is not listed anywhere.
   A metric view is a view and is listed.
 - **What you may see decides what you get.** Checked as a user who may read only the top
   view, by impersonation (`CONTEXT ('impersonate_user' = …)`, `/denodo:security`) —
@@ -66,16 +67,21 @@ A `SELECT` from a view left `INVALID` answers `View without search methods:` —
 `/denodo:procedures` explains as a missing parameter. Here it means the view underneath lost
 a column; `GET_VIEWS(… invalid only)` names the view.
 
-For a whole database at once, `DESC VQL DATABASE <db>` is one text holding every
-definition — views, associations, web services — and a text search of it is the most
-complete answer the server gives, and the only one that shows a published web service
-exposing the view (`RESOURCES ( VIEW <view> FIELDS ( … ) )`). It is large — thousands of
-lines on a real database — so save it to a file and search it for the view's name.
+The web services that publish a view, in every database, and the fields each publishes:
+`SELECT DISTINCT database_name, ws_name, ws_type, column_name FROM GET_CATALOG_METADATA_WS()
+WHERE schema_database = '<db>' AND schema_name = '<view>' AND schema_type = 'view'` —
+*verified: 9.5.1 (live, 2026-10-07)*. It lists only the services you hold `METADATA` on and
+never fails for want of one (documentation), so empty is "none this user can see". For a
+whole database at once, `DESC VQL DATABASE <db>` is one text holding every definition —
+views, associations, web services (`RESOURCES ( VIEW <view> FIELDS ( … ) )`) — and a text
+search of it is the most complete answer the server gives; it needs an administrator or the
+`metadata_export` role. It is large — thousands of lines on a real database — so save it to
+a file and search it for the view's name.
 
 ## Where a field comes from
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 SELECT column_name, dependency_database_name, dependency_name, dependency_column_name,
        dependency_type, expression, depth
   FROM COLUMN_DEPENDENCIES()

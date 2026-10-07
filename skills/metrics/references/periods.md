@@ -12,7 +12,7 @@ calendar, one row per day, `d_date_sk` its key), in `sales_analytics`.
 ## The periods are dimensions
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 CONNECT DATABASE sales_analytics;
 
 CREATE OR REPLACE ASSOCIATION a_return_date REFERENTIAL CONSTRAINT
@@ -66,7 +66,7 @@ CREATE OR REPLACE METRIC VIEW store_return_metrics
 ## Year over year
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 CONNECT DATABASE sales_analytics;
 
 CREATE OR REPLACE VIEW store_returns_by_year
@@ -112,10 +112,10 @@ CREATE OR REPLACE VIEW store_returns_yoy
 ```
 
 - **The year before is a join on `return_year - 1`, not `LAG`.** `LAG` reads the previous row, so a
-  year with no rows compares two years apart; and over a source that cannot run windows it does
-  not run at all. The quarter or month before crosses the year: number the periods —
-  `<year> * 4 + <quarter>`, `<year> * 12 + <month>` (`GETQUARTER(<date>)` gives the quarter) — and
-  join on that number minus one.
+  year with no rows compares two years apart; and over a source that cannot run windows it fails
+  unless the server moves the data to an MPP or the cache. The quarter or month before crosses
+  the year: number the periods — `<year> * 4 + <quarter>`, `<year> * 12 + <month>`
+  (`GETQUARTER(<date>)` gives the quarter) — and join on that number minus one.
 - **A partial period makes its change meaningless**, and every total check still passes. Data
   that starts in the middle of a year or stops in the middle of a month gives a first and a last
   period shorter than the others, compared with full ones. The coverage of both years is on every
@@ -141,7 +141,7 @@ CREATE OR REPLACE VIEW store_returns_yoy
 ## To date, against the same days of last year
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 CONNECT DATABASE sales_analytics;
 
 CREATE OR REPLACE VIEW store_returns_ytd
@@ -172,9 +172,11 @@ CREATE OR REPLACE VIEW store_returns_ytd
 - **"Today" is the server's clock, not the data's.** Over data whose last loaded day is weeks old,
   this view answers `0` against last year's figure — a fall of 100 %, with no error; a feed a few
   days late shows as a fall of that many days. `last_return_day` puts the last date with data on
-  the row: say in the answer when it is older than the as-of date. A comparison of the data as it stands puts
-  that date, as a literal, where the template has `ADDDAY(CURRENT_DATE, -1)`. `CURRENT_DATE` is the Denodo server's date
-  (`/denodo:vql`, `references/dialect.md`, time zones).
+  the row: say in the answer when it is older than the as-of date. A comparison of the data as it
+  stands puts that date, as a literal, where the template has `ADDDAY(CURRENT_DATE, -1)`.
+  `CURRENT_DATE` is the Denodo server's date, sent as a value where the condition is delegated
+  (SQL Server and PostgreSQL measured); a database that evaluates it itself may read its own clock
+  (VQL Guide, Datetime Functions; `/denodo:vql`, `references/dialect.md`, time zones).
 - **Check it at dates you choose**: the view's `SELECT` with `CURRENT_DATE` replaced by a literal —
   the last day with data, a 31st, 29 February, 1 January — against plain SQL over the fact for the
   same windows. Through the view itself only today can be read.
@@ -195,7 +197,7 @@ CREATE OR REPLACE VIEW store_returns_ytd
 ## Running total within a year
 
 ```sql
--- verified: 9.5.1 (live, 2026-10-06)
+-- verified: 9.5.1 (live, 2026-10-07)
 CONNECT DATABASE sales_analytics;
 
 CREATE OR REPLACE VIEW store_returns_by_month
@@ -229,7 +231,8 @@ CREATE OR REPLACE VIEW store_returns_running
   over the selection, the whole query one `SQLSentence` — but order it by a number or a date: by a
   text label (`FORMATDATE('yyyy-MM', …)`) SQL Server refuses it, `ORDER BY list of RANGE window
   frame …`, unless the frame is `ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW` — *verified:
-  9.5.1 (live, 2026-10-06)*, SQL Server. Over files: `Function sum is not executable`.
+  9.5.1 (live, 2026-10-06)*, SQL Server. Over files, on a server not set up to move the data to an
+  MPP or the cache, it was `Function sum is not executable`.
 - A month with no returns has no row, so the running total of a chart skips it; when the human
   wants every month, take the months from the calendar view and `LEFT OUTER JOIN` the totals.
 

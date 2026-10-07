@@ -56,14 +56,14 @@ own file names (`TAGS`), which is created before that view.
 
 ## Naming and layout
 
-Defaults below follow the Denodo VDP Naming Conventions. Lowercase with underscores,
-singular nouns, no environment name anywhere in an object name (`sales`, never
-`sales_dev` — the profile says which server you are on).
+Defaults below are adapted from Denodo's KB article "VDP Naming Conventions". Lowercase
+with underscores, singular nouns, no environment name anywhere in an object name (`sales`,
+never `sales_dev` — the profile says which server you are on).
 
 | Object | Name |
 |---|---|
 | Database | the project or domain: `sales_analytics` |
-| Data source | `ds_<source system>` — one file source is one file, so a system that arrives as several files gets one per file, named for what is in it: `ds_retail_store`, `ds_retail_store_returns` |
+| Data source | `ds_<source system>` — one per file layout: files with different contents get one each, named for what is in it (`ds_retail_store`, `ds_retail_store_returns`); files of one layout share one source over their directory (`/denodo:datasources`) |
 | Wrapper | `wr_<source system>_<entity>` |
 | Base view | `bv_<source system>_<entity>` |
 | Derived view, integration layer | `iv_<what it does>` |
@@ -289,7 +289,7 @@ the input so the wrong reading shows: `'abcdef'` for a substring, `2024-12-30` f
 | You write | Denodo gives | Write instead |
 |---|---|---|
 | `SUBSTRING(s, 1, 3)` | `'bc'` — the comma form is 0-based and its third argument is an end index. `INSTR` is 0-based (`-1` when absent), `POSITION` 1-based | `SUBSTR(s, 1, 3)` or `LEFT(s, 3)`; never mix the 0-based and 1-based functions in one expression |
-| `s = 'abc'`, `num_col > '9'` | exact: case and trailing spaces count, and a file source may pad text to the column width (`LEN` shows it). A comparison mixing text and a number compares as text — `day > '9'` finds nothing. Delegated to SQL Server, case and spaces are ignored instead | `UPPER(TRIM(s)) = 'ABC'`; numbers compared as numbers |
+| `s = 'abc'`, `num_col > '9'` | exact: case and trailing spaces count — text from a `CHAR(n)` column or a fixed-width file carries spaces to the column width (`s LIKE '% '` shows it). A comparison mixing text and a number compares as text — `day > '9'` finds nothing. Delegated, the source's rules apply: SQL Server ignores trailing spaces, and case too under its default collation | `UPPER(TRIM(s)) = 'ABC'`; numbers compared as numbers |
 | `CAST(x AS integer)` | truncates, `2.9` → `2` — yet rounds when the cast runs in PostgreSQL. `'12abc'` → `12`; past the range it wraps around | `ROUND`, `FLOOR` or `TRUNC`, whichever you mean; check text with `TRIM(s) REGEXP_LIKE '^-?[0-9]+$'` before casting it |
 | `a / 0`, `int + int` past 2 147 483 647 | `NULL`, no error | guard the denominator; `CAST(a AS bigint)` before adding |
 | `SUM(int_col)` | stays `int`: past 2 147 483 647 it returns `NULL` or a wrong number that looks real | `SUM(CAST('long', x))` — for `int` only: over a `decimal` the same cast truncates every row. `decimal` and `double` need nothing |
@@ -297,12 +297,14 @@ the input so the wrong reading shows: `'abcdef'` for a substring, `2024-12-30` f
 | `TO_LOCALDATE('YYYY-MM-DD', s)`, `FORMATDATE('YYYY-MM', d)` | Java patterns, pattern first. `YYYY` is the week year (30 Dec → next year), `DD` day of year, `mm` minutes, `hh` 1–12, `yy` 2000–2099; `MMM` month names are read in the language of the i18n. A wrong letter gives a wrong date or `NULL` | `yyyy-MM-dd HH:mm:ss`; a language argument for names: `TO_LOCALDATE('dd-MMM-yyyy', s, 'en')` |
 | a date parsed from text | malformed → `NULL`; but `CAST('2024-02-30' AS date)` → `2024-02-29`, silently corrected | `TO_LOCALDATE`, then count the `NULL`s against the non-empty inputs |
 | `TRUNC(d, 'month')`, `ts2 - ts1` | Oracle masks, uppercase only: `'month'` returns `d` unchanged. A timestamp minus a timestamp is whole days: the hours are dropped | `TRUNC(d, 'MM')`; hours from `GETTIMEINMILLIS(ts2) - GETTIMEINMILLIS(ts1)` |
-| `GETDAYOFWEEK(d)`, `EXTRACT(DOW FROM d)` | Sunday is `1` or `7`, `0` or `6`, by the i18n of the database you are connected to — the documentation's "Sunday is always 0" is wrong | `FORMATDATE('EEEE', d, 'us_pst') = 'Sunday'`, or `MOD(GETDAYSBETWEEN(DATE '1900-01-07', d), 7)`: `0` is Sunday |
+| `GETDAYOFWEEK(d)`, `EXTRACT(DOW FROM d)` | Sunday is `1` or `7`, `0` or `6`, by the i18n of the database you are connected to — not the documentation's unconditional DOW "between Sunday (0) and Saturday (6)" | `FORMATDATE('EEEE', d, 'us_pst') = 'Sunday'`, or `MOD(GETDAYSBETWEEN(DATE '1900-01-07', d), 7)`: `0` is Sunday |
 
 Also silent, and in the reference: `LIKE` treats `$` as its escape character; `1.1` is a
-`double`; `LOG(value, base)` takes the base second; `NULL`s sort last on `DESC` too; a
-`timestamptz` formats to a different day under another i18n; and the same view can return
-different figures depending on what Denodo pushes down to the source.
+`double`; `LOG(value, base)` takes the base second; `NULL`s sort last on `DESC` too in
+Denodo's own sort, while a delegated sort follows the database — PostgreSQL puts them first
+(`/denodo:views`, `references/one-row-per-key.md`); a `timestamptz` formats to a different day
+under another i18n; and the same view can return different figures depending on what Denodo
+pushes down to the source.
 
 ## Where to go from here
 

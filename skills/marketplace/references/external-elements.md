@@ -11,16 +11,14 @@ That inverts the usual order: the VQL comes first and the REST call only trigger
 
 | Part | Created by | Scope |
 |---|---|---|
-| Element type (`DASHBOARD`, `PIPELINE`, …) | `POST /public/api/external-elements-types`, or one of the 24 built in | the whole marketplace |
+| Element type (`DASHBOARD`, `PIPELINE`, …) | `POST /public/api/external-elements-types`, or one the listing already has | the whole marketplace |
 | Provider type (the tool: Acme BI, Airflow) | `POST /public/api/external-providers-types`, multipart | the whole marketplace |
 | External tool server | `POST /public/api/external-tool-servers`, `type: CUSTOM` | one VDP server |
 | The elements themselves | `POST /public/api/external-tool-servers/synchronize` | one tool server |
 
-Built-in element types on 9.5.1, from `GET /public/api/external-elements-types`:
-`AI_AGENT, AI_LLM, AI_SKILL, APPLICATION, CATALOG, DASHBOARD, DATA_CONTRACT, DATA_PRODUCT,
-DOCUMENT, ETL_JOB, GLOSSARY, KNOWLEDGE_BASE, NOTEBOOK, PIPELINE, POLICY, PROMPT, QUALITY_RULE,
-REPORT, RULE, SCHEDULER_JOB, SQL_SCRIPT, STORED_PROCEDURE, STREAM, WORKFLOW` —
-*verified: 9.5.1 (live, 2026-09-10)*. Reuse one; a new type is a marketplace-wide object.
+Element types are listed by `GET /public/api/external-elements-types`. `REPORT` (Tableau and
+Power BI reports) is the documented native one; the rest a marketplace lists were created
+there. Reuse one that fits; a new type is a marketplace-wide object.
 
 ### Element type
 
@@ -33,26 +31,21 @@ while the documentation calls `description` optional; send all six. Duplicate `n
 
 ### Provider type
 
-**Check the 28 built-in ones first** (`GET /public/api/external-providers-types`):
-`AIRFLOW_PROVIDER`, `GITHUB_PROVIDER`, `TABLEAU`, `POWERBI`, `QLIK_PROVIDER`,
-`LOOKER_PROVIDER`, `COLLIBRA_PROVIDER`, `DATABRICKS_PROVIDER`, `SNOWFLAKE_PROVIDER`,
-`INFORMATICA_PROVIDER`, `FIVETRAN_PROVIDER`, `MATILLION_PROVIDER`, `TALEND_PROVIDER`,
-`JENKINS_PROVIDER`, `JUPYTER_PROVIDER`, `N8N_PROVIDER`, `MCP_PROVIDER`, `SERVICENOW_PROVIDER`,
-`ATLAN_PROVIDER`, `AWS_GLUE_PROVIDER`, `FABRIC_PROVIDER`, `CONFLUENT_PROVIDER`,
-`ABINITIO_PROVIDER`, `T24_TEMENOS_PROVIDER`, `SCHEDULER_PROVIDER`, `DENODO_DQ_PROVIDER`,
-`DATA_PRODUCT_PROVIDER`, `GLOSSARY_PROVIDER` — *verified: 9.5.1 (live, 2026-09-10)*. They
-arrive with the vendor's icon; a new one is a marketplace-wide object that everybody sees,
-and one created without an icon stands in that shared list logo-less next to the rest. The
-listing embeds those icons as base64 and is ~290 KB on 9.5.1: save it and project
+**Check the listed ones first** (`GET /public/api/external-providers-types`): `TABLEAU` and
+`POWERBI` are the documented native ones, the rest a marketplace lists were created there.
+Existing ones usually carry their vendor's icon; a new one is a marketplace-wide object that
+everybody sees, and one created without an icon stands in that shared list logo-less next to
+the rest. The listing embeds those icons as base64 and can be large —
+*verified: 9.5.1 (live, 2026-09-10)*: save it and project
 `{externalProviderTypeId, name, visualName}`.
 
 **"None fits" is decided by whose logo ends up on the card.** A provider type is what the
 consumer sees as the origin of the asset, so reusing `TABLEAU` for a dashboard that is not
 Tableau's puts another vendor's name and logo on it — a false statement about provenance,
 and cheaper only in calls. A type of your own without an icon is the better trade; it stands
-logo-less, which is honest. `name` is not validated against a shape: every built-in one is
-`UPPER_SNAKE`, and a lowercase name is accepted just the same — *verified: 9.5.1 (live,
-2026-09-12)*.
+logo-less, which is honest. `name` is not validated against a shape: the native ones and the
+documentation's examples are `UPPER_SNAKE`, and a lowercase name is accepted just the same —
+*verified: 9.5.1 (live, 2026-09-12)*.
 
 Creating one is multipart: a part named `request` of type `application/json` carrying
 `{name, visualName}`,
@@ -89,7 +82,7 @@ Skip the `CONNECT DATABASE` line if the session is already in that database.
 |---|---|---|---|
 | `id` | text | yes | unique per tool server; comes back as `originalExternalElementId` |
 | `name` | text | yes | shown in the marketplace |
-| `description` | text | no | HTML is fine and renders |
+| `description` | text | no | plain text; whether HTML from the view renders is *unverified* (the documentation states HTML only for the description edited in the marketplace) |
 | `external_element_type` | text | yes | an element type's `name`, character for character |
 | `url` | text | no | becomes the "open in tool" link |
 | `created_at` | timestamp | yes | |
@@ -120,11 +113,13 @@ Association record: `associated_element_id`, `external_tool_server_name`,
   *verified: 9.5.1 (live, 2026-09-10)*. Two consequences: elements from two different tools
   need two provider types and therefore **two tool servers**, and the server holding the
   target must be imported **first**, or the association has nothing to resolve to.
-- `direction` is `IN` or `OUT` — *unverified: 9.5 documentation only*. It reads from the
-  external element outwards and is not the direction of the data: in the sample content that
-  ships with 9.5.1, a dashboard that *reads* a view carries `OUT` with role `consumes`, and a
-  pipeline that *writes* one carries `OUT` with role `feeds`. Every association there is
-  `OUT`; what the marketplace does differently with `IN` is *unverified*. `role` is free text and is the
+- `direction` is `IN` or `OUT`, which the documentation calls the data-flow direction; the 360
+  graph draws its arrow by it, and neither page says from whose side —
+  *unverified: 9.5 documentation only*. A Denodo-authored sample implementation of asset
+  extensions marks every association `OUT`: a dashboard that *reads* a view with role
+  `consumes`, a pipeline that *writes* one with role `feeds`. What the marketplace does
+  differently with `IN` is *unverified*. Follow the marketplace's existing elements, say which
+  you chose, and look at the arrow after the first import. `role` is free text and is the
   label drawn on the edge.
 
 **The type names are part of the contract.** Renaming
