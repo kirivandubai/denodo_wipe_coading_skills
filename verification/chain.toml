@@ -2719,7 +2719,7 @@ substitute = { "<tool_server_id>" = "{tool_server_id}", "<provider_type_id>" = "
 id = "marketplace-rename-before"
 kind = "template"
 channel = "http"
-address = "skills/marketplace/SKILL.md#A view in the marketplace is renamed, recreated or moved"
+address = "skills/marketplace/references/renames.md#Renamed, recreated or moved views in full"
 marketplace = true
 # 0 = view-details on the old name, before anything changes.
 calls = [0]
@@ -2739,7 +2739,7 @@ check = "SELECT name FROM GET_VIEWS() WHERE input_database_name = '{database}' A
 id = "marketplace-rename-match"
 kind = "template"
 channel = "http"
-address = "skills/marketplace/SKILL.md#A view in the marketplace is renamed, recreated or moved"
+address = "skills/marketplace/references/renames.md#Renamed, recreated or moved views in full"
 marketplace = true
 # 1 = changes, 2 = synchronize with the pair matched, 3 = view-details on the new name.
 calls = [1, 2, 3]
