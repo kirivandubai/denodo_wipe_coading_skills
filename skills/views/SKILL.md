@@ -330,8 +330,8 @@ its columns differently, map them — the field list stays as it was:
 Left of `=` is the interface field, right is the implementation's column.
 `ALTER INTERFACE VIEW <name> SET IMPLEMENTATION <view> ( … )` does the same thing in
 place, and it is what you use when the contract was created ahead of its implementation —
-but it is an `ALTER` of an existing object, so the human confirms it first
-(`/denodo:vql`). Re-applying the file is the default.
+but it is an `ALTER`: `vql plan` says whether it waits for the human's yes (`/denodo:vql`).
+Re-applying the file is the default.
 
 **When a column is renamed underneath an existing contract**, the mapping and the contract
 are two different answers, and the request decides which:

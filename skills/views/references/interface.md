@@ -122,8 +122,8 @@ implementation arrives later — and for that case it is the only option: re-app
 whose statement has no `SET IMPLEMENTATION` **clears** the implementation and puts the view
 back to `INTERFACE_NOT_IMPLEMENTED`, *verified: 9.5.1 (live, 2026-09-10)*. Everywhere else,
 re-apply the file with the new view after `SET IMPLEMENTATION`: the file stays the record
-of what is deployed. `ALTER` is a change to an existing object, so the human confirms it
-(`/denodo:vql`).
+of what is deployed. `ALTER` is a change in place: `vql plan` says whether it waits for the
+human's yes (`/denodo:vql`).
 
 After either one: `SELECT` through the contract. Every time.
 
