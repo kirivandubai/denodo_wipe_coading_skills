@@ -59,8 +59,8 @@ tool classifies them anyway (`/denodo:execute`, **Destructive operations**).
 
 The query a run sends: `select * from <db>.<view> CONTEXT('cache_preload'='true',
 'cache_wait_for_load'='true', 'cache_return_query_results'='false', 'cache_invalidate'='all_rows',
-'cache_atomic_operation'='true') TRACE`. Measured: with `NONE` both runs are `COMPLETE` and the
-rows are there twice after the second; `MATCHING_ROWS` without a condition also drops rows deleted
+'cache_atomic_operation'='true') TRACE`. Measured: two runs with `NONE` are both `COMPLETE` and
+leave every row twice; `MATCHING_ROWS` without a condition also drops rows deleted
 from the source; over a view without a cache the run is `WARNING`, with rows extracted,
 `cachedDocs: 0` and `The cache is not configured for the selected view and no tuples have been
 cached in its subviews`. Its report's virtual exporter is `CacheLoader`.
