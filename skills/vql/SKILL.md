@@ -43,6 +43,10 @@ before it stay applied: a `CREATE OR REPLACE` of a view re-applies safely, but a
 or AI load, or `OR REPLACE` over a table that holds rows runs again (`/denodo:dml`,
 `/denodo:materialize`).
 
+**A file waiting for the human's yes is not committed** until it is applied: a commit made before a
+session is what `vql plan` reads as your project's declaration (`declared_in`), so a file committed
+unapplied would vouch for its own change in the next session.
+
 **A request for a set** — every table of a schema, every column that holds an email, every
 view of a database — runs the same loop over a list, with a plan file: **Many objects at
 once**, below.
@@ -300,11 +304,13 @@ pushes down to the source.
 
 **A view is on HTTP already.** The server's built-in RESTful web service answers for every view,
 to any user who may read it, with that user's privileges (HTTP Basic):
-`GET http://<host>:9090/denodo-restfulws/<database>/views/<view>?$format=json` — *verified: 9.5.1
-(live, 2026-10-07)*; an administrator can switch it off. When an application only needs to read a
-view over HTTP, that URL is the answer; the application's user needs `CONNECT` on the database and
-`EXECUTE` on the view (`/denodo:security`). A service of its own is published in Design Studio; its
-statements wait for the yes (the safety table).
+`GET <web container>/denodo-restfulws/<database>/views/<view>?$format=json` — the web container of
+the profile's `marketplace_url`, `http://<host>:9090` by default — *verified: 9.5.1 (live,
+2026-10-07)*; an administrator can switch it off. When an application only needs to read a view
+over HTTP, that URL is the answer; the application's user needs `CONNECT` on the database and
+`EXECUTE` on the view (`/denodo:security`). Your `SELECT` is the proof the view answers; the URL
+with data is the application's user to try. A service of its own is published in Design Studio;
+its statements wait for the yes (the safety table).
 
 There is no skill for the `SELECT` itself — an ad-hoc question, a report, the body of a
 view: it is the SQL you know, with the expression deltas above and in

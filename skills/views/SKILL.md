@@ -219,8 +219,7 @@ CREATE OR REPLACE VIEW iv_customer_orders
 
 - **An empty or missing array is not dropped — it becomes one row with every element field
   `NULL`.** A view of elements needs the template's `WHERE <element field> IS NOT NULL`, on a
-  field no real element leaves empty; without it `COUNT(*)` counts an order without lines as
-  a line.
+  field no real element leaves empty; without it `COUNT(*)` counts an empty order as a line.
 - **The parent's measures repeat on every element row** (`SUM(total_amount)` adds each order
   once per line): aggregate them from the unflattened view, join at the result's grain.
 - **Names.** The element's fields come out without a prefix and the array column is gone. An
@@ -492,8 +491,6 @@ and `household_income_by_band` and the `household_income` contract with them.
   schema_name = '<view>' AND schema_type = 'view'` — *verified: 9.5.1 (live, 2026-10-07)*;
   it shows only the services you hold `METADATA` on (documentation). What no query finds —
   reports, clients, jobs reading the view — goes into the report as what the list cannot see.
-- The names you pass must be exact and in the right case: a pattern or a wrong case is an
-  error that names nothing, not an empty result.
 - **Report it as a list the human can act on**: each object, how it uses the column
   (`SELECT` list and which output column, join condition, filter, grouping, mapping), and
   what goes down with it — then what the list cannot see. The decision to go ahead is
@@ -512,7 +509,7 @@ and `household_income_by_band` and the `household_income` contract with them.
   remote table's query is text in its base view's `DATA_LOAD_QUERY`, and its next `REFRESH`
   after the change fails *after* emptying the table — *verified: 9.5.1 (live, 2026-10-02)*.
   Search `DESC VQL DATABASE <db>` (an administrator or the `metadata_export` role) for the
-  view's name, saved to a file — it is one large text (`/denodo:materialize`).
+  view's name — one large text, with the data sources' ciphertexts: never in the project.
 
 **A view with no file yet** — built in Design Studio, the usual case on a server people
 already use — changes through a file all the same, started from the server's text of it alone:
@@ -522,15 +519,18 @@ already use — changes through a file all the same, started from the server's t
 DESC VQL VIEW iv_household_income ('includeDependencies' = 'no', 'dropElements' = 'no');
 ```
 
-Save the answer as the view's file: `CREATE VIEW` becomes `CREATE OR REPLACE VIEW`, and the rest
-stays as printed — `FOLDER`, description, field descriptions, key, `TAGS`, `CONTEXT`, the
-`ALTER VIEW … CACHE` line with its time to live. What the file leaves out, the apply removes;
-grants stay (`/denodo:semantics`). Make the change in it. `vql plan` holds it for the yes —
-show it with what the four steps found, and for a cached view its reload, which comes back empty
-(`/denodo:cache`). After the apply, Verify the view and each dependant, and commit the file.
-Before you apply it again later, compare it with the server's text: an edit made in Design
-Studio since is not in it, and the apply would remove it. A data source or a base view a wizard
-built goes back to Design Studio instead (`/denodo:datasources`).
+Save the answer as the view's file: `CREATE VIEW` becomes `CREATE OR REPLACE VIEW`, its `CONTEXT`
+gains `'formatted' = 'yes'`, and the rest stays as printed — `FOLDER`, description, field
+descriptions, key, `TAGS`, the `ALTER VIEW … CACHE` line with its time to live. What the file
+leaves out, the apply removes; grants stay (`/denodo:semantics`). Make the change; a new column
+goes last unless the human placed it — one in the middle moves the others for readers by
+position. `vql plan` holds it for the yes: show it with the dependants (step 1; all four steps for
+a column dropped, renamed or retyped), new description texts where the change makes the old ones
+wrong, and for a cached view its reload, which comes back empty (`/denodo:cache`). After the
+apply, Verify the view and each dependant, and only then commit the file: a committed file vouches
+for the view in a later session's plan. Before a later apply, compare it with the server's text —
+an edit made in Design Studio since would be lost. A data source or a base view a wizard built
+goes back to Design Studio instead (`/denodo:datasources`).
 
 **"Where does this field come from"** is the question `COLUMN_DEPENDENCIES()` does answer:
 with `input_column_name` it walks one field down to the base view and the data source in one
@@ -630,8 +630,7 @@ delegate depends on the database, so read the plan (Verify), not a list. Then:
 - **The answer is per query:** plan `SELECT *` and the consumer's own query; a `COUNT(*)` or
   key check never runs the blocking column.
 
-`references/delegation.md` has the measured causes, how to read each node, and the options
-to offer.
+`references/delegation.md`: the measured causes, how to read each node, the options to offer.
 
 So the read-back after any change to something that already existed is: `USED_BY()`
 before, `GET_VIEWS(… invalid only)` and `GET_ASSOCIATIONS().valid` after, then a `SELECT`

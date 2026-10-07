@@ -281,7 +281,7 @@ the yes is, a yes to the shown statements, never the request that asked for them
 scenario's agent took the request for it); `api … --plan` does the same for a REST
 call without sending it, and for a catalog `synchronize` checks both `changes` against the ledger.
 "Your project's own file declares it" is read from git: the tree of the last commit made before the
-session started — a file the session wrote or committed vouches for nothing. **The plan informs and
+session started — a file the session wrote or committed vouches for nothing. (T46: so a file waiting for a yes is not committed until it is applied — committed unapplied, it would vouch for itself in the next session.) **The plan informs and
 refuses nothing**; the refusal stays the production profile's (roadmap 2.1). The session is the
 conversation with the human, subagents included: `DENODO_SESSION`, else `CLAUDE_CODE_SESSION_ID`
 (a subagent sees its parent's id — measured on Claude Code 2.1.289); without either the ledger is
