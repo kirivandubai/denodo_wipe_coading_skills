@@ -245,18 +245,17 @@ When refused:
 | "The profile is not production and nothing depends on it" | Not production only means the tool will not stop you. A `DROP` waits for the yes on every profile, and an object nothing reads is still someone's. |
 
 **Red flags — stop and ask the human:** you are typing `--allow-destructive`; the
-previous result had `error.kind: "refused"`; `env.production` is `true` and the VQL
-contains `DROP` or `ALTER`, writes with `INSERT` or `UPDATE`, sets a server property with
-`SET '…'`, loads a cache with `'cache_preload'` or `'cache_invalidate'`, or calls a procedure
-on the list of `/denodo:procedures` — `DROP_…`, `CLEAN_…`, `COMPACT_CACHE`, `LOGCONTROLLER` and
-the rest.
+previous result had `error.kind: "refused"`; `env.production` is `true` and the input
+changes anything.
 
 ### Error in the middle of a file
 
 Do not reach for `--continue-on-error` to get past a failure. Read
-`statements[failed_at].error.message`, fix the statement in the file, re-apply the
-whole file: templates are `CREATE OR REPLACE`, so re-applying already-created
-statements is safe. `--continue-on-error` is for two cases: the human's explicit request on a
+`statements[failed_at].error.message`, fix the statement in the file, `vql plan` it again and
+re-apply the file whole (`/denodo:vql`). Statements before the failed one stay applied: a
+`CREATE OR REPLACE` of a view re-applies safely, but a write, a cache or AI load, or `OR
+REPLACE` over a table that holds rows runs again (`/denodo:dml`, `/denodo:materialize`).
+`--continue-on-error` is for two cases: the human's explicit request on a
 file whose statements are independent, and a file of reads that checks many objects, one
 statement per object — there each entry of `statements[]` is one object's answer, and a
 failed read is that object's failure, not the end of the check (`/denodo:vql`, **Many objects

@@ -20,7 +20,8 @@ exploratory session rather than re-triggered).
 ### Object already exists (idempotency)
 
 Fix for all of them: use `CREATE OR REPLACE` — supported by every VQL object type these
-skills create — instead of retrying `DROP` + `CREATE`.
+skills create (a table that holds rows: `/denodo:materialize`) — instead of retrying `DROP` +
+`CREATE`.
 
 | Substring | Statement | Meaning |
 |---|---|---|
