@@ -2,7 +2,7 @@
 
 Everything `/denodo:ai` leaves out of its templates: each function's arguments and defaults,
 what it returned on 9.5.1 (the wording of each answer is the configured model's; the rules
-hold for any), and what the documentation gets wrong. Every call below is one paid request
+hold for any), and what the documentation gets wrong. Every call below is one request
 per row it is evaluated on — the counting rules and the human's number are in the skill, and
 they apply to every example here. Lines marked *documentation only* were not run.
 

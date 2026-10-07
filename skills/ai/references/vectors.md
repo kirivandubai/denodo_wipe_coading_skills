@@ -1,7 +1,7 @@
 # Vectors and semantic search in full
 
 Everything `/denodo:ai` leaves out of its two search templates. Measured on 9.5.1 unless a
-line says *documentation only*. `EMBED_AI` is a paid request to the embedding model
+line says *documentation only*. `EMBED_AI` is a request to the embedding model
 configured on the server, one per value it embeds; the distance functions are arithmetic and
 cost nothing.
 

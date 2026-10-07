@@ -53,8 +53,8 @@ took 0.7–2 s on the server it was measured on:
 ## The rule: the human's number
 
 **An AI function runs over the rows of a view or a table only up to a number the human
-agreed to.** Every row is a paid request, and the text of every row goes to the configured
-model. The number counts requests: rows × the AI functions evaluated per row.
+agreed to.** Every row is a request, billed if the provider is hosted, and its text goes with
+it. The number counts requests: rows × the AI functions evaluated per row.
 
 | You run it yourself | Only with the human's number |
 |---|---|
