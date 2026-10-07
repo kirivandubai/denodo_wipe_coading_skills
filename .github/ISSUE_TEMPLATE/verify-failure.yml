@@ -1,0 +1,52 @@
+name: verify failed on my server
+description: A template of the skills fails, or is skipped where it should run, when `scripts/denodo verify` runs on your server.
+labels: ["verify"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        `verify` runs every verified template of the skills against your server in its own test
+        database. A failed step is either a template that does not hold on your installation or
+        a setting the chain does not know — both are worth a report. Replace host names and any
+        name of your own objects before pasting; never paste a profile or a password.
+  - type: input
+    id: plugin
+    attributes:
+      label: Plugin version
+      description: The commit `claude plugin list` shows for `denodo@denodo-skills`.
+    validations:
+      required: true
+  - type: input
+    id: command
+    attributes:
+      label: The command
+      description: For example `verify --env dev --with-writes` — the flags you passed.
+    validations:
+      required: true
+  - type: textarea
+    id: failed
+    attributes:
+      label: The failed steps
+      description: From the JSON report, each failed step with its `id`, `address` and `error` (or the check that did not hold).
+      render: json
+    validations:
+      required: true
+  - type: textarea
+    id: skipped
+    attributes:
+      label: The skipped steps, with their reasons
+      description: Only if a step was skipped that your server should have run.
+      render: json
+  - type: textarea
+    id: server
+    attributes:
+      label: Your server
+      description: From `scripts/denodo env check --env <profile>`, `vdp.server_version` and the `features` block; and your `~/.denodo/verify.toml` table for the profile, if you have one.
+      render: json
+  - type: checkboxes
+    id: redacted
+    attributes:
+      label: Before you submit
+      options:
+        - label: I replaced host names and the names of my own objects, and pasted no credential.
+          required: true
