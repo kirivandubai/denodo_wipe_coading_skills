@@ -39,9 +39,6 @@ CREATE [ OR REPLACE ] DATABASE <name> [ '<description>' ]
     [ <grant> ]*
 ```
 
-Order matters: the description literal is the first thing after the name; `CHARSET`
-after it. With `CHARSET` before the description the parser stops at the quote.
-
 | Clause | Meaning | Default |
 |---|---|---|
 | `'<description>'` | free text, shown by `DESC DATABASE` and `GET_DATABASES()` | none |

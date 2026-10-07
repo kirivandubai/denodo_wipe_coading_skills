@@ -5,9 +5,6 @@ optional description, attached to views and to columns of views. It is a differe
 from a Data Marketplace tag (REST, `/denodo:marketplace`); the marketplace can *import*
 VDP tags, and the imported copies are read-only there.
 
-Tags are not per database: `CREATE TAG` while connected to any database creates the same
-global tag, and `LIST TAGS` shows all of them. The assignments carry the database name.
-
 ## CREATE TAG / CREATE TAGS
 
 ```sql
@@ -94,7 +91,3 @@ WHERE tag_name = 'pii';                           -- everywhere one tag is assig
 execute condition using types 'text' and 'array'`; filter on `tag_name` instead),
 `database_name`, `view_name`, `column_name` (`null` for a whole-view assignment),
 `tag_name`. Without a `WHERE` it returns every assignment on the server.
-
-`DESC TAG` fails on a tag that does not exist (`Error loading tag '<name>'`), which
-makes it a cheap existence check before deciding between `CREATE OR REPLACE TAG` and
-touching someone else's tag.
