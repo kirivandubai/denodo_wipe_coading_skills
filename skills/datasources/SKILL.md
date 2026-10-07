@@ -552,12 +552,12 @@ They can also pipe it from a password manager (`op read op://vault/db/password |
 way the answer carries one field, `encrypted`, and the project file then reads
 `USERPASSWORD = '<that string>' ENCRYPTED`.
 
-The server decrypts and uses such a ciphertext: encrypt a wrong password, and the source answers
-its database's own authentication error, not a format error — a source on a Virtual DataPort
-server, `The username or password is incorrect`. *verified: 9.5.1 (live, 2026-09-12)*
+The server decrypts and uses such a ciphertext: a wrong password encrypts just as happily, and
+the source answers later with its database's own authentication error, not a format error — a
+source on a Virtual DataPort server, `The username or password is incorrect`. *verified: 9.5.1 (live, 2026-09-12)*
 
 **Never assemble `ENCRYPT_PASSWORD '<password>'` yourself** — neither with `-e` nor through
-a temp file written by `printf`: both put the plaintext into a Bash argument, and Bash
+a file written by a heredoc or `printf`: both put the plaintext into a Bash argument, and Bash
 arguments are kept in the session transcript.
 
 - **The ciphertext is tied to the installation's encryption key.** `--env` names the

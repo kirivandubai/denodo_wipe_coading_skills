@@ -2812,7 +2812,6 @@ expect_body = { "0" = "<absent>" }
 "skills/datasources/SKILL.md#Relational database over JDBC[1]" = "introspection answers only from a database that is up, with a real credential, which the chain does not have"
 "skills/datasources/SKILL.md#When you cannot see the file[1]" = "a command line of the plugin's CLI (vql desc), not VQL; its unit tests cover it"
 "skills/datasources/SKILL.md#Passwords: the file only ever holds the ciphertext, and you never see the plaintext" = "a command the human types (secret encrypt, behind the ! prefix); the chain encrypts its own throwaway the same way"
-"skills/datasources/references/jdbc.md#Credentials" = "grammar ([ … ], <…>), not a statement; the JDBC template carries the encrypted form"
 "skills/datasources/references/jdbc.md#CREATE WRAPPER JDBC" = "grammar ([ … ], <…>), not a statement; the JDBC templates run a wrapper"
 "skills/datasources/references/json.md#CREATE DATASOURCE JSON" = "grammar ([ … ], <…>), not a statement; the JSON template runs one"
 "skills/marketplace/references/external-elements.md#Provider type" = "the --part arguments of the provider-type call, not a call; the external-provider-type step sends the whole call (the icon part is not exercised)"

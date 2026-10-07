@@ -58,31 +58,10 @@ human asked for a specific pool. *verified: 9.5.1 (live, 2026-09-09)*
 
 ## Credentials
 
-```sql
-USERNAME = <literal> USERPASSWORD = <literal> [ ENCRYPTED ]
-```
-
-| Mechanism | Syntax | Status |
-|---|---|---|
-| Password, encrypted | `USERPASSWORD = '<string>' ENCRYPTED`, string from `ENCRYPT_PASSWORD '<password>'` | *verified: 9.5.1 (live, 2026-09-09)* — and the encrypted string can be copied between data sources **on the same server**, which is how you reuse an existing source's credentials without ever seeing the password |
-| Password, plain | `USERPASSWORD = '<password>'` | works, and the server stores it encrypted anyway — but the file keeps the clear text, so never in git |
-
-A credentials vault, Kerberos, OAuth, AWS IAM, GCP service accounts and pass-through session
-credentials are set up in the Design Studio wizard, not here.
-
-The ciphertext comes from `${CLAUDE_PLUGIN_ROOT}/scripts/denodo secret encrypt --env <env>` —
-never write the underlying `ENCRYPT_PASSWORD '<password>'` yourself, because the plaintext
-would land in a Bash argument and stay in the transcript (`/denodo:execute`, "A password for
-a data source"). Encrypt on the environment the data source will live on: the ciphertext is
-tied to the installation's encryption key, and it is salted, so the same password encrypts
-to a different string every time. A ciphertext produced this way is accepted as a real
-credential — with a deliberately wrong password the source answers with its database's own
-authentication error, not a format error (a source on a Virtual DataPort server answers
-`The username or password is incorrect`). *verified: 9.5.1 (live, 2026-09-12)*
-
-Credentials are **replaced, never merged**: re-applying `CREATE OR REPLACE DATASOURCE`
-without the `USERPASSWORD` clause leaves the source with no password, and the next query
-answers `no password was provided`. *verified: 9.5.1 (live, 2026-09-09)*
+The clause is `USERNAME = <literal> USERPASSWORD = <literal> [ ENCRYPTED ]`. Where the
+ciphertext comes from, reusing an existing source's, and why re-applying without the clause
+erases the password: `SKILL.md`, **Passwords**. The ciphertext is salted, so one password
+encrypts to a different string every time.
 
 ## Driver directories (`CLASSPATH`)
 
