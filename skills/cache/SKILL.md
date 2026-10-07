@@ -27,8 +27,7 @@ are `/denodo:vql`.
 
 **Everything here changes what every reader of the view gets, and does it silently.** The
 statements succeed; the view then returns 0 rows, a filtered subset, yesterday's rows or
-every row twice, and so does every view built on it. That is why each statement below comes
-with a check, and why the human sees the consequences before you apply them.
+every row twice, and so does every view built on it.
 
 ## Before you touch a cache
 
@@ -66,9 +65,7 @@ Whether the view was created in this session, and whether anything else reads it
 `vql plan` reports for the file's `ALTER VIEW … CACHE` and load (`own`, `needs_yes`) — not
 your memory (`/denodo:vql`).
 
-On a view other people read, switching the cache on empties it until the load finishes, a
-load replaces its rows with a snapshot, a `WHERE` in the load becomes its content, and
-clearing empties it. The yes is to the statements, shown in this shape:
+The yes is to the statements and what they do to readers, shown in this shape:
 
 ```
 View sales_analytics.iv_household_income — read by household_income_by_band,
@@ -82,13 +79,11 @@ After: its queries run in <adapter_database_name> — text comparisons follow th
 Apply both?
 ```
 
-For a view in the right-hand column, when you cannot ask — the human is away, the deadline
-is close — the answer is the files written and this message, not the statements applied.
-Those files are then ahead of the server: say in the message which runs first, and what
-applying one alone does — the view's file with a new `CACHE FULL` line empties the view until
-the load runs; the view's file without its old line switches the cache off and leaves the
-loaded rows to come back stale. `CACHE OFF` is not an undo: the rows people already read
-were empty or partial, and the loaded copy stays behind (Silent failures, 4).
+For a view in the right-hand column, when you cannot ask, the answer is the files written
+and this message, not the statements applied. Those files are then ahead of the server: say
+in the message which runs first, and what applying one alone does — the view's file with a
+new `CACHE FULL` line empties the view until the load runs; the view's file without its old
+line switches the cache off and leaves the loaded rows to come back stale.
 
 | Rationalization | Reality |
 |---|---|
@@ -114,22 +109,18 @@ ALTER VIEW iv_household_income CACHE FULL WITH_STATUS;
   silently — `DESC VQL` loses the line, the view reads its sources again. `CREATE VIEW` has
   no `CACHE` clause; `ALTER VIEW` is the only way for a derived view.
 - **Always `WITH_STATUS`.** With `NO_STATUS` every load with `'all_rows'` builds a new cache
-  table and drops the old one, and every view above that had already been queried keeps
-  reading the dropped table — `Invalid object name '<catalog>.<schema>.C_<VIEW>…'` on a SQL
-  Server cache database (measured; the documentation says a database that can rename tables
-  keeps the name) — until its own `CREATE OR REPLACE VIEW` is re-applied — not after
-  minutes, not after the next load. With `WITH_STATUS` the table stays and loads are
-  atomic. A bare `CACHE FULL` is `WITH_STATUS` on some servers and `NO_STATUS` on others
-  (the documentation says the latter is the default since 9.4) — write it out.
-  *verified: 9.5.1 (live, 2026-09-30)*
+  table and drops the old one; on a SQL Server cache database (measured) every view above
+  that had already been queried then fails until its own `CREATE OR REPLACE VIEW` is
+  re-applied (Common mistakes) — the documentation says a database that can rename tables
+  keeps the name. With `WITH_STATUS` the table stays and loads are atomic. A bare `CACHE
+  FULL` is `WITH_STATUS` on some servers and `NO_STATUS` on others (the documentation says
+  the latter is the default since 9.4) — write it out. *verified: 9.5.1 (live, 2026-09-30)*
 - From this statement until a load finishes, the view returns **0 rows** to everyone.
 - **A base view** carries it in its own `CREATE OR REPLACE TABLE`: `CACHE FULL WITH_STATUS`
   in place of `CACHE OFF`, keeping `TIMETOLIVEINCACHE DEFAULT` after it
   (`/denodo:datasources`). Re-applying that file with `CACHE OFF` switches the cache off.
   `ALTER VIEW` on a base view fails: `the view : 'bv_x' is a base view`; `ALTER TABLE bv_x
   CACHE FULL WITH_STATUS` works — *verified: 9.5.1 (live, 2026-09-30)*.
-- The tool marks the line `destructive: alter` on every apply; on a production profile each
-  apply of the file needs the human's yes.
 
 ### Load it — a file of its own
 
@@ -146,11 +137,9 @@ CONTEXT ('cache_preload' = 'true',
 
 The file is what a refresh job runs, and what you run again after the view's columns change.
 Keep it out of the view's file: that one is applied on every change, a load only when the
-data should move. The tool marks it `destructive: cache`. In a Scheduler *Simple Cache
-Management* job the same choice is its *Invalidate* option, `cacheInvalidationMode`:
-`ALL_ROWS`. Its default is `NONE`, whatever the documentation says — every scheduled run
-appends, the first row of the table below, every night — *verified: 9.5.1 (live, 2026-10-05)*
-(`/denodo:scheduler`).
+data should move. A Scheduler *Simple Cache Management* job needs its *Invalidate* option
+(`cacheInvalidationMode`) set to `ALL_ROWS`: the default appends, whatever the
+documentation says (`/denodo:scheduler`).
 
 Each of the four parameters prevents a silent failure:
 
@@ -161,9 +150,7 @@ Each of the four parameters prevents a silent failure:
 | `'cache_wait_for_load' = 'true'` | the default already waits and reports a failed load; `'false'` answers `ok` while the load fails. Write it out: the documentation disagrees with itself about the default |
 | `'cache_return_query_results' = 'false'` | every row of the view is streamed back to you as the result |
 
-- `SELECT *` and the cached view itself. Fewer columns fail loudly (`All view fields should
-  be projected with cache full mode`). The same statement over **another** view — one built
-  on the cached one — answers `ok` and loads nothing.
+- `SELECT *`, over the cached view itself (Common mistakes; Silent failures, 7).
 - A load that fails keeps the previous content and its date: the view goes on serving the
   last good load.
 - A `WHERE` here is a decision, never a default — next section.
@@ -224,9 +211,8 @@ ALTER VIEW iv_household_income CACHE OFF;
   next load.
 - Switching off for good: also delete the `ALTER VIEW … CACHE FULL` line from the view's
   file, or its next apply switches the cache back on; and disable the refresh job
-  (`/denodo:scheduler`) — a load of a
-  view whose cache is off answers `ok` and does nothing, every night. Readers get the
-  sources' answers back, with the sources' rules (Silent failures, 9, in reverse).
+  (`/denodo:scheduler`; Silent failures, 10). Readers get the sources' answers back, with
+  the sources' rules (Silent failures, 9, in reverse).
 - The empty table itself stays in the cache database until the view is dropped
   (documentation only). Dropping and re-creating the view removes it, and takes with it
   the views built on it (`CASCADE`), their privileges and tags — the human's decision.
@@ -256,11 +242,10 @@ After switching on, loading or clearing — every row of this table, not the fir
 | Readers still answer | `SELECT COUNT(*) FROM <each view from USED_BY>` | a number, not `Invalid object name` |
 | Served from the cache | `SELECT execution_plan FROM GET_QUERY_EXECUTION_PLAN() WHERE input_query = 'SELECT COUNT(*) FROM <view>'` | the SQL names a `C_<VIEW>…` table |
 
-`CONTEXT ('cache' = 'off')` reads the sources for one query without touching the cache — the
-comparison for every check above, a read allowed on any profile, but only on a view you hold
-WRITE on or with the `disable_cache_query` role: otherwise the server ignores it and reads the
-cache (documentation), so say the comparison could not be made. `CONTEXT` closes the query:
-after `ORDER BY` and `LIMIT`, never before them.
+`CONTEXT ('cache' = 'off')`, a read on any profile, reaches the sources only on a view you
+hold WRITE on or with the `disable_cache_query` role: otherwise the server ignores it and
+reads the cache (documentation), so say the comparison could not be made. `CONTEXT` closes
+the query: after `ORDER BY` and `LIMIT`, never before them.
 
 ## Silent failures
 
