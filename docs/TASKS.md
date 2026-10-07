@@ -94,9 +94,21 @@ object skill until a session asks for one. Low findings are made in the same pas
 *T46 is done — under «Сделано» below. The work of the final review is complete; from here the
 skills change from sessions (CONTRIBUTING, *From a session to a change*).*
 
+*T47 (the owner's last pass over README and CONTRIBUTING) is done — under «Сделано» below.*
+
 ---
 
 ## Открытые вопросы
+
+- **Renamed features in the descriptions** (T47, for the owner). Roadmap section 2 and CONTRIBUTING
+  say a feature renamed in 9.x goes into the skill descriptions under both names. Today only
+  "materialization" (`cache`) and "360 graph" (`marketplace`) do: "Data Catalog" is only inside a
+  URL path, "VDPCache" / "Simple Cache Management" are in the body of `scheduler` but not its
+  description, "Reference Lineage", "Embedded MPP" and "Lakehouse Accelerator" appear in no
+  description. Either the descriptions take the old names (an eval run) or the rule is narrowed.
+- **A stale line in `execute`** (T47). `skills/execute/SKILL.md` says two `-e` flags run only the last
+  statement; since T41 `vql run` and `vql plan` take `-e` repeatedly and run every one in order
+  (`cli.py`, `action="append"`). One sentence to correct.
 
 - **What T44 measured against the documentation, for the owner** (each now written into the
   skill that needs it). The documentation contradicts itself or the 9.5.1 server in seven places:
@@ -466,6 +478,43 @@ skills change from sessions (CONTRIBUTING, *From a session to a change*).*
 ---
 
 ## Сделано
+
+- **T47. README and CONTRIBUTING: a review, and a layout to read.** Asked by the owner as the last
+  task. Every claim of both files was checked against the code by a subagent (CLI and its help,
+  profiles, `features`, the chain manifest, the lint, the issue forms, the evals); 24 discrepancies,
+  all fixed or taken to the open questions above.
+
+  **Layout.** README: a centred header with a one-line pitch, badges (CI, Denodo 9.5, Claude Code,
+  MIT) and a navigation line; five reasons in a list; the loop as a Mermaid diagram with the
+  `vql plan` step and the yes; requirements and the out-of-scope list as tables; the sixteen skills
+  in five groups (core; build; describe, govern and test; performance and schedules; data and AI)
+  with the channel said once; a safety table by area (objects, data in sources, cache, access,
+  server, marketplace, Scheduler, AI, production) — the coarse form of `vql`'s table, linked;
+  `verify`'s opt-in tails as a table; updating, the hand-written profile and the two `verify`
+  caveats folded into `<details>`; GitHub alerts for the run-it-yourself command, the two kinds of
+  tag, the skill routing tip and the public repository. CONTRIBUTING: contents and a seven-step
+  short version; the house rules on a shared server as a list; a table of the five checks (question,
+  needs, when); the lint's findings, the renamed features and `verify`'s flags as lists and tables.
+
+  **Corrected.** The quick start's two files of different layout are two `DF` data sources; the
+  Scheduler is a REST channel too, and `.denodotest` files a third; `verify` drops an existing
+  `denodo_skills_test`, stops at the first failed step with cleanup still run, has `--cleanup-only`,
+  and fails when it holds back its sync; the production stop also reads statement shapes and a
+  cache-loading `CONTEXT`, and one destructive statement refuses the whole file; `env.production`
+  comes back on responses of commands run against a profile; `env init` does not ask for
+  `jdbc_port` or the Scheduler keys, and `DENODO_ENV` sets the default profile; the drivers are
+  named; the integration tests leave their database, and `test_verify_chain` exists; the outcome
+  command runs six only with `--with-writes` and `--with-marketplace`; the five-block skeleton is
+  the object skills' (spec section 8), most skills add *who applies what*, *Silent failures* and
+  *Common mistakes*; the lint's real checks (any shipped file for Cyrillic, frontmatter, the
+  hard 1024 limit, `verify_…` names); Java stored procedures are in scope; the `verify` issue form
+  asks for the commit and the `verify.toml` table; `testing config` never writes where git would
+  pick the file up; the skills table names impact and lineage in `views`, keys and associations in
+  `semantics`, the VDP tag import in `marketplace`, incremental loads in `materialize`.
+
+  **Checked.** Unit tests and the lint pass; both files rendered through GitHub's markdown API
+  (alerts, tables, `<details>`, the Mermaid block); every in-page anchor matches a heading slug;
+  the four badge URLs answer 200. Not seen in a browser: the extension was not connected.
 
 - **T46. The scope conditions and the experience loop.** Point 5 of
   [the final review](superpowers/specs/2026-10-06-final-review.md) and point 2 outside `skills/`, with
