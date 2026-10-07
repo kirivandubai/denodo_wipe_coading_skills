@@ -175,8 +175,8 @@ CREATE OR REPLACE VIEW store_returns_ytd
   the row: say in the answer when it is older than the as-of date. A comparison of the data as it
   stands puts that date, as a literal, where the template has `ADDDAY(CURRENT_DATE, -1)`.
   `CURRENT_DATE` is the Denodo server's date, sent as a value where the condition is delegated
-  (SQL Server and PostgreSQL measured); a database that evaluates it itself may read its own clock
-  (VQL Guide, Datetime Functions; `/denodo:vql`, `references/dialect.md`, time zones).
+  (SQL Server and PostgreSQL measured); a database that computes `CURRENT_DATE` may read its own
+  clock (VQL Guide, Datetime Functions; `/denodo:vql`, `references/dialect.md`, time zones).
 - **Check it at dates you choose**: the view's `SELECT` with `CURRENT_DATE` replaced by a literal —
   the last day with data, a 31st, 29 February, 1 January — against plain SQL over the fact for the
   same windows. Through the view itself only today can be read.
@@ -231,8 +231,8 @@ CREATE OR REPLACE VIEW store_returns_running
   over the selection, the whole query one `SQLSentence` — but order it by a number or a date: by a
   text label (`FORMATDATE('yyyy-MM', …)`) SQL Server refuses it, `ORDER BY list of RANGE window
   frame …`, unless the frame is `ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW` — *verified:
-  9.5.1 (live, 2026-10-06)*, SQL Server. Over files, on a server not set up to move the data to an
-  MPP or the cache, it was `Function sum is not executable`.
+  9.5.1 (live, 2026-10-06)*, SQL Server. Over files, on the server measured, which moved no data
+  for windows, it was `Function sum is not executable`.
 - A month with no returns has no row, so the running total of a chart skips it; when the human
   wants every month, take the months from the calendar view and `LEFT OUTER JOIN` the totals.
 
