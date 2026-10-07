@@ -190,6 +190,9 @@ api post --env dev /public/api/element-management/VIEWS/synchronize \
   cannot be narrowed to one database — it synchronises the whole server. On a shared server
   that means other people's new views land in the catalog with yours. Re-read the response:
   `inserted` says what actually happened.
+- The user running it needs `METADATA` on the whole VDP catalog. Under a narrower account
+  the marketplace treats what it cannot see as deleted and **removes it** —
+  *unverified: 9.5 documentation only* (Synchronize with Virtual DataPort).
 - **Who sends it.** You, when the same call with `--plan`, right before it, says `needs_yes:
   false`: it reads both `changes` — both, even when only `VIEWS/synchronize` is needed — and
   finds only what this session created (`radius.own`): every `serverElements` entry a database
@@ -199,13 +202,15 @@ api post --env dev /public/api/element-management/VIEWS/synchronize \
   once a database is gone from VDP, its elements left the catalog with `removed` empty in both
   responses — *verified: 9.5.1 (live, 2026-10-06)* — so only the second reading shows what went.
   Tell the human at once about anything you did not expect. One entry in `radius.not_own` —
-  another team's new database, an orphan you did not make — and the body goes in a file and the call waits for the yes (`/denodo:vql`).
-- Measured once, on a catalog of some 600 views: `changes` about 1 s, `VIEWS/synchronize`
-  about 1.4 s when it inserts 10 and modifies none — *verified: 9.5.1 (live, 2026-09-10)*.
-  Not a long-running job at that size, but a change to a catalog everybody shares.
-- The user running it needs `METADATA` on the whole VDP catalog. Under a narrower account
-  the marketplace treats what it cannot see as deleted and **removes it** —
-  *unverified: 9.5 documentation only* (Synchronize with Virtual DataPort).
+  another team's new database, an orphan you did not make — and the body goes in a file, with
+  what waiting risks; the human sends it or says yes (`/denodo:vql`). The one other exception
+  is the first import on a tool server you created in this session (the external element, step
+  4); nothing else about a `synchronize` is exempt.
+
+| Rationalization | Reality |
+|---|---|
+| "Nothing gets removed — the rest of the radius only adds" | Clean is not the test; whose is. Another team's new database or view under `serverElements` lands in the catalog everybody browses before its owner chose to publish it. |
+| "The pair is matched, so the rename costs nothing" | A view that existed before this session is someone's: the rename and its matched `synchronize` wait for one yes, shown together. |
 
 ### A view in the marketplace is renamed, recreated or moved
 
@@ -374,7 +379,7 @@ that does not match it, and only the `SELECT` shows it (`/denodo:views`).
 | A new category's parent | `GET …/categories/tree` first; a *domain* the human names is a category of this tree, usually a root one. A live marketplace's tree is a taxonomy somebody designed — hang the new category inside the branch it belongs to. A **new top-level** category is a question for the human, not a default: it adds an axis to what everybody browsing sees. (`GET …/categories/{id}/potential-parent` is for moving an existing one) |
 | Every numeric id | never a template, never memory: a `GET` in this session. Ids differ per installation and per server |
 | View ids to assign to | `GET /public/api/view-details?databaseName=…&viewName=…`; `id:null`: rule 2, the other servers first, then synchronise. Save the answer to a file and read `id`, `inLocal` and `inVDP` out of it with a script — it carries the view's whole field list and its connection URIs, and truncating it instead is how the three fields get missed |
-| Whether the catalog may be synchronised | you, when the call with `--plan`, right before it, says `needs_yes: false` — both `changes` hold only databases and views you created in this session (`modifiedElements` aside) and the profile is not production; the human for any other radius — it is a shared catalog |
+| Whether the catalog may be synchronised | the call's `--plan` (`needs_yes`), see **Who sends it** |
 | Whether a view about to be renamed, recreated or moved is in the marketplace | `view-details` on it **before** the change — `id` not null and `inLocal: true`. The answer is also what to keep: it is the only copy of the element's metadata |
 | Which removed element is which new one | you renamed it, or the human says so. The same database and the same columns are a hint, not proof |
 | For an external element: the type | `GET /public/api/external-elements-types` — list it; create one if none fits |
@@ -447,11 +452,17 @@ other side where there is one. Every read-back below — *verified: 9.5.1 (live,
 | match a view moved to another database | `200`, the pair in neither `inserted` nor `removed` | ignored, not applied: nothing happened. Re-apply from the saved `view-details` after a plain synchronisation |
 | `POST /property-management/views/{id}/groups` to add one group | `200` | it **replaces** the view's groups, and the values of the ones left out are gone |
 
-Destructive here is decided by method and path, not by the word in it: `DELETE` of a category
-(with its children), of a tool server (with its elements), of an assignment (a tag or a category
-off a view), `POST /tags/vdp/synchronize` (`references/tags.md`), every catalog `POST …/synchronize`
-— `"SERVER"` mode and a rename with the pair left unmatched worst of all — and `POST
-/views/{id}/tags` and `POST /property-management/views/{id}/groups`, which replace rather
-than add. All of them are the human's call — `/denodo:vql` — except a catalog synchronisation
-whose radius is yours (Who sends it) and the first import on a tool server you created in this
-session.
+Destructive here is decided by method and path, not by the word in it:
+
+| Call | What is lost |
+|---|---|
+| `DELETE /public/api/tags/{id}`, `/tags/delete-multiple` | the tag and every assignment of it |
+| `DELETE /public/api/category-management/categories/{id}` | the category **and all its children** |
+| `DELETE /public/api/external-tool-servers/{id}` | the server and **every element it imported** |
+| `DELETE` of an assignment, a tag or a category off a view | that assignment (`references/tags.md`) |
+| `POST /public/api/tags/vdp/synchronize` | every imported VDP tag missing from the list you send — a complete list still replaces a set the human has not seen |
+| `POST /public/api/element-management/{all,DATABASES,VIEWS,…}/synchronize` | what VDP no longer has (`localElements`), in any mode — a renamed view's element unless the pair is matched; `"SERVER"` also overwrites marketplace edits |
+| `POST /public/api/external-tool-servers/synchronize` | every element the interface view no longer selects, with its tags and categories |
+| `POST /public/api/views/{id}/tags`, `/public/api/category-management/views/{id}/categories`, `/public/api/property-management/views/{id}/groups` | the view's previous set — they replace, not add; a property group left out takes its values |
+
+All of them wait for the human's yes (`/denodo:vql`), except the two in **Who sends it**.
