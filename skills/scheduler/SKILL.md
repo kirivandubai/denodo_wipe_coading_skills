@@ -292,8 +292,9 @@ break a reader without an error — *verified: 9.5.1 (live, 2026-10-05)*:
 
 The query names its columns and sorts: a renamed column then fails the run instead of shifting
 the file, and the rows come in the same order each time. Over a view with a full cache it reads
-the cache — as fresh as its last load (`/denodo:cache`); `CONTEXT ('cache' = 'off')` at the end
-reads the sources instead.
+the cache — as fresh as its last load; `CONTEXT ('cache' = 'off')` at the end reads the sources
+instead, if the job's `login` holds WRITE on the view or the `disable_cache_query` role
+(`/denodo:cache`, **Verify**).
 
 ### Run one statement on a schedule
 
@@ -390,7 +391,8 @@ deletes its reports — the steps before and after a delete: `references/rest-ap
 Figures on a cached view that double, then triple, every morning:
 
 1. `SELECT COUNT(*) FROM <view>` against the same with `CONTEXT ('cache' = 'off')` — more rows
-   in the cache than in the sources, every key or group twice.
+   in the cache than in the sources, every key or group twice; equal proves nothing without
+   WRITE on the view or the `disable_cache_query` role (`/denodo:cache`, **Verify**).
 2. `GET /public/api/jobs/vdpcache_data?viewName=<db>.<view>` — the jobs that load it.
 3. Each job's `extractionSection.loadprocesses[].cacheInvalidationMode`, and the `query` of its
    last reports: `NONE`, no `'cache_invalidate'` — every run appended. Two jobs loading the
@@ -449,7 +451,7 @@ After a run you were allowed to start, and the morning after the first scheduled
 | Check | Where | Expect |
 |---|---|---|
 | The run | `list[0]` of the reports | `COMPLETE`; `cachedDocs` or `exportedDocs` equal to `extractedDocs` |
-| A cache job loaded once, not twice | `SELECT COUNT(*) FROM <view>` and `SELECT COUNT(*) FROM <view> CONTEXT ('cache' = 'off')` | equal (`/denodo:cache`, Verify) |
+| A cache job loaded once, not twice | `SELECT COUNT(*) FROM <view>` and `SELECT COUNT(*) FROM <view> CONTEXT ('cache' = 'off')` | equal (`/denodo:cache`, **Verify**) |
 | The file | `exporterResources` of the report | the path the reader opens |
 
 ## Silent failures
