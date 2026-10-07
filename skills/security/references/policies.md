@@ -1,4 +1,4 @@
-# Global security policies — full syntax and measured behaviour
+# Global security policies — syntax and measured behaviour
 
 Source: Virtual DataPort VQL Guide 9.5, "Global Security Policies", and the Administration
 Guide page of the same name; every row marked *verified* was run on 9.5.1. A global security

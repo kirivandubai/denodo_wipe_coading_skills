@@ -1,4 +1,4 @@
-# Roles, users and privileges — full syntax and measured behaviour
+# Roles, users and privileges — syntax and measured behaviour
 
 Source: Virtual DataPort VQL Guide 9.5, "Creating Databases, Users, Roles and Access
 Privileges", and the Administration Guide, "Databases, Users and Access Rights"; rows marked
