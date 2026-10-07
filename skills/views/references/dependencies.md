@@ -8,7 +8,7 @@ from the server stops.
 
 | Procedure | Walks | Takes | One row per |
 |---|---|---|---|
-| `USED_BY()` | down: the views built on this one, at every depth and in every database | `input_view_database_name`, `input_view_name`, optional `input_max_depth` | a view and one of its dependants: `view_database_name`, `view_name` (the view at that depth), `used_by_database_name`, `used_by_name`, `depth` — there is no type column; `depth = 1` names this view in its own definition |
+| `USED_BY()` | down: the views built on this one, at every depth and in every database | `input_view_database_name`, `input_view_name`, optional `input_max_depth` | a view and one of its dependants: `view_database_name`, `view_name` (the view `used_by_name` reads directly — the one asked about only at `depth = 1`), `used_by_database_name`, `used_by_name`, `depth` — there is no type column; `depth = 1` names this view in its own definition |
 | `VIEW_DEPENDENCIES()` | the other way: what this view stands on, down to the data sources | `input_view_database_name`, `input_view_name` | an element it stands on, repeated at each depth it is reached |
 | `COLUMN_DEPENDENCIES()` | the same way, per output column | the two above, plus optional `input_column_name` | an output column and one element its value comes from |
 
