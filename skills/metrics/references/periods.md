@@ -111,7 +111,7 @@ CREATE OR REPLACE VIEW store_returns_yoy
 
 - **The year before is a join on `return_year - 1`, not `LAG`.** `LAG` reads the previous row, so a
   year with no rows compares two years apart; and over a source that cannot run windows it fails
-  (`Function lag is not executable`) unless the server moves the data to an MPP or the cache.
+  (`Function <name> is not executable`) unless the server moves the data to an MPP or the cache.
   The quarter or month before crosses the year: number the periods — `<year> * 4 + <quarter>`,
   `<year> * 12 + <month>` (`GETQUARTER(<date>)` gives the quarter) — and join on that number
   minus one.
