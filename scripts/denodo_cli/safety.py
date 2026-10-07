@@ -129,7 +129,7 @@ _SECURITY_CREATE = re.compile(
     r"CREATE\s+(?:OR\s+REPLACE\s+)?(?:USER|ROLE|GLOBAL_SECURITY_POLICY)\b", re.IGNORECASE)
 # EXPORT WAR | WSDL FROM WEBSERVICE writes the service, with the credentials it connects with, into
 # the web container's export directory
-_WEBSERVICE_EXPORT = re.compile(r"EXPORT\s+(?:WAR|WSDL)\s+FROM\s+WEBSERVICE\b", re.IGNORECASE)
+_WEBSERVICE_EXPORT = re.compile(r"EXPORT\s+(?:WAR|WSDL)\s+FROM\s+(?:(?:REST|SOAP)\s+)?WEBSERVICE\b", re.IGNORECASE)
 _DATABASE_CREATE = re.compile(r"CREATE\s+(?:OR\s+REPLACE\s+)?DATABASE\b", re.IGNORECASE)
 # A table in a source database, created and loaded by the statement itself; OR REPLACE drops a
 # table of that name first, whoever made it. A materialized table keeps rows that were inserted

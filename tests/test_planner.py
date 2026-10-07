@@ -108,9 +108,10 @@ class PlannerTest(unittest.TestCase):
             ("view", "sales", "theirs"): Declaration("model/v.vql", "CREATE OR REPLACE VIEW theirs AS SELECT 1 AS a FROM Dual()")})
         changed = self.one("CREATE OR REPLACE VIEW theirs AS SELECT 2 AS a FROM Dual()")
         self.assertEqual((changed["needs_yes"], changed["declared_in"]), (False, "model/v.vql"))
-        self.assertEqual(len(changed["conditions"]), 2)
+        self.assertEqual(len(changed["conditions"]), 3)
+        self.assertTrue(any("Design Studio" in c for c in changed["conditions"]))
         same = self.one("CREATE  OR REPLACE VIEW theirs AS SELECT 1 AS a FROM Dual()")
-        self.assertEqual((same["needs_yes"], same["conditions"]), (False, []))
+        self.assertEqual((same["needs_yes"], len(same["conditions"])), (False, 1))
         self.assertIn("unchanged", same["why"])
 
     def test_a_metric_view_needs_the_session_not_a_file(self):
@@ -292,6 +293,19 @@ class PlannerTest(unittest.TestCase):
                 self.assertTrue(entry["needs_yes"])
                 self.assertIn("web service", entry["why"])
                 self.assertIn("/denodo:vql", entry["why"])
+
+    def test_a_rename_of_your_own_new_web_service_still_waits(self):
+        entries = self.plan("CREATE REST WEBSERVICE ws_new CONNECTION ( CHUNKSIZE = 1000 ) RESOURCES ( VIEW mine )",
+                            "ALTER REST WEBSERVICE ws_new RENAME ws_b")
+        self.assertEqual([e["needs_yes"] for e in entries], [True, True])
+
+    def test_a_listener_waits_like_a_web_service(self):
+        entry = self.one("CREATE OR REPLACE LISTENER JMS l_new VENDOR ACTIVEMQ DESTINATION = 'q' QUEUE OUTPUT = JSON")
+        self.assertTrue(entry["needs_yes"])
+        self.assertIn("listener", entry["why"])
+
+    def test_a_deploy_the_parser_cannot_name_still_waits(self):
+        self.assertTrue(self.one("DEPLOY ws_new")["needs_yes"])
 
     def test_a_web_service_created_earlier_in_the_input_is_still_not_yours_to_deploy(self):
         entries = self.plan("CREATE REST WEBSERVICE ws_new CONNECTION ( CHUNKSIZE = 1000 ) RESOURCES ( VIEW mine )",

@@ -27,7 +27,7 @@ body:
     id: failed
     attributes:
       label: The failed steps
-      description: From the JSON report, each failed step with its `id`, `address` and `error` (or the check that did not hold).
+      description: From the JSON report, each failed step with its `id`, `source` and `error` (or the `check` that did not hold).
       render: json
     validations:
       required: true

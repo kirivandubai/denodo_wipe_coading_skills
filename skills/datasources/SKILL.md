@@ -60,9 +60,9 @@ exist yet (`/denodo:catalog`), and check that the names you are about to propose
 
 1. What goes to Design Studio, in one line, and why.
 2. Where to click, from the table below.
-3. What to enter so the result fits the project: the database, the folder
-   (`/01 - connectivity`), and the names the conventions give (`ds_…`, `bv_…` —
-   `/denodo:vql`).
+3. What to enter so the result fits the project: the database, the folder (the one its
+   sources already use, else `/01 - connectivity`), and the names the conventions give
+   (`ds_…`, `bv_…` — `/denodo:vql`).
 4. When the source needs a secret — a password, token, client secret, key: it is typed into
    the wizard. Do not ask for it and do not offer to encrypt it; nothing of yours will use
    it.

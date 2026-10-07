@@ -102,6 +102,14 @@ class LanguageTest(TreeTestCase):
         self.assertFinds(findings, "evals/outcome/scenarios/mart/scenario.toml:1")
         self.assertNotIn("results", "\n".join(findings))
 
+    def test_every_shipped_text_file_is_checked(self):
+        # the manifest, tests, issue forms and dotfiles ship with the plugin too
+        root = self.tree({"verification/chain.toml": f"# {WORD}\n", ".gitignore": f"# {WORD}\n",
+                          ".github/ISSUE_TEMPLATE/x.yml": f"name: {WORD}\n"})
+        findings = lint.check_language(root)
+        for path in ("verification/chain.toml:1", ".gitignore:1", ".github/ISSUE_TEMPLATE/x.yml:1"):
+            self.assertFinds(findings, path)
+
     def test_project_documents_are_not_checked(self):
         root = self.tree({"docs/TASKS.md": f"{WORD}.\n", "CLAUDE.md": f"{WORD}.\n"})
         self.assertClean(lint.check_language(root))

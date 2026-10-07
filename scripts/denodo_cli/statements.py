@@ -134,7 +134,7 @@ _KINDS = (
     (("USER",), "user", None),
     (("PROCEDURE",), "storedProcedure", None),
 )
-_WITH_SUBTYPE = {"DATASOURCE": "datasource", "WRAPPER": "wrapper"}
+_WITH_SUBTYPE = {"DATASOURCE": "datasource", "WRAPPER": "wrapper", "LISTENER": "listener"}
 
 
 def _object(toks: list[_Tok], i: int, database: str | None) -> tuple[ObjectRef | None, int]:
@@ -401,7 +401,8 @@ def _parse(text: str, database: str | None) -> Statement:
         return Statement(text, "refresh" if obj else "other", obj)
 
     if head in ("DEPLOY", "REDEPLOY", "UNDEPLOY", "EXPORT"):
-        # DEPLOY | REDEPLOY | UNDEPLOY [IF EXISTS] WEBSERVICE <name>; EXPORT {WAR | WSDL} FROM WEBSERVICE <name>
+        # DEPLOY | REDEPLOY | UNDEPLOY [IF EXISTS] WEBSERVICE <name>; EXPORT {WAR | WSDL} FROM WEBSERVICE <name>.
+        # A deploy the parser cannot name still publishes: the head alone decides.
         i = 1
         if head == "EXPORT":
             if not (len(toks) > 2 and toks[1].up in ("WAR", "WSDL") and toks[2].up == "FROM"):
@@ -410,9 +411,7 @@ def _parse(text: str, database: str | None) -> Statement:
         elif _words(toks, i, "IF", "EXISTS"):
             i += 2
         obj, _ = _object(toks, i, database)
-        if obj is None or obj.type != "webService":
-            return Statement(text, "other")
-        return Statement(text, "publish", obj)
+        return Statement(text, "publish", obj if obj is not None and obj.type == "webService" else None)
 
     if head == "CONNECT":
         if _words(toks, 1, "DATABASE") and len(toks) > 2 and toks[2].is_name():

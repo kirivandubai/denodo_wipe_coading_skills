@@ -79,7 +79,8 @@ class ServerSettingTest(unittest.TestCase):
         for text in ("DEPLOY WEBSERVICE ws_returns", "redeploy webservice ws_returns",
                      "UNDEPLOY IF EXISTS WEBSERVICE ws_returns",
                      "EXPORT WAR FROM WEBSERVICE ws_returns NAME = 'r.war' URI = '//h:9999/sales'",
-                     "EXPORT WSDL FROM WEBSERVICE ws_returns NAME = 'r.wsdl'"):
+                     "EXPORT WSDL FROM WEBSERVICE ws_returns NAME = 'r.wsdl'",
+                     "EXPORT WAR FROM SOAP WEBSERVICE ws_returns NAME = 'r.war' URI = '//h:9999/sales'"):
             with self.subTest(text=text):
                 self.assertEqual(classify_vql(text), "publish")
 

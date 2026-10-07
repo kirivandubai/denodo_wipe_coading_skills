@@ -127,6 +127,17 @@ class WebServiceTest(unittest.TestCase):
         self.assertEqual((s.action, s.obj), ("alter", ObjectRef("webService", "sales", "ws_returns")))
         self.assertEqual(p("DROP WEBSERVICE other.ws_returns").obj, ObjectRef("webService", "other", "ws_returns"))
 
+    def test_a_listener_names_itself_not_its_kind(self):
+        s = p("CREATE OR REPLACE LISTENER JMS l_orders VENDOR ACTIVEMQ DESTINATION = 'orders' QUEUE OUTPUT = JSON")
+        self.assertEqual((s.action, s.obj, s.obj.kind), ("create", ObjectRef("listener", "sales", "l_orders"), "jms"))
+        self.assertEqual(p("CREATE LISTENER KAFKA l_events GROUPID = 'g' INPUTTOPIC = 't'").obj.kind, "kafka")
+
+    def test_a_deploy_the_parser_cannot_name_still_publishes(self):
+        for text in ("DEPLOY ws_returns", "UNDEPLOY", "REDEPLOY WEBSERVICE"):
+            with self.subTest(text=text):
+                self.assertEqual(p(text).action, "publish")
+        self.assertEqual(p("EXPORT something_else TO 'x'").action, "other")
+
     def test_deploy_redeploy_undeploy_and_export_publish(self):
         for text in ("DEPLOY WEBSERVICE ws_returns",
                      "REDEPLOY WEBSERVICE ws_returns LOGIN = 'app' PASSWORD = 'x' ENCRYPTED",

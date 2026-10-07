@@ -23,11 +23,18 @@ HEAD = 160
 _TABLE_KINDS = ("remote table", "summary", "materialized table")
 _COLUMNS_CONDITION = ("it keeps every column the views that read it use — dropping, renaming or retyping one "
                       "breaks them without an error (/denodo:views, Before a column changes)")
+_SERVER_CONDITION = ("the object on the server is still what that file declared — an edit made since, in Design "
+                     "Studio or by another file, is lost: compare with its DESC VQL (/denodo:views, Before a column "
+                     "changes)")
 _TEXTS_CONDITION = ("a new description, field description, primary key or tag is a text the human approves "
                     "(/denodo:semantics)")
-_PUBLISH_WHY = ("publishes a view as a web service, served over HTTP to whoever the service lets in — outside "
-                "this plugin, which has no template for it: the human publishes it in Design Studio, or says yes to "
-                "these statements (/denodo:vql)")
+_PUBLISH_WHY = ("a web service — a view served over HTTP to whoever the service lets in, or a change to one or "
+                "its withdrawal — is outside this plugin, which has no template for it: the human publishes it in "
+                "Design Studio, or says yes to these statements (/denodo:vql)")
+_LISTENER_WHY = ("a JMS or Kafka listener runs queries for messages from outside — outside this plugin, which has "
+                 "no template for it: the human creates it in Design Studio, or says yes to these statements "
+                 "(/denodo:vql)")
+_OUTSIDE = {"webService": _PUBLISH_WHY, "listener": _LISTENER_WHY}
 _TARGET_CONDITIONS = ["the data source and schema are the ones the human named (/denodo:materialize)",
                       "the table name is free in that schema — the reads show it (/denodo:materialize)"]
 
@@ -222,8 +229,10 @@ def _plan_one(index: int, st: Statement, walk: _Walk, ctx: PlanContext) -> dict:
     if ctx.production and st.action not in ("read", "session"):
         return _decision(entry, True, "the profile is production: every change waits for the human's yes")
 
-    if st.action == "publish" or (ref is not None and ref.type == "webService" and st.action in ("create", "alter")):
+    if st.action == "publish":
         return _decision(entry, True, _PUBLISH_WHY)
+    if ref is not None and ref.type in _OUTSIDE and st.action != "drop":
+        return _decision(entry, True, _OUTSIDE[ref.type])
     if st.ai_over_rows:
         return _decision(entry, True, "an AI function evaluated over the rows of a view: every row is a "
                                       "request to the provider; the human agrees to the number (/denodo:ai)")
@@ -378,8 +387,9 @@ def _replace_older(entry: dict, st: Statement, walk: _Walk, ctx: PlanContext) ->
                                       "declared before the session — its whole configuration goes (/denodo:vql)")
     entry["declared_in"] = declaration.path
     if normalize(declaration.text) == normalize(st.text):
-        return _decision(entry, False, f"re-applies the declaration of {declaration.path} unchanged")
-    conditions = []
+        return _decision(entry, False, f"re-applies the declaration of {declaration.path} unchanged",
+                         [_SERVER_CONDITION])
+    conditions = [_SERVER_CONDITION]
     if ref.type == "view":
         if entry.get("dependents"):
             conditions.append(_COLUMNS_CONDITION)

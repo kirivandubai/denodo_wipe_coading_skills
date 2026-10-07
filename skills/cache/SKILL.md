@@ -62,8 +62,8 @@ every row twice, and so does every view built on it.
 | any other view | the reads above | on, load, reload, clear, off |
 
 Whether the view was created in this session, and whether anything else reads it, is what
-`vql plan` reports for the file's `ALTER VIEW … CACHE` and load (`own`, `needs_yes`) — not
-your memory (`/denodo:vql`).
+`vql plan` reports for the `ALTER VIEW … CACHE` of the view's file and for the load file — plan
+both (`own`, `needs_yes`) — not your memory (`/denodo:vql`).
 
 The yes is to the statements and what they do to readers, shown in this shape:
 

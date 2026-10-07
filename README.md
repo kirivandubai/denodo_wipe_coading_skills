@@ -232,7 +232,7 @@ per-role row and column restrictions, custom policies); configuring the LLM, the
 model or the vector database, and generating embeddings for a table; publishing a view as a
 REST, SOAP, GraphQL or OData service of its own — the built-in RESTful web service already
 serves every view to the users who may read it; JMS and Kafka listeners; custom Java functions,
-wrappers and policies (Java stored procedures are `/denodo:procedures`); Data Marketplace
+custom wrappers and custom policies (Java stored procedures are `/denodo:procedures`); Data Marketplace
 governance; the client code that connects an application; Scheduler data sources and job types
 beyond a cache job and a one-statement job; Solution Manager, cross-environment deployment and
 dbt; Denodo versions other than 9.5. Asked for any of these, the agent says so, does the part

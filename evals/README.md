@@ -157,7 +157,7 @@ positive and a negative grader, because what is checked is the choice between th
 | `discrimination-base-view` | `datasources` | `views` |
 | `discrimination-derived-view` | `views` | `datasources` |
 | `discrimination-author-not-run` | `views` or `vql` | `execute` |
-| `discrimination-run-not-author` | `execute` | the domain skills |
+| `discrimination-run-not-author` | `execute` | `catalog`, `datasources`, `views`, `marketplace` |
 | `discrimination-procedure-base-view` | `datasources` | `procedures` |
 | `discrimination-introspection-not-procedures` | `datasources` | `procedures` |
 | `discrimination-json-array` | `views` | `datasources` |

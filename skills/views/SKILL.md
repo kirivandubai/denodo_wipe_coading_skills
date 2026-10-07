@@ -177,8 +177,8 @@ One branch per source, and a constant column that says which source a row came f
   **rows whose key is `NULL` fall into no branch and vanish**. Put `OR <key> IS NULL` into
   the branch of the source that owns them. When the sources overlap (a copy never trimmed),
   the ranges are also what keeps each row once.
-- Column descriptions cannot go on a union: it goes to `/02 - integration` as `iv_…`, and the
-  `/03` view over it carries them; the pruning survives the layer.
+- Column descriptions cannot go on a union: when the consumer needs them, it goes to `/02` as
+  `iv_…`, and the `/03` view over it carries them; the pruning survives the layer.
 
 `references/unions.md` has the measurements behind each point and how to read the plan.
 
@@ -522,7 +522,7 @@ DESC VQL VIEW iv_household_income ('includeDependencies' = 'no', 'dropElements' 
 Save the answer as the view's file: `CREATE VIEW` becomes `CREATE OR REPLACE VIEW`, its `CONTEXT`
 gains `'formatted' = 'yes'`, and the rest stays as printed — `FOLDER`, description, field
 descriptions, key, `TAGS`, the `ALTER VIEW … CACHE` line with its time to live. What the file
-leaves out, the apply removes; grants stay (`/denodo:semantics`). Make the change; a new column
+leaves out, the apply removes; grants stay — *verified: 9.5.1 (live, 2026-10-07)*. Make the change; a new column
 goes last unless the human placed it — one in the middle moves the others for readers by
 position. `vql plan` holds it for the yes: show it with the dependants (step 1; all four steps for
 a column dropped, renamed or retyped), new description texts where the change makes the old ones

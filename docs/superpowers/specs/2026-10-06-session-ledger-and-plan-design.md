@@ -133,7 +133,9 @@ commit before the session — no declarations, and the answer says so.
 When the statement equals the declaration (whitespace aside), the plan says it re-applies the
 declaration unchanged. When it differs, two conditions come with it: the change keeps every
 column the dependents read (`/denodo:views`), and the human approves new descriptions, keys or
-tags (`/denodo:semantics`).
+tags (`/denodo:semantics`). Either way (T46) one more: the object on the server is still what the
+file declared — an edit made since in Design Studio, or by another file, is lost by the apply; a
+view adopted from Design Studio into a file is exactly where that happens.
 
 ### How the table is applied
 

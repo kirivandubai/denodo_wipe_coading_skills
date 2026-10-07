@@ -153,7 +153,7 @@ ledger knows and you do not. `vql ledger --env dev` lists what the session creat
 | — | a predefined procedure that changes state, called like a read — `SELECT * FROM DROP_REMOTE_TABLE(…)`; the list and its two exceptions are in `/denodo:procedures` |
 | a Scheduler job created disabled, or one whose runs touch only what you created in this session; every `GET` (`/denodo:scheduler`) | enabling, starting or changing a job whose runs change what existed before this session, and anything on an older job — a job is its statement, every time it fires (`/denodo:scheduler`) |
 | `GET` calls to the marketplace; a catalog `synchronize` whose radius is yours (`/denodo:marketplace`, **Who sends it**) | every other destructive marketplace call (`/denodo:marketplace`) |
-| — | publishing a view as a web service — `CREATE … WEBSERVICE`, `ALTER … WEBSERVICE`, `DEPLOY`, `REDEPLOY`, `UNDEPLOY`, `EXPORT … FROM WEBSERVICE`, your own new service included: outside this plugin (**Where to go from here**); it serves the view to whoever the service lets in, and a `DEPLOY` without `LOGIN` runs it as the profile's account |
+| — | publishing a view as a web service — `CREATE … WEBSERVICE`, `ALTER … WEBSERVICE`, `DEPLOY`, `REDEPLOY`, `UNDEPLOY`, `EXPORT … FROM WEBSERVICE`, your own new service included — and a JMS or Kafka listener (`CREATE LISTENER`): outside this plugin (**Where to go from here**). A service serves the view to whoever it lets in, and a `DEPLOY` without `LOGIN` runs it as the profile's account (documentation) |
 | — | **any change at all on a profile with `production: true`, `CREATE` included** |
 
 Destruction, for this rule, is anything that destroys or overwrites what exists, or changes
@@ -300,7 +300,7 @@ pushes down to the source.
 | Regression tests (`.denodotest`) | `/denodo:testing` |
 | Scheduler jobs (REST) | `/denodo:scheduler` |
 | Running anything, the server's errors | `/denodo:execute` |
-| Not in this plugin: publishing a view as its own REST, SOAP, OData or GraphQL service, JMS or Kafka listeners, custom Java functions, wrappers and policies, user accounts and LDAP, promotion between environments, dbt | none — say so, do the part that is in scope, and name Design Studio or the administrator for the rest |
+| Not in this plugin: publishing a view as its own REST, SOAP, OData or GraphQL service, JMS or Kafka listeners, custom Java functions, custom wrappers and custom policies, user accounts and the LDAP server configuration (a database's LDAP login is `/denodo:catalog`), promotion between environments, dbt | none — say so, do the part that is in scope, and name Design Studio or the administrator for the rest |
 
 **A view is on HTTP already.** The server's built-in RESTful web service answers for every view,
 to any user who may read it, with that user's privileges (HTTP Basic):

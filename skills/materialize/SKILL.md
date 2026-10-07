@@ -413,7 +413,7 @@ WHERE base_view_database_name = 'sales_analytics' AND base_view_name = 'bv_dwh_h
 | The table name | the human, or the warehouse's conventions; the summary's `s_` prefix (`/denodo:vql`) |
 | The query | the view the readers need, every column named |
 | How often it is refreshed, and by what | the human; a Scheduler job is `/denodo:scheduler`; the file is yours |
-| The server can do it | `env check --env dev` → `features.data_movement` (a remote table, a summary and a data movement need it — documentation) and `features.summary_rewrite` (a summary answers no query without it); `false` is the administrator's |
+| The server can do it | `env check --env dev` → `features.data_movement` (a remote table, a summary and a data movement need it — documentation) and `features.summary_rewrite` (a summary answers no query without it); `false` is the administrator's, `null` unknown |
 | The yes | the human, for everything in the right-hand column of the rule |
 
 ## Verify

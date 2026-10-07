@@ -734,8 +734,10 @@ kind = "template"
 channel = "vql"
 address = "skills/views/SKILL.md#Before a column changes: who uses it[1]"
 # Read-only: the server's text of one view alone, the start of a file for a view that has none.
-# Its claim is what the options leave out — no DROP … CASCADE, no dependency rebuilt — so the
-# check is that the dependant the plain DESC VQL would have dropped is still there after it.
+# The step proves the two options parse; a vql step asserts nothing about what a statement prints.
+# What the recipe says about the output — CREATE VIEW without OR REPLACE, no DROP, no dependency,
+# the ALTER VIEW … CACHE line with its TIMETOLIVEINCACHE — was read by hand on 9.5.1 (2026-10-07),
+# over a cached view with a dependant. The check only confirms the dependant is still there.
 database = "{database}"
 check = "SELECT used_by_name FROM USED_BY() WHERE input_view_database_name = '{database}' AND input_view_name = 'iv_household_income' AND used_by_name = 'household_income_by_band'"
 

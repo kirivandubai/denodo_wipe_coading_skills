@@ -151,6 +151,27 @@ def _cli(root: Path) -> list[Path]:
     return launcher + sorted(path for path in scripts.rglob("*.py") if "__pycache__" not in path.parts)
 
 
+# The owner's working files, partly in Russian by decision; everything else ships in English.
+OWNER_FILES = ("docs", "CLAUDE.md")
+# Directories that hold no text a person wrote for the repository: tool state, caches, results.
+NOT_SHIPPED = {".git", ".claude", ".superpowers", ".venv", "venv", "__pycache__", "node_modules", "results"}
+
+
+def _shipped_text(root: Path) -> list[Path]:
+    """Every text file of the tree a plugin install carries, except the owner's working files."""
+    found = []
+    for path in sorted(root.rglob("*")):
+        parts = path.relative_to(root).parts
+        if not path.is_file() or parts[0] in OWNER_FILES or NOT_SHIPPED & set(parts):
+            continue
+        try:
+            path.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            continue                     # a binary file: not text anyone reads
+        found.append(path)
+    return found
+
+
 def _rel(root: Path, path: Path) -> str:
     return path.relative_to(root).as_posix()
 
@@ -237,7 +258,7 @@ CYRILLIC = re.compile(r"[\u0400-\u04FF]")
 
 def check_language(root: Path) -> list[str]:
     findings = []
-    for path in _docs(root) + _cli(root):
+    for path in sorted(set(_docs(root) + _cli(root) + _shipped_text(root))):
         for number, line in enumerate(_lines(path), start=1):
             if CYRILLIC.search(line):
                 findings.append(f"{_rel(root, path)}:{number}: Cyrillic — the plugin is in English")
