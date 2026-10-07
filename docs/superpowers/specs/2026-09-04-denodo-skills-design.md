@@ -251,6 +251,8 @@ Community KB), а не придуман: `ds_`, `bv_`, `iv_`, `a_`, `s_`, биз
 снизу вверх (the error and the drop order are `/denodo:catalog`'s; the core says "create
 parents first, drop bottom-up").
 
+**A database that already holds objects (T46, final review scope-user-3).** Without `.denodo/conventions.md` the only override was the file, so in a team's database the agent would create `/01 - connectivity` beside the team's own folders and `iv_` names among its `v_`. The order is now: the project's file; else the folders and prefixes the database already uses (read with `GET_ELEMENTS()`); else the defaults, which are for a database the agent starts. The agent says which it followed. A sibling's cache or other settings are not a convention to copy. In the T46 RED runs all three agents already followed the database's own layout, and all three named the missing rule as a gap.
+
 ### 6.3 Правила безопасности
 
 `CREATE` нового объекта — агент выполняет сам. `DROP`, `ALTER` существующего объекта и

@@ -397,7 +397,9 @@ object skill until a session asks for one. Low findings are made in the same pas
   values carry commas and compared every cell with a CSV parser — 186 of 186 matched — and
   said the rule, taken literally, would have left an unreachable human with nothing.
 - **`ds_<source system>` for a lone file** with no system name (T27): the run invented one.
-  The naming table has no default for it.
+  The naming table has no default for it. **Decided in T46 (scope-user-9): left to the agent** —
+  a name it makes up and states is what the naming table asks for anyway; no skill text until a
+  session shows a wrong one.
 - **Privilege narrowing of the dependency procedures** (T26) — *mostly closed in T31* by
   impersonation: `COLUMN_DEPENDENCIES()` as a user who reads only the top view answers
   nameless `No Privileges` rows, `USED_BY()` of a view the user cannot read fails with a bare
@@ -407,7 +409,8 @@ object skill until a session asks for one. Low findings are made in the same pas
   and month" means a full grid or only the cells with data, and what primary key a line-grain
   view gets when the source has no unique key (`views` templates always declare one). Five
   runs decided each on their own, all the same way (cells with data; no key, said in the
-  `DESCRIPTION`); neither is in the skill.
+  `DESCRIPTION`); neither is in the skill. **Decided in T46 (scope-user-9): left to the agent** —
+  five runs converged with no failure; skill text only when a session shows a wrong grain or key.
 
 - `env.database` в JSON-конверте `scripts/denodo` показывает базу из профиля, а не
   фактическую базу вызова: при `--database sales_analytics` в ответе остаётся `admin`

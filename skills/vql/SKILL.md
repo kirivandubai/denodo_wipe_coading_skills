@@ -93,9 +93,10 @@ section named after a rule above replaces that rule, anything it does not mentio
 default. If the project has one, it wins — do not "improve" its naming with the defaults.
 
 **A database that already holds objects has conventions of its own.** Without the file, read
-its folders and names before you add to it (`GET_ELEMENTS()`, `/denodo:catalog`): a new object
-goes where its siblings live, under their prefixes — the defaults above are for a database you
-start. Say in the summary which convention you followed.
+its folders and names before you add to it — `SELECT name, type, subtype, folder FROM
+GET_ELEMENTS() WHERE input_database_name = '<db>'` (`/denodo:catalog`): a new object goes where
+its siblings live, under their prefixes; a sibling's cache is not a convention to copy. The
+defaults above are for a database you start. Say in the summary which convention you followed.
 
 ## Idempotency
 
