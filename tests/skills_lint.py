@@ -115,10 +115,6 @@ UNMARKED_BLOCKS: dict[str, list[tuple[str, str]]] = {
         ("intent in words\n  → read .denodo/conventions.md", "a diagram of the loop"),
         ("# Base views over ds_erp, schemas sales and billing", "the shape of a plan file the agent writes"),
     ],
-    "skills/vql/references/dialect.md": [
-        ("vql run --env dev -e \"SELECT SUBSTR('abcdef', 1, 3) AS want_abc",
-         "a probe through the CLI; the mark at the top of the file covers its expressions"),
-    ],
 }
 
 # ---------------------------------------------------------------------------------------

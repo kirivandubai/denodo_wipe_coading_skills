@@ -9,21 +9,6 @@ Every row below was run on the server, `SELECT … FROM Dual()` unless it names 
 *verified: 9.5.1 (live, 2026-09-30)*. Rows marked *delegated* were run against views over
 JDBC sources, because there the answer changes.
 
-## Check an expression before it goes into a view
-
-An expression you have not used in VQL before — a substring, a date pattern, a cast, a
-division — gets one run on `Dual()` with an input whose answer you already know:
-
-```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/denodo vql run --env dev -e "SELECT SUBSTR('abcdef', 1, 3) AS want_abc, TO_LOCALDATE('yyyy-MM-dd', '2024-03-15') AS want_mar_15 FROM Dual()"
-```
-
-That is a read, so it goes inline. Name each column after the answer you expect, and choose
-the input so that the wrong reading gives a different answer: `'abcdef'` and `1, 3` tell 0-based from 1-based and length from end index at
-once; `2024-12-30` tells a calendar year from a week year; `2.9` tells truncation from
-rounding. After a parse or a cast over real rows, count the `NULL`s it produced — a
-`NULL` is how most of the failures below report themselves.
-
 ## Text
 
 | You write | Denodo does | Write instead |
@@ -66,17 +51,15 @@ Java does.
 | `LOG(8, 2)` | **value first, base second** → `3` (log₂ 8). PostgreSQL and Oracle take the base first | `LOG(value, base)`; `LOG(x)` is base 10, `LN(x)` natural |
 | `GREATEST(a, b)`, `LEAST` | do not exist. Their substitute, the scalar `MAX(a, b)` / `MIN(a, b)`, returns **`NULL` when any argument is `NULL`** | `MAX(COALESCE(a, b), COALESCE(b, a))` |
 | `CAST('yes' AS boolean)` | `false`; `'true'` and `'1'` are true | map the source's values with `CASE` |
-| `CAST(x AS double)`, `CAST(x AS int)`, `CAST(x AS long)` | syntax errors — a `CAST` takes SQL type names | `CAST(x AS double precision)`, `CAST(x AS integer)`, or the VQL names in the two-argument form: `CAST('double', x)` |
+| `CAST(x AS double)`, `CAST(x AS int)`, `CAST(x AS long)` | syntax errors — a `CAST` takes SQL type names | `CAST(x AS double precision)`, `CAST(x AS integer)`, or the VQL names in the two-argument form: `CAST('double', x)` — the full table is in `/denodo:views`, **Types** |
 
 ### Aggregates
 
 - **`SUM` over an `int` column stays `int` and overflows silently** — past 2 147 483 647 it
   returns `NULL` or a wrong number that looks real: three rows of 2 000 000 000 summed to
-  `2000000000`; measured once on a fact column, `1140298269` instead of `168668968269`
-  (*verified: 9.5.1 (live, 2026-09-12)*). Cast the input: `SUM(CAST('long', x))`.
-  **Never over `decimal`**: the same cast truncates every row before the sum — measured once
-  on a money column, `183734747` against a true `183801994.51` (*verified: 9.5.1 (live,
-  2026-09-12)*). `decimal` and `double` measures need no cast. `AVG` over `int` does not
+  `2000000000` (*verified: 9.5.1 (live, 2026-09-12)*). Cast the input: `SUM(CAST('long', x))`.
+  **Never over `decimal`**: the same cast truncates every row before the sum (*verified: 9.5.1
+  (live, 2026-09-12)*). `decimal` and `double` measures need no cast. `AVG` over `int` does not
   overflow and returns `double`.
 - `COUNT(x)` skips `NULL`; `AVG(x)` divides by `COUNT(x)`, not by `COUNT(*)`. When the two
   differ, say in the answer which denominator the average is over — a "per line" average over
@@ -229,7 +212,3 @@ instead of a weekday number.
 - `CATALOG_ELEMENTS`, `CATALOG_VIEWS`, `CATALOG_PKS` and `CATALOG_FKS` are deprecated:
   `GET_ELEMENTS`, `GET_VIEWS`, `GET_PRIMARY_KEYS`, `GET_FOREIGN_KEYS`. `CATALOG_PERMISSIONS`
   and `CATALOG_VDP_METADATA_VIEWS` are not.
-- Before 8.0, `UNION` kept duplicates.
-- Type names in declarations and in `CAST` differ (`int` / `integer`, `long` / `bigint`,
-  `text` / `varchar`, `double` / `double precision`: `CAST(x AS double)` is a syntax error) —
-  the table is in `/denodo:views`.
