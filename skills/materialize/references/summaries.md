@@ -156,8 +156,7 @@ ALTER VIEW <view> DATAMOVEMENTPLAN = { <view to move>: () (JDBC <target>) };   -
   the target whose `SQLSentence` joins `<schema>.t_<moved view>_<uuid>`; the table was gone after
   the query. A data source given database-qualified (`admin.ds`) works.
 - *Measured*: moved into a data source the other side is not in, the plan still says `Data
-  Movement` and the join stays in Denodo. Measured once, moving a dimension of a few thousand rows
-  next to a fact of a million made an aggregate with `COUNT(DISTINCT)` about five times faster.
+  Movement` and the join stays in Denodo.
 - The target is a JDBC data source the view already uses, or the cache data source, with an
   adapter the cache engine supports and a connection URI that names the database
   (documentation). The tables go to its data-load target schema; its account needs to create
