@@ -2,8 +2,6 @@
 
 A comparison of periods is built like everything else over a metric view: selections — the
 metric view alone in its `FROM` — and the arithmetic in a view above them (`SKILL.md`, "The rule").
-What is particular to periods is where they come from, what a partial period does to a change,
-what "today" is, and which totals can be added up.
 
 The examples are a metric view of store returns over a calendar: `bv_retail_store_returns` (the
 fact, one row per return line, `sr_returned_date_sk` empty on some) and `bv_date_dim` (the TPC-DS
