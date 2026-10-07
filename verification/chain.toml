@@ -320,8 +320,8 @@ channel = "vql"
 # be introspected. The second block of SKILL.md's JDBC section (PING_DATA_SOURCE,
 # GET_JDBC_DATASOURCE_TABLES, GENERATE_VQL_TO_CREATE_JDBC_BASE_VIEW) is deliberately not a step:
 # introspection needs a database that actually answers, i.e. a real credential, and this chain
-# has none by construction. Its mark stays what T8b established against live Oracle, SQL Server
-# and PostgreSQL, and no run here will re-date it.
+# has none by construction. Its mark stays what a run against live Oracle, SQL Server and
+# PostgreSQL established, and no run here will re-date it.
 address = "skills/datasources/references/jdbc.md#A wrapper by hand, when the database cannot be reached"
 # This block carries no CONNECT DATABASE of its own (same as interface-view below).
 database = "{database}"
@@ -973,7 +973,7 @@ address = "skills/procedures/SKILL.md#Call a predefined procedure"
 # the fixture built, and household_income_by_band and household_income stand on it.
 substitute = { sales_analytics = "{database}", "'customer'" = "'bv_income_band'" }
 database = "{database}"
-check = "SELECT view_name FROM USED_BY() WHERE input_view_database_name = '{database}' AND input_view_name = 'bv_income_band'"
+check = "SELECT used_by_name, depth FROM USED_BY() WHERE input_view_database_name = '{database}' AND input_view_name = 'bv_income_band'"
 
 # The third block of that skill — CREATE PROCEDURE ... CLASSNAME, the Java form — is
 # deliberately not a step. It needs a JAR imported into the server, which this chain has no

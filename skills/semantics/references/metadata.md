@@ -129,7 +129,7 @@ The MCP Server prints both as `[PK] [NOT NULL]` (documentation).
 LLM configured for the Denodo Assistant and return text; they need the Enterprise Plus bundle,
 that configuration and the role `use_large_language_model` — the documentation of these
 procedures says `use_large_language_model_role`, which does not exist on 9.5.1
-(`Error loading role`). Each call is a paid LLM request (*documentation only*; the role,
+(`Error loading role`). Each call is one LLM request (*documentation only*; the role,
 measured). The LLM functions in a query are `/denodo:ai`.
 What they return is a draft built from the view's metadata (names, types, existing
 descriptions, tags, associations), plus sample values only when data usage and the cache are

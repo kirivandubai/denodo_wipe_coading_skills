@@ -17,7 +17,7 @@ audit of a database for people and AI consumers — is `/denodo:semantics`. Metr
 KPIs declared once over a fact and its dimensions, and the views built on them — are
 `/denodo:metrics`; a mart of one fixed grain stays here. A view with a column that calls the
 server's LLM or embedding model (`CLASSIFY_AI`, `EMBED_AI`, `VECTOR_DISTANCE` …) is
-`/denodo:ai` first: every row it is read for is a paid request. The SELECT inside
+`/denodo:ai` first: every row it is read for is a request to the provider. The SELECT inside
 `AS` has no skill of its own: the expressions
 where VQL returns a wrong value without an error — substrings, casts, date patterns, `SUM`
 over `int` — are the table in `/denodo:vql` and its `references/dialect.md`. Applying files

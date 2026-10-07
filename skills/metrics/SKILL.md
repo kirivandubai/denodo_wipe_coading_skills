@@ -28,9 +28,10 @@ alone in its `FROM`, dimensions in `SELECT` and `GROUP BY`, each metric as
 dimension view, another fact, a second metric view, arithmetic over metrics, a total — is
 done over selection views. Measured on 9.5.1, none of these says what is wrong: a join in the
 same `FROM` runs until the query timeout; arithmetic or `ROUND` around `evaluate_metric`, or
-`SUM`/`AVG` around a metric (`AVG(revenue)` returns the sum), is ignored; a ratio of two
-`evaluate_metric` returns no rows; `evaluate_metric` over another view is `NULL` (Silent
-failures, 1-3 and 10; Common mistakes, row 1).
+`SUM`/`AVG` around a metric (`AVG(revenue)` returns the sum), is ignored, in a query and
+inside a `CREATE VIEW` alike; a ratio of two `evaluate_metric` returns no rows;
+`evaluate_metric` over another view is `NULL` (Silent failures, 1-3 and 10; Common mistakes,
+row 1).
 
 Over a selection view — a view or a subquery — joins, `ROUND`, ratios and `CASE` work as in
 any view.

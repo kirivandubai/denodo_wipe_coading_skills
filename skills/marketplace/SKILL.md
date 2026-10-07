@@ -193,7 +193,8 @@ api post --env dev /public/api/element-management/VIEWS/synchronize \
 - **Who sends it.** You, when the same call with `--plan`, right before it, says `needs_yes:
   false`: it reads both `changes` — both, even when only `VIEWS/synchronize` is needed — and
   finds only what this session created (`radius.own`): every `serverElements` entry a database
-  or view of yours, every `localElements` entry the element of a view of yours; with
+  or view of yours, every `localElements` entry the element of a view of yours — your own view
+  renamed, with the pair matched in the call, included; with
   `SERVER_WITH_LOCAL_CHANGES`, on a profile that is not production; `modifiedElements` do not
   change it. Then read `removed` and `inserted` against that radius, and both `changes` again:
   once a database is gone from VDP, its elements left the catalog with `removed` empty in both
@@ -292,8 +293,6 @@ the naming convention of `/denodo:vql` on purpose:** the interface view's name i
 the contract you gave the tool server, and the three views under it are its implementation,
 not integration-layer or business-entity objects. Keep them together in one folder and named
 after the tool, as below; do not rename them to `iv_…` to match the table.
-
-
 
 ```sql
 -- verified: 9.5.1 (live, 2026-10-07)
@@ -435,7 +434,7 @@ other side where there is one. Every read-back below — *verified: 9.5.1 (live,
 | `POST /views/{id}/tags` to add one tag | `200` | that endpoint **replaces** the view's tags; use `/tags/{id}/views` |
 | `DELETE` a parent category | `200` | its children went too — read `…/categories/tree` before offering it |
 | `DELETE` the same tag twice | `500 GENERIC "Incorrect number of deleted tuples"` | it was already gone; categories answer `200` and servers `404` for the same thing |
-| `synchronize` a tool server before the associated view is in the catalog | `400 INVALID_VDP_EXTERNAL_ELEMENT_METADATA "The view '…' does not exist"` | the view **does** exist in VDP — it is the marketplace copy that is missing. Synchronise the catalog |
+| `synchronize` a tool server before the associated view is in the catalog | `400 INVALID_VDP_EXTERNAL_ELEMENT_METADATA "The view '…' does not exist"` | the view **does** exist in VDP: either the marketplace copy is missing — synchronise the catalog — or the tool server was created under the wrong `serverId` (rule 2): ask the other servers first |
 | rename the association array type | `400 INVALID_EXTERNAL_ELEMENT_INTERFACE_VIEW … expected type external_element_association_array_type` | keep the contract's names |
 | `LEFT OUTER JOIN` for elements without associations | `400 … Required field 'associated_element_id' is null` | `INNER JOIN` plus a `UNION ALL` branch with a NULL array |
 | drop an element from a non-empty snapshot | `200`, and the element is **deleted** with its tags and categories | that is the contract: the interface view is the full picture, not a delta |
@@ -459,4 +458,6 @@ Destructive here is decided by method and path, not by the word in it:
 | `POST /public/api/external-tool-servers/synchronize` | every element the interface view no longer selects, with its tags and categories |
 | `POST /public/api/views/{id}/tags`, `/public/api/category-management/views/{id}/categories`, `/public/api/property-management/views/{id}/groups` | the view's previous set — they replace, not add; a property group left out takes its values |
 
-All of them wait for the human's yes (`/denodo:vql`), except the two in **Who sends it**.
+All of them wait for the human's yes to the calls you show (`/denodo:vql`) — the request that
+asked for them is not that yes, and with nobody to answer the body goes in a file and your
+message — except the two in **Who sends it**.

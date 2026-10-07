@@ -33,7 +33,7 @@ Most of what goes wrong here gives no error: read "Silent failures" at the end f
 ## Which one
 
 First find out **why** the query is slow, or **who** reads the table, before choosing:
-`/denodo:views`, "delegation", shows whether rows travel between data sources.
+`/denodo:views`, `references/delegation.md`, shows whether rows travel between data sources.
 
 | The human wants | Use | Not |
 |---|---|---|
@@ -61,7 +61,7 @@ changes the answers of queries you did not write, waits for the human's yes.
 | `REFRESH` of a remote table you created in this session, and `replace_remote_table_if_exist = true` over one — the empty table a failed load left included; an incremental load into one (`references/incremental.md`) | `REFRESH` of any table older than this session — it is emptied first; an incremental load into one — every run writes into it |
 | a summary created **unloaded** (`DATA_LOAD_IMMEDIATE = FALSE`) and its plan checked: unloaded, it writes nothing and the optimizer never uses it — the data source and schema it names become part of the yes for its load. When the human named none, propose the data source the big table already lives in and its data-load schema, and say it is a proposal | **every load of a summary** — the first `REFRESH`, a `CREATE` that loads, every reload: from that moment it answers queries you did not write |
 | data movement in a view you created in this session | data movement added to a view that existed before this session: every query of it then creates a table in the target database |
-| a new materialized table in your project's database, and inserting into one you created in this session | `CREATE OR REPLACE MATERIALIZED TABLE` over one that exists — it empties it |
+| a new materialized table in your project's database, and re-declaring or inserting into one you created in this session | `CREATE OR REPLACE MATERIALIZED TABLE` over one older than this session — it empties it |
 | writing every file | a new load query for a remote table older than this session (the base view re-declared, "Refresh it") — it decides what the next refresh writes |
 | — | `DROP_REMOTE_TABLE`, `DROP VIEW` of any of these — your own included |
 

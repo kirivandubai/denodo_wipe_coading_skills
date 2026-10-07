@@ -39,7 +39,7 @@ cloud sources — they take passwords and key files), `draftJobs`, Data Loader, 
 Management and Data Indexer jobs, `configuration/*`, `tool-configuration/*`, `roles`, `drivers`,
 `plugins`, `serverMetadata/export|import` (an import can replace existing jobs, data sources,
 plugins and drivers of the same name — documentation), the deletion of reports. The plugin's
-tool classifies them anyway (`/denodo:execute`, **Destructive operations**).
+tool classifies them anyway (`/denodo:execute`, `references/errors.md`, **What the tool flags**).
 
 ## A cache job (`VDPCache`, *Simple Cache Management*)
 

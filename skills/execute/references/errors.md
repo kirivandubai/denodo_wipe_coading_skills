@@ -120,7 +120,7 @@ object back** — that is what the Verify section of every domain skill is for.
 | `409` | empty | duplicate name: tag, category, element type, provider type | find by name (`GET` list) and `PUT` instead of `POST` |
 | `409` | `SERVER_DUPLICATED` — *observed once* | duplicate external tool server name | same |
 | `400` | `VALIDATE_FIELD` `{"description":"must not be null",…}` | body missing required fields (`description`, `descriptionType` on tags) | send all fields; `descriptionType` is `"TEXT"` |
-| `400` | `INVALID_VDP_EXTERNAL_ELEMENT_METADATA` "The view '…' does not exist" | an association names a view the **marketplace catalog** does not have — it may well exist in VDP | synchronise the catalog (`/denodo:marketplace`), then re-run the import |
+| `400` | `INVALID_VDP_EXTERNAL_ELEMENT_METADATA` "The view '…' does not exist" | an association names a view the **marketplace catalog** does not have — it may well exist in VDP | check the server first — under a wrong `serverId` the import fails the same way (`/denodo:marketplace`, rule 2); otherwise synchronise the catalog, then re-run the import |
 | `400` | `INVALID_VDP_EXTERNAL_ELEMENT_METADATA` "Required field 'associated_element_id' is null … association index 0" | the interface view built its association array with a `LEFT OUTER JOIN`, so an element with no associations carries one all-null record | `INNER JOIN` plus a `UNION ALL` branch with a NULL array — `/denodo:marketplace` |
 | `400` | `INVALID_EXTERNAL_ELEMENT_INTERFACE_VIEW` "expected type external_element_association_array_type" | the association array type was renamed; the marketplace matches the contract's type name literally | keep the names from `…/vql-metadata` |
 | `400` | `INVALID_EXTERNAL_TOOL_SERVER` — *observed once* | `…/changes` on a CUSTOM server (endpoint is for Tableau/Power BI only) | use `synchronize`, not `changes` |
@@ -129,7 +129,7 @@ object back** — that is what the Verify section of every domain skill is for.
 | `500` | `GENERIC` "Cannot invoke \"java.lang.Long.longValue()\" because \"elementId\" is null" | `null` inside the id list of a body | resolve every id before the call |
 | `500` | `GENERIC` "Error executing query…" (`view-details`) | `databaseName` does not exist in VDP | fix the database name |
 | `200` | `[<viewId>, …]` from `POST /tags/{id}/views` or `/categories/…` | ids that were **not** assigned: unknown view, or already assigned | success is `[]`; unknown ids are not errors for the server |
-| `200` | `{"id":null,"inLocal":false,"inVDP":true}` from `GET view-details` | the view exists in VDP but is not synchronised into the marketplace, so it has no id to assign anything to | synchronise the catalog first (`/denodo:marketplace`, **Who sends it**) |
+| `200` | `{"id":null,"inLocal":false,"inVDP":true}` from `GET view-details` | the view is not in this server's copy of the catalog — **or** the call named the wrong `serverId`, which answers the same body | ask the other registered servers first (`/denodo:marketplace`, rule 2); only then synchronise (**Who sends it**) |
 
 ## 2a. Scheduler HTTP (`api --server scheduler`)
 
@@ -183,5 +183,6 @@ The list `vql plan`, `api … --plan` and every result's `destructive` field app
   `category-management/views/{id}/categories` and `property-management/views/{id}/groups`;
 - on the Scheduler (`--server scheduler`): every `DELETE` and report deletion; a `PUT` of a job,
   project or data source (`alter`); a job's status change (`job`); a job's creation, by what it
-  runs (`cache`, a VDP job's statement kind, or `write` for an exporter); configuration, roles,
-  passwords and metadata imports (`setting`, `security`, `replace`) (`/denodo:scheduler`).
+  runs (`cache`, a VDP job's statement kind, or `write` for an exporter); configuration, drivers
+  and plugins, roles, passwords and metadata imports (`setting`, `security`, `replace`)
+  (`/denodo:scheduler`).

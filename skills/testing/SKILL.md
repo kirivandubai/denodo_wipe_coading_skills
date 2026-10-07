@@ -283,10 +283,11 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/denodo testing run --env dev --database sales_anal
     --tool <where the Testing Tool was unzipped> --java-home <Java 17+> denodo/sales_analytics/tests
 ```
 
-starts the Denodo Testing Tool on the folder (or one file) with a temporary configuration from
-the profile, and answers with one JSON document — `exit_code`, `summary` (`run`, `ok`,
-`failed`, `zero_tuple`), each test with its `status` and `message`, `test_files` (the
-`.denodotest` files it found), and on a failure `output_tail`, the last lines the tool printed.
+starts the Denodo Testing Tool's `bin/denodo-test.sh` through `bash` on the folder (or one
+file) with a temporary configuration from the profile, and answers with one JSON document —
+`exit_code`, `summary` (`run`, `ok`, `failed`, `zero_tuple`), each test with its `status` and
+`message`, `test_files` (the `.denodotest` files it found), and on a failure `output_tail`, the
+last lines the tool printed.
 `--tool` defaults to `DENODO_TESTING_TOOL_HOME`, `--java-home` to the environment's `JAVA_HOME`.
 
 - **`ok: true` (exit `0`) needs the tool's exit code `0` and every test of the summary OK.** A

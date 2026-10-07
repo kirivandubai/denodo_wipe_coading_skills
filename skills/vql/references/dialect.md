@@ -152,10 +152,10 @@ day under `es_euro`, and `FORMATDATE('yyyy-MM-dd HH:mm', …)` writes the same. 
 and `NOW()` are the current time in that zone; `CURRENT_DATE` ignored a `CONTEXT` i18n — under
 `jp` it was the day before `LOCALTIMESTAMP`'s (*verified: 9.5.1 (live, 2026-10-06)*) — and is
 the Denodo server's date, sent as a value where the condition is delegated (SQL Server and
-PostgreSQL measured); a database that evaluates it itself may read its own clock (VQL Guide,
-Datetime Functions). Written to a source column, a zoned value is converted in the server
-process's zone instead (`/denodo:dml`). A monthly label over a `timestamptz` moves the last
-hours of a month into the next one.
+PostgreSQL measured); a database that computes `CURRENT_DATE` itself may read its own clock
+(VQL Guide, Datetime Functions). Written to a source column, a zoned value is converted in the
+server process's zone instead (`/denodo:dml`). A monthly label over a `timestamptz` moves the
+last hours of a month into the next one.
 
 ## `NULL`, ordering and the shape of a query
 

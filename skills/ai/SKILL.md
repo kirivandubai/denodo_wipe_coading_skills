@@ -52,7 +52,8 @@ took 0.7–2 s on the server it was measured on:
 
 **An AI function runs over the rows of a view or a table only up to a number the human
 agreed to.** Every row is a request, billed if the provider is hosted, and its text goes with
-it. The number counts requests: rows × the AI functions evaluated per row.
+it. The number counts requests: rows × the AI functions evaluated per row. Hosted or not, the
+number is the human's.
 
 | You run it yourself | Only with the human's number |
 |---|---|
@@ -234,8 +235,9 @@ CONTEXT ('cache_preload' = 'true',
   personal data.
 - **A sample before the full load**, without touching the cache: `SELECT * FROM
   product_review_ai WHERE TRIM(review_text) <> '' LIMIT 20 CONTEXT ('cache' = 'off')` reads
-  the source and computes the 20 rows — 20 × the AI columns — and stores nothing; the loaded
-  rows and their date stayed as they were — *verified: 9.5.1 (live, 2026-10-06)*.
+  the source — on a view you hold WRITE on (`/denodo:cache`, **Verify**) — and computes the 20
+  rows — 20 × the AI columns — and stores nothing; the loaded rows and their date stayed as
+  they were — *verified: 9.5.1 (live, 2026-10-06)*.
 - **The view holds only what the load stored**: a row added to the source afterwards is not
   in the view at all until the next load. And a load is never incremental here — it re-sends
   every row with text, old ones included, so over a source refreshed nightly each refresh is

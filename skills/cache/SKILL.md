@@ -20,10 +20,10 @@ setting, not yours.
 
 Building or changing the view itself is `/denodo:views`; base views are
 `/denodo:datasources`. A view whose columns call the server's LLM (`CLASSIFY_AI` …) is
-cached so that readers stop paying for it, and **every load of it is a paid run of every
-row** — the number of rows is the human's; a full cache of a vector column failed on 9.5.1
-(`/denodo:ai`). Applying files is `/denodo:execute`. The working loop and the safety rule
-are `/denodo:vql`.
+cached so that readers stop paying for it, and **every load of it sends every row to the
+provider again** — the number of rows is the human's; a full cache of a vector column failed
+on 9.5.1 (`/denodo:ai`). Applying files is `/denodo:execute`. The working loop and the safety
+rule are `/denodo:vql`.
 
 **Everything here changes what every reader of the view gets, and does it silently.** The
 statements succeed; the view then returns 0 rows, a filtered subset, yesterday's rows or
@@ -58,7 +58,7 @@ every row twice, and so does every view built on it.
 
 | The view | You apply yourself | Only after the human's yes |
 |---|---|---|
-| created by you in this session, read by nothing but your own views of this session | on, load, clear, off | — |
+| created by you in this session, read by nothing but your own views of this session — on a profile that is not production | on, load, clear, off | — |
 | any other view | the reads above | on, load, reload, clear, off |
 
 Whether the view was created in this session, and whether anything else reads it, is what
@@ -227,7 +227,7 @@ ALTER VIEW iv_household_income CACHE OFF;
 | Whole view or a subset | the human. Not said → the whole view |
 | Its readers | `USED_BY()` and the human (dashboards, reports) |
 | When it is refreshed | the human; the Scheduler job that does it is `/denodo:scheduler` |
-| Rows now | `SELECT COUNT(*) FROM <view> CONTEXT ('cache' = 'off')` — the source, whatever the cache holds |
+| Rows now | `SELECT COUNT(*) FROM <view> CONTEXT ('cache' = 'off')` — the source, under the caveat in Verify |
 
 ## Verify
 

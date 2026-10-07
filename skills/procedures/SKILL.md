@@ -29,7 +29,7 @@ naming and the safety rule are `/denodo:vql`; apply the file with `/denodo:execu
 
 ```sql
 -- verified: 9.5.1 (live, 2026-10-07)
-SELECT view_name, depth FROM USED_BY()
+SELECT used_by_name, depth FROM USED_BY()
  WHERE input_view_database_name = 'sales_analytics'
    AND input_view_name = 'customer';
 ```
@@ -84,7 +84,8 @@ END;
 - **`FOLDER =` comes before the parameter list**, not after it — the one place where this
   object differs from every other `CREATE` in the set.
 - `AS ( … )` declares the local variables, **each closed by its own `;`**. A procedure with
-  none leaves the block out — an empty `AS ( )` is a syntax error.
+  none leaves the block out — an empty `AS ( )` is a syntax error — *verified: 9.5.1 (live,
+  2026-10-07)*.
 - `BEGIN … END` is the body; `:=` assigns, `RETURN ROW (out1, out2) VALUES (v1, v2)`
   returns a row through the `OUT` parameters. A procedure with no `RETURN ROW` is legal: it
   runs, does its work and returns zero rows.

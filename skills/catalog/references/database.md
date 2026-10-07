@@ -43,7 +43,7 @@ CREATE [ OR REPLACE ] DATABASE <name> [ '<description>' ]
 |---|---|---|
 | `'<description>'` | free text, shown by `DESC DATABASE` and `GET_DATABASES()` | none |
 | `CHARSET` | which characters Design Studio lets users put in identifiers. `UNICODE` any; `RESTRICTED` a limited set; `DEFAULT` the server setting. Does not change the server's behaviour | `DEFAULT` — what that means is the server's setting; `GET_DATABASES()` → `charset`, `charset_default` |
-| `AUTHENTICATION LOCAL` | users are VDP users. This is "Global authentication settings" in Design Studio | this, when the clause is absent |
+| `AUTHENTICATION LOCAL` | Design Studio's "Global authentication settings": whatever the server's global authentication is (`SKILL.md`, **What you need before filling the template**) | this, when the clause is absent |
 | `AUTHENTICATION LDAP …` | authentication and roles delegated to an LDAP server through an LDAP data source that already exists in `<db>`. Needs the six values — two base DNs, two attribute names, two search patterns — get them from the human or the Administration Guide setup, never guess | — |
 | `VCS` | per-database version-control integration | server setting |
 | `CREDENTIALS_VAULT` | HashiCorp / CyberArk configuration for this database | server setting |

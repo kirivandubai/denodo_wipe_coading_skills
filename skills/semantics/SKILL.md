@@ -204,7 +204,7 @@ reads at once, not how much of the data is read (`/denodo:vql`, **Many objects a
 - The audit's field query returns a row per field: run it with `--max-rows 5000` and check
   `truncated`; the profile is a file of reads, one all-columns statement per view, run with
   `--continue-on-error`. A view whose columns call the server's LLM is profiled from its cache
-  or not read at all: every row read is a paid request (`/denodo:ai`).
+  or not read at all: every row read is a request to the provider (`/denodo:ai`).
 - A batch is a statement file and its part of the proposal, `semantics/<database>/batch_NN_<group>.vql`,
   sized by its texts, not its views — field texts are most of the reading. Base views go in
   the first batches: their field texts are inherited above (section 1).
