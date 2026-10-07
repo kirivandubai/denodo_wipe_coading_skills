@@ -2778,7 +2778,6 @@ expect_body = { "0" = "<absent>" }
 # tests/test_chain_manifest.py holds both directions.
 
 [not_run]
-"skills/cache/references/full-cache.md#`ALTER VIEW … CACHE` (`ALTER TABLE … CACHE` for a base view)" = "a sequence of steps and the error it ends in, not a statement"
 "skills/catalog/references/database.md#CREATE DATABASE" = "grammar ([ … ], <…>), not a statement; the catalog template runs a CREATE DATABASE"
 "skills/catalog/references/database.md#ALTER DATABASE" = "grammar ([ … ], <…>), not a statement"
 "skills/catalog/references/database.md#DROP DATABASE" = "grammar ([ … ], <…>), not a statement; the cleanup runs a DROP DATABASE"
