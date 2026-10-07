@@ -130,13 +130,15 @@ denodo_skills/                        репозиторий = плагин = м
 │   ├── execute/
 │   │   ├── SKILL.md
 │   │   └── references/errors.md      the server's errors, and what the tool flags `destructive`
-│   ├── catalog/SKILL.md
+│   ├── catalog/
+│   │   ├── SKILL.md
+│   │   └── references/               database, folders, tags (the full syntax of each)
 │   ├── datasources/
 │   │   ├── SKILL.md
 │   │   └── references/               df, json, jdbc (incl. a wrapper by hand), base-view
 │   ├── views/
 │   │   ├── SKILL.md
-│   │   └── references/               derived, interface, associations, unions, arrays, dependencies, delegation
+│   │   └── references/               derived, interface, associations, unions, arrays, dependencies, delegation, one-row-per-key
 │   ├── marketplace/
 │   │   ├── SKILL.md
 │   │   └── references/               tags, categories, external elements, renames (a view renamed, recreated or moved)
@@ -151,7 +153,7 @@ denodo_skills/                        репозиторий = плагин = м
 │   │   └── references/metadata.md    what each AI consumer reads, every metadata ALTER, inheritance
 │   ├── metrics/
 │   │   ├── SKILL.md
-│   │   └── references/metric-views.md  grammar, joins per association measured, query rules, limits
+│   │   └── references/               metric-views (grammar, joins per association measured, query rules, limits), periods (year over year, to date, running totals)
 │   ├── security/
 │   │   ├── SKILL.md
 │   │   └── references/               policies (grammar, masks, audience per grant path), privileges
@@ -163,7 +165,7 @@ denodo_skills/                        репозиторий = плагин = м
 │   │   └── references/               statements (grammar, RETURNING, upsert, how values land, transactions), writable-views (per view type, CHECK OPTION, wrapper switches, impersonation)
 │   ├── materialize/
 │   │   ├── SKILL.md
-│   │   └── references/               remote-tables (procedure, command, types, REFRESH, materialized and temporary tables), summaries (grammar, rewrite measured, staleness, data movement)
+│   │   └── references/               remote-tables (procedure, command, types, REFRESH, materialized and temporary tables), summaries (grammar, rewrite measured, staleness, data movement), incremental (only what is new or changed since the last load)
 │   ├── testing/
 │   │   ├── SKILL.md
 │   │   └── references/format.md      the .denodotest format as the Testing Tool runs it: parsing, comparison rules measured, SETUP/TEARDOWN, exit codes, the configuration
