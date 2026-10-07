@@ -337,13 +337,13 @@ check = "SELECT name FROM GET_ELEMENTS() WHERE input_database_name = '{database}
 id = "jdbc-base-view"
 kind = "template"
 channel = "vql"
-# The third block of that section — the wrapper and base view written by hand for a source
-# that cannot be introspected. The second block (PING_DATA_SOURCE, GET_JDBC_DATASOURCE_TABLES,
-# GENERATE_VQL_TO_CREATE_JDBC_BASE_VIEW) is deliberately not a step: introspection needs a
-# database that actually answers, i.e. a real credential, and this chain has none by
-# construction. Its mark stays what T8b established against live Oracle, SQL Server and
-# PostgreSQL, and no run here will re-date it.
-address = "skills/datasources/SKILL.md#Relational database over JDBC[2]"
+# The wrapper and base view written by hand, on the data source above, for a source that cannot
+# be introspected. The second block of SKILL.md's JDBC section (PING_DATA_SOURCE,
+# GET_JDBC_DATASOURCE_TABLES, GENERATE_VQL_TO_CREATE_JDBC_BASE_VIEW) is deliberately not a step:
+# introspection needs a database that actually answers, i.e. a real credential, and this chain
+# has none by construction. Its mark stays what T8b established against live Oracle, SQL Server
+# and PostgreSQL, and no run here will re-date it.
+address = "skills/datasources/references/jdbc.md#A wrapper by hand, when the database cannot be reached"
 # This block carries no CONNECT DATABASE of its own (same as interface-view below).
 database = "{database}"
 check = "SELECT name FROM GET_ELEMENTS() WHERE input_database_name = '{database}' AND name = 'bv_orders_db_orders'"

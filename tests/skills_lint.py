@@ -36,7 +36,7 @@ SKILL_LINES_LIMIT = 500    # a SKILL.md is read whole; the detail belongs in ref
 OVER_BUDGET: dict[str, int] = {}
 
 # SKILL.md files over the limit, with their length in lines — the same ratchet.
-LONG_SKILLS: dict[str, int] = {"datasources": 696, "views": 682}
+LONG_SKILLS: dict[str, int] = {"datasources": 626, "views": 682}
 
 # Fenced blocks in skills/ that are not templates and so carry no verification mark:
 # grammar, diagrams, what a server or a tool prints, a report the agent writes, a command

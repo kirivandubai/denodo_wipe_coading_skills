@@ -136,6 +136,45 @@ CREATE [ OR REPLACE ] WRAPPER JDBC <name>
   `DELEGATESQLSENTENCEASSUBQUERY`, `DATAINORDERFIELDSLIST`,
   `SUPPORTSDISTRIBUTEDTRANSACTIONS`.
 
+## A wrapper by hand, when the database cannot be reached
+
+When the server cannot reach the database (a different network zone, credentials not issued
+yet), introspection is not available: write the wrapper and the base view by hand, on the data
+source of the `SKILL.md` template (`ds_orders_db`), from the schema the human gives you. The
+DDL still parses and the objects still get created; only `SELECT` fails, on the connection. Java
+types in the wrapper, VQL types in the base view, and a subset of the columns is fine (above):
+
+```sql
+-- verified: 9.5.1 (live, 2026-10-07) — created against an unreachable host
+CREATE OR REPLACE WRAPPER JDBC wr_orders_db_orders
+    FOLDER = '/01 - connectivity'
+    DATASOURCENAME = ds_orders_db
+    SCHEMANAME = 'public'
+    RELATIONNAME = 'orders'
+    OUTPUTSCHEMA (
+        order_id = 'order_id' :'java.lang.Long' (OPT) SORTABLE,
+        customer_id = 'customer_id' :'java.lang.String' (OPT) SORTABLE,
+        order_dt = 'order_dt' :'java.sql.Timestamp' (OPT) SORTABLE,
+        total_amount = 'total_amount' :'java.math.BigDecimal' (OPT) SORTABLE,
+        status = 'status' :'java.lang.String' (OPT) SORTABLE
+    );
+
+CREATE OR REPLACE TABLE bv_orders_db_orders I18N us_pst (
+        order_id:long,
+        customer_id:text,
+        order_dt:timestamp,
+        total_amount:decimal,
+        status:text
+    )
+    FOLDER = '/01 - connectivity'
+    CACHE OFF
+    TIMETOLIVEINCACHE DEFAULT
+    ADD SEARCHMETHOD wr_orders_db_orders (
+        OUTPUTLIST ( order_id, customer_id, order_dt, total_amount, status )
+        WRAPPER (jdbc wr_orders_db_orders)
+    );
+```
+
 ## Introspection procedures
 
 `PING_DATA_SOURCE` and the listing and generating procedures need the source to be reachable.
