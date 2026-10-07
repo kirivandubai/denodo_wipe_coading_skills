@@ -187,20 +187,12 @@ without it: both answered over a host that does not resolve, as measured on a 9.
 | `PING_DATA_SOURCE` | `SELECT status, down_cause FROM PING_DATA_SOURCE() WHERE database_name='<db>' AND data_source_type='JDBC' AND data_source_name='<ds>'` | `UP` / `DOWN` plus the Java exception. Positional arguments work too; a bare `Error executing query. Total time …` comes, for one, from a database or data source that does not exist |
 | `GET_JDBC_DATASOURCE_TABLES` | `… WHERE input_datasource_name='<ds>' [ AND input_catalog_name='<cat>' ] [ AND input_schema_name='<schema>' ] [ AND input_table_name='<t>' ] [ AND input_type='TABLE' ]` | the reliable one: the filters are input parameters, so the server asks the source only about what you want |
 | `LIST_JDBC_DATASOURCE_TABLES` | `… WHERE data_source_name='<ds>'` | Deprecated (documentation); walks every catalog and schema the login can list. It failed on the SQL Server measured, and a `WHERE` does not help because the walk happens first. Use `GET_JDBC_DATASOURCE_TABLES` |
-| `GENERATE_VQL_TO_CREATE_JDBC_BASE_VIEW` | `SELECT creation_vql FROM …() WHERE data_source_name='<ds>' [ AND catalog_name='<cat>' ] AND schema_name='<s>' AND table_name='<t>' AND base_view_name='<bv>' AND folder='<path>'` | with `folder`, returns **three rows**: a `CREATE OR REPLACE FOLDER` of that folder with no description, the wrapper and the `CREATE TABLE` — *verified: 9.5.1 (live, 2026-10-06)*. `catalog_name` is required where the product has catalogs (SQL Server), omitted for Oracle |
+| `GENERATE_VQL_TO_CREATE_JDBC_BASE_VIEW` | `SELECT creation_vql FROM …() WHERE data_source_name='<ds>' [ AND catalog_name='<cat>' ] AND schema_name='<s>' AND table_name='<t>' AND base_view_name='<bv>' AND folder='<path>'` | `catalog_name` is required where the product has catalogs (SQL Server), omitted for Oracle |
 | `GET_SOURCE_TABLE`, `GET_SOURCE_COLUMNS` | `… WHERE input_database_name='<db>' AND input_view_name='<view>'` | the other direction: which source table and columns an existing base view sits on — the way to answer "where does this column come from" |
 
-What generated VQL looks like, and what to change in it:
-
-- the wrapper is named after `base_view_name`, not `wr_…` — rename it in both statements
-  if the project's conventions ask for a prefix;
-- `DATASOURCENAME` comes back database-qualified (`<db>.<ds>`);
-- the `CREATE TABLE` ends with `CONTEXT('SIMULATE' = 'NO')`, which is harmless to keep;
-- types are chosen by the adapter: Oracle `NUMBER(10)` → `long`, `NVARCHAR2` → `text`,
-  PostgreSQL `date` → `localdate`, SQL Server `bigint` → `long`;
-- the first row, `CREATE OR REPLACE FOLDER`, is not part of the base view: leave it out. Over a
-  folder that exists it clears the folder's description, and over a folder you did not create
-  in this session it is a re-declaration that waits for the human's yes.
+What to change in the generated statements: `SKILL.md`, **Relational database over JDBC**.
+Types are chosen by the adapter: Oracle `NUMBER(10)` → `long`, `NVARCHAR2` → `text`,
+PostgreSQL `date` → `localdate`, SQL Server `bigint` → `long`.
 
 ## Every table of a schema
 

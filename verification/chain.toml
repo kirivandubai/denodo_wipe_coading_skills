@@ -268,16 +268,6 @@ database = "{database}"
 check = "SELECT COUNT(*) FROM bv_crm_customers_min HAVING COUNT(created_dt) = 40"
 
 [[step]]
-id = "df-raw-lines"
-kind = "template"
-channel = "vql"
-address = "skills/datasources/references/df.md#Reading a file as raw lines"
-# The block's file is the chain's order export; it is JSON, which the trick reads as well.
-substitute = { "LOCAL 'LocalConnection' '/data/exports/oms/orders.json'" = "{fixture_route} '{fixture_base}/orders.json'" }
-database = "{database}"
-check = "SELECT name FROM GET_ELEMENTS() WHERE input_database_name = '{database}' AND name = 'wr_peek'"
-
-[[step]]
 id = "json-source"
 kind = "template"
 channel = "vql"
@@ -309,17 +299,6 @@ address = "skills/datasources/references/json.md#The shape that works"
 substitute = { "TUPLEROOT '/JSONFile/JSONArray'" = "CREATE OR REPLACE WRAPPER JSON wr_oms_orders_shape\n    DATASOURCENAME = ds_oms\n    TUPLEROOT '/JSONFile/JSONArray'" }
 database = "{database}"
 check = "SELECT name FROM GET_ELEMENTS() WHERE input_database_name = '{database}' AND name = 'wr_oms_orders_shape'"
-
-[[step]]
-id = "json-flatten-read"
-kind = "template"
-channel = "vql"
-address = "skills/datasources/references/json.md#Reading the data"
-# The block's query, without the lines that show its answer.
-substitute = { "\n→ order_id, customer_id, order_dt, status, total_amount, shipping,\n  line_no, sku, qty, price          -- 3 orders, 4 lines → 4 rows" = "" }
-database = "{database}"
-# What those lines say: 3 orders, 4 lines, 4 rows.
-check = "SELECT COUNT(*) FROM FLATTEN bv_oms_orders AS v (v.lines) HAVING COUNT(*) = 4"
 
 [[step]]
 id = "jdbc-source"

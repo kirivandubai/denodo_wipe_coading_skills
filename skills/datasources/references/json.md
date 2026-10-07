@@ -95,29 +95,10 @@ CREATE OR REPLACE TYPE oms_order_line_array AS ARRAY OF oms_order_line;
 - A register field is read with parentheses: `SELECT (shipping).country FROM bv_oms_orders`.
   Without them the parser reads `shipping.country` as *view.column* and answers
   `Field not found 'shipping.country' in view 'shipping'`. *verified: 9.5.1 (live, 2026-09-09)*
-- An array is expanded with `FLATTEN` in a derived view: `SELECT … FROM FLATTEN
-  bv_oms_orders AS v (v.lines)` — that is `/denodo:views` territory (its
-  `references/arrays.md`), but the column names it produces are worth knowing here, because
-  they decide what your derived view can select. The array column disappears and **its
-  register's subfields appear unprefixed**, next to the top-level columns; a register column
-  that is not flattened stays as one register value:
-
-  ```
-  SELECT * FROM FLATTEN bv_oms_orders AS v (v.lines)
-  → order_id, customer_id, order_dt, status, total_amount, shipping,
-    line_no, sku, qty, price          -- 3 orders, 4 lines → 4 rows
-  ```
-  *verified: 9.5.1 (live, 2026-09-09)*. A subfield that shares a name with a top-level
-  column is renamed by the server, `<array>_<subfield>` — a line's `status` comes out as
-  `lines_status` — and an order whose array is empty or missing comes out as one row with
-  the subfields `NULL` — *verified: 9.5.1 (live, 2026-09-30)*.
-- **Filters need the base view's `CONSTRAINTS`.** A JSON base view created without
-  `ADD <field> NOS ZERO ()` for every column and every register subfield ignores every
-  `WHERE` on it — the server passes the condition to the JSON wrapper, which drops it.
-  `SKILL.md`, **JSON file**, has the block; `SELECT COUNT(*) … WHERE <key> = '<one value>'`
-  returning more than one row is the symptom — *verified: 9.5.1 (live, 2026-09-30)*.
-  Re-applying the base view with the block fixes every view above it. A base view that is not
-  yours is its owner's to fix; `/denodo:views` (`references/arrays.md`) has what to do in the
-  meantime.
+- An array is expanded with `FLATTEN` in a derived view — `/denodo:views`, which has the
+  columns it produces.
+- A JSON base view filters only with the `CONSTRAINTS … NOS ZERO ()` block of `SKILL.md`,
+  **JSON file**; re-applying it fixes every view above. One that is not yours is its owner's
+  to fix: `/denodo:views` (`references/arrays.md`).
 - Base views over JSON keep the document's own types; converting `order_dt` from an ISO
   string to a timestamp belongs in the derived layer, not in the base view.

@@ -67,7 +67,7 @@ CREATE OR REPLACE TABLE bv_crm_customers I18N us_pst (
 | `TIMETOLIVEINCACHE DEFAULT` | **yes when `CACHE OFF` is followed by `ADD SEARCHMETHOD`** — otherwise `Syntax error … near 'ADD'`. *verified: 9.5.1 (live, 2026-09-09)* |
 | `ADD SEARCHMETHOD … WRAPPER (…)` | **yes** — without it the view has no source |
 | `I18N` *inside* the search method | no |
-| `CONSTRAINTS ( … )` | **for JSON, yes**: `ADD <field> NOS ZERO ()` for every column and every register subfield (`shipping.country`). Left out, the server fills in `ADD <field> (any) OPT ANY` for every wrapper type; the DF and JDBC wrappers then filter what they are handed, the JSON wrapper ignores it, and every `WHERE` on a JSON base view returns all rows without an error. For JDBC it can be left out, and for DF when the base view lists the wrapper's columns in the wrapper's order. **A DF base view with fewer columns needs it** (`NOS ZERO ()` for each of its columns): without it an equality is handed to the wrapper by position and filters another column of the file. *verified: 9.5.1 (live, 2026-09-30)* |
+| `CONSTRAINTS ( … )` | **for JSON, and for a DF base view narrower than its wrapper, yes** — `SKILL.md`, notes under the DF and JSON templates; for JDBC no |
 | `OUTPUTLIST` | in practice yes — it is the list of fields the search method returns |
 | The wrapper type in `WRAPPER (…)` | **yes**, and it must match: `df`, `json`, `jdbc` |
 
@@ -92,9 +92,6 @@ plus every user-defined type (`CREATE TYPE … AS REGISTER OF (…)` / `ARRAY OF
 - The base view's declared type is what Denodo *parses the source value into*. Over a text
   file, `created_dt:localdate` on `2021-04-12` works (*verified: 9.5.1 (live, 2026-10-07)*); a
   type that does not match returns `NULL` for that column, with **no error**.
-  *verified: 9.5.1 (live, 2026-09-09)*
-- Over JDBC, introspection picks the type from the source: Oracle `NUMBER(10)` → `long`,
-  `NVARCHAR2` → `text`, PostgreSQL `date` → `localdate`, SQL Server `bigint` → `long`.
   *verified: 9.5.1 (live, 2026-09-09)*
 - `bigint` is not a VQL type — it is `long`. Field properties from introspection
   (`sourcetypename`, `sourcetypesize`, …) are informative and can be dropped.
@@ -148,12 +145,7 @@ refreshed in Design Studio (**Source Refresh**, `SKILL.md`), not rewritten by ha
 - `DROP VIEW <name>` or `DROP TABLE <name>` removes a base view; `DESC TABLE` does not
   exist — it is `DESC VIEW` (both measured on a 9.5.1 server). Dropping the data source with
   `CASCADE` takes wrappers and base views with it.
-- **`LIST VIEWS` does not list base views** — it answers with the derived ones only, and
-  returns an empty set in a database that holds nothing but base views. `LIST TABLES` does
-  not exist. The listing that shows them is
-  `SELECT name, subtype, folder FROM GET_ELEMENTS() WHERE input_database_name = '<db>' AND
-  type = 'view'` (`subtype = 'base'` picks the base views).
-  *verified: 9.5.1 (live, 2026-09-09)*
+- **`LIST VIEWS` misses base views**: `SKILL.md`, **Verify**.
 - Before a column of an existing base view is dropped or retyped, find who uses it:
   `SELECT view_name, used_by_database_name, used_by_name, depth FROM USED_BY() WHERE
   input_view_database_name = '<db>' AND input_view_name = '<bv>'` (`/denodo:views`, *Before
