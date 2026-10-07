@@ -487,8 +487,8 @@ goes into a hidden prompt:
 ```
 
 They can also pipe it from a password manager (`op read op://vault/db/password | …`). Either
-way the answer carries one field, `encrypted`, and the project file then reads
-`USERPASSWORD = '<that string>' ENCRYPTED`.
+way the answer carries one field, `encrypted` — never the password, not even inside a server
+error — and the project file then reads `USERPASSWORD = '<that string>' ENCRYPTED`.
 
 A wrong password encrypts just as happily, and the source answers later with its database's
 own authentication error, not a format error — a source on a Virtual DataPort server,
