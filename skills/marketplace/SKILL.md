@@ -120,12 +120,9 @@ api post --env dev /public/api/tags/<tag_id>/views --json '[<view_id>]'
 - The response is the list of ids that were **not** assigned. `[]` is success; `[<view_id>]`
   means "already assigned" **or** "no such view" — the two are indistinguishable, both come
   back `200` — *verified: 9.5.1 (live, 2026-09-10)*. Read the assignment back.
-- **Anything that runs twice must read before it writes.** A second run of the same script
-  hits an assignment that is already there and gets `[<view_id>]` — which is neither the success
-  the first run saw nor a failure worth stopping on. So check
-  `GET /public/api/tags/{id}/elements` first and skip the `POST` when the view is listed;
-  then `[<view_id>]` in a response means what it should mean — something is wrong. The same holds
-  for the tag itself: look it up by name, and `PUT` only when a field actually differs.
+- **Anything that runs twice must read before it writes:** check
+  `GET /public/api/tags/{id}/elements` and skip the `POST` for a view already listed, so
+  `[<view_id>]` always means something is wrong; `PUT` a found tag only when a field differs.
 - Assigning to an external element instead of a view is
   `POST /public/api/tags/{id}/external-elements` with the same body shape, and it answers
   with an **empty body**, not a list.
@@ -205,7 +202,7 @@ api post --env dev /public/api/element-management/VIEWS/synchronize \
   another team's new database, an orphan you did not make — and the body goes in a file, with
   what waiting risks; the human sends it or says yes (`/denodo:vql`). The one other exception
   is the first import on a tool server you created in this session (the external element, step
-  4); nothing else about a `synchronize` is exempt.
+  4). Neither applies on production; nothing else about a `synchronize` is exempt.
 
 | Rationalization | Reality |
 |---|---|
@@ -352,16 +349,14 @@ Four things here are load-bearing, each *verified: 9.5.1 (live, 2026-09-10)*:
 - **`external_element_association_array_type` is the name the marketplace checks**, literally.
   Rename it and synchronisation refuses the whole server:
   `400 INVALID_EXTERNAL_ELEMENT_INTERFACE_VIEW … expected type external_element_association_array_type`.
-  Types live inside a database, so the contract names never clash across databases.
-- **`external_element_type` must equal an element type's `name`**, character for character —
-  the field is `name` when you create a type and `externalElementTypeName` when you list them.
+- **`external_element_type` must equal an element type's `name`**, character for character
+  (read back as `externalElementTypeName`, above).
 - **`INNER JOIN`, not `LEFT OUTER JOIN`.** A left join over an element with no associations
   makes `NEST` produce one all-null record, and the import rejects the element:
   `400 … Required field 'associated_element_id' is null … association index 0`. As written
   above — every element has an association — the inner join is the whole story; only if some
-  element has none do you add a second branch, `UNION ALL SELECT …,
-  CAST('external_element_association_array_type', NULL) AS associations FROM … WHERE id NOT IN
-  (SELECT owner_id FROM …)`.
+  element has none, add the `UNION ALL` branch with a NULL array in
+  `references/external-elements.md`.
 - `CREATE OR REPLACE INTERFACE VIEW … SET IMPLEMENTATION` in one statement, so the file
   re-applies. `ALTER INTERFACE VIEW` does the same thing but is a change to an existing
   object and needs a human's yes (`/denodo:vql`).
@@ -373,8 +368,8 @@ that does not match it, and only the `SELECT` shows it (`/denodo:views`).
 
 | Slot | Where it comes from |
 |---|---|
-| Which "tag" | marketplace tag = visible in the Data Marketplace UI, created here; VDP tag = `LIST TAGS`, `/denodo:catalog`. When the request does not say, ask — the call succeeds either way, on the wrong server |
-| `serverId` | `marketplace_server_id` in the profile — the human's to set, and the tool adds it for you; the ids are in `GET /public/api/configuration/servers`. Needed as soon as more than one VDP is registered. Do not put it in a call unless you mean a server other than the profile's |
+| Which "tag" | marketplace or VDP (top of this skill); ask when the request does not say |
+| `serverId` | `marketplace_server_id` in the profile, set by a human (Name the server); never in a call unless you mean another server |
 | Tag or category name, description | the human. Both are shown to consumers browsing the marketplace, so they read as labels, not as identifiers |
 | A new category's parent | `GET …/categories/tree` first; a *domain* the human names is a category of this tree, usually a root one. A live marketplace's tree is a taxonomy somebody designed — hang the new category inside the branch it belongs to. A **new top-level** category is a question for the human, not a default: it adds an axis to what everybody browsing sees. (`GET …/categories/{id}/potential-parent` is for moving an existing one) |
 | Every numeric id | never a template, never memory: a `GET` in this session. Ids differ per installation and per server |
@@ -399,6 +394,8 @@ marketplace features with their own screens, not part of creating these objects.
 - `references/external-elements.md` — the element and provider type surface, the association
   record in detail, element-to-element associations, what synchronisation adds, updates and
   deletes, and how to read `/details`.
+- `references/renames.md` — a view renamed, recreated or moved: the template, the move, what to
+  re-apply.
 
 The server is also its own reference: `GET /v3/api-docs` on the marketplace returns the whole
 OpenAPI document, which settles any path or body this skill does not
@@ -415,29 +412,26 @@ other side where there is one. Every read-back below — *verified: 9.5.1 (live,
 |---|---|
 | Did the tag/category land | `GET /public/api/tags/{id}` · `GET /public/api/category-management/categories/{id}` |
 | Is the assignment real, from the tag's side | `GET /public/api/tags/{id}/elements` → `{"views":[…],"webservices":[…]}` |
-| … from the category's side | `GET /public/api/category-management/categories/{id}/views` — **`offset` and `limit` are mandatory**, without them it is `400 MISSING_REQUEST_PARAMETER` |
+| … from the category's side | `GET /public/api/category-management/categories/{id}/views` with `offset` and `limit` |
 | … from the view's side | `GET /public/api/views/{viewId}/tags` · `GET /public/api/category-management/views/{viewId}/categories` |
 | Is the view in the catalog at all | `GET /public/api/view-details?databaseName=…&viewName=…` → `id`, `inLocal`, `inVDP` |
-| Did a renamed view keep its element | `view-details` on the new name → the `id` the old name had, with its tags, categories and endorsements. The `synchronize` response cannot tell you: a matched pair and an ignored one look the same there |
+| Did a renamed view keep its element | `view-details` on the new name → the `id` the old name had, with its tags, categories and endorsements |
 | What a synchronisation would change | `GET /public/api/element-management/{DATABASES\|VIEWS}/changes` — **before**, not after |
 | Did the import create what you meant | the `synchronize` response names each element: `externalElementsAdded/Updated/Deleted` with `originalExternalElementId` |
 | Did the element import (read as you) | `GET /public/api/external-elements/{id}/details` — type, server, url, and its lineage. A consumer sees the element only with the Visualize permission of its element type, `METADATA` on every view it links to and `CONNECT` on their databases; a report over data outside Denodo also needs *Visualize external data*. A new type adds its own Visualize column, which an administrator grants to roles (External element, in the Permissions tab of the marketplace's Server Set-Up): tell the human what a new type still needs |
 | **Does the view show the element** | `GET /public/api/views/tree/external-elements/lineage?databaseName=…&viewName=…` — the question a human actually asked ("what consumes this?"), answered from the other end. The view node must resolve to `databaseName`/`viewName`, not stay a bare string |
 | Is it really gone | `GET` it: `404` is the answer you want. The tool reports that as `ok:false` and exit `1`, so a verification script must treat `404` as success here rather than stopping — *verified: 9.5.1 (live, 2026-09-10)* |
-| Which VDP tags are imported | `GET /public/api/tags/vdp/local` — a plain list of names. **Not** `inLocal` in `/tags/vdp/changes`: that flag means "a marketplace tag of this name exists", which is also true for an unrelated local tag — *verified: 9.5.1 (live, 2026-09-10)* |
+| Which VDP tags are imported | `GET /public/api/tags/vdp/local` (`references/tags.md`) |
 
 ## Common mistakes
 
 | You did | Server says | Fix |
 |---|---|---|
-| any tag or view call with several VDP servers registered | `500 GENERIC "Session Expired."` | the profile has no `marketplace_server_id` — a human sets it, from `/public/api/configuration/servers`. `--param serverId=…` gets one call through in the meantime |
-| the same on `/external-tool-servers` | `403`, empty | the same cause, a different code |
 | read `id: null` from `view-details` as "not synchronised" | `200`, and the same body a wrong `serverId` produces | ask the other servers first; only then synchronise |
 | `GET …/categories/{id}/views` without paging | `400 MISSING_REQUEST_PARAMETER` | `--param offset=0 --param limit=50` |
 | `POST /tags` with a name that exists | `409`, empty body | look up by name first, then `PUT` |
 | take the first element `nameFilter` returned | `200`, the wrong tag | the filter matches substrings and ignores case — compare `name` exactly |
-| `POST /tags/{id}/views` for a view that is not synchronised | `200` and `[<view_id>]` | it is not an error and not an assignment — synchronise, then re-assign |
-| read a `200` from an assignment as success | — | success is `[]`; a non-empty list is what failed |
+| read an assignment's `200` as success | `200` and `[<view_id>]` | not assigned: already there or not synchronised — read `tags/{id}/elements`; synchronise, then re-assign |
 | `POST /views/{id}/tags` to add one tag | `200` | that endpoint **replaces** the view's tags; use `/tags/{id}/views` |
 | `DELETE` a parent category | `200` | its children went too — read `…/categories/tree` before offering it |
 | `DELETE` the same tag twice | `500 GENERIC "Incorrect number of deleted tuples"` | it was already gone; categories answer `200` and servers `404` for the same thing |
