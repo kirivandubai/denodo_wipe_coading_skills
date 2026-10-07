@@ -10,12 +10,10 @@ in it — which rows, which mode, which hour, which file — is made the day you
 mistake there does not fail: the run reports `COMPLETE` while the cache doubles, the file
 loses its header or the refresh fires four hours early.
 
-Denodo Scheduler is a server of its own. Its channel is the REST API of its administration
-tool, through the plugin's tool: `api --server scheduler <method> <path> --env dev`. The tool
-signs every call with the profile's account and adds the `uri` parameter that names the
-Scheduler server; `env check --env dev` shows under `scheduler` whether it answers and with
-which roles. There is no VQL for Scheduler objects. Applying calls and reading their errors is
-`/denodo:execute`; the working loop and the safety rule are `/denodo:vql`.
+Denodo Scheduler is a server of its own, with no VQL: its channel is the REST API of its
+administration tool, `api --server scheduler <method> <path> --env dev` — the tool adds the
+profile's account and Scheduler server (`/denodo:execute`, **Commands**). The working loop and
+the safety rule are `/denodo:vql`.
 
 **Violating the letter of the rules below is violating their spirit.**
 
@@ -219,7 +217,7 @@ Every field of a load process prevents a silent failure — *verified: 9.5.1 (li
 
 | Field | Left out, or left at its default |
 |---|---|
-| `"cacheInvalidationMode": "ALL_ROWS"` | the default is **`NONE`** — in the API and in the 9.5.1 administration tool alike, whatever the documentation says (*Matching rows*): every run **adds** the rows to the cache, both reports say `COMPLETE`, and after the second night every row is there twice. `MATCHING_ROWS` without a condition replaces everything too, but says less about what you mean |
+| `"cacheInvalidationMode": "ALL_ROWS"` | the default is **`NONE`** — in the API and in the 9.5.1 administration tool alike, whatever the documentation says (*Matching rows*): every run appends (Silent failures). `MATCHING_ROWS` without a condition replaces everything too, but says less about what you mean |
 | `"cacheAtomicOperation": true` | stored as `false` when left out (the tool's form defaults to `true`): invalidation and load in separate transactions |
 | `"loadProcessName"` | the job is created, and every run fails: `Missing configuration parameter: 'loadProcessName'` |
 | `"parameterizedQuery": "select * from <db>.<view>"` | `""` is dropped and every run fails: `Missing configuration parameter: 'parameterizedQuery'`. It is the load query — `select *` over the cached view itself, the database named, nothing else; a `where` here loads only those rows, for every reader (`/denodo:cache`, "Load only some rows") |
@@ -227,12 +225,9 @@ Every field of a load process prevents a silent failure — *verified: 9.5.1 (li
 | `"cacheLoadOnError": false` | `true` keeps the rows of a load that failed half-way |
 | `"handlerSection": {}` | creating works without it; a later `PUT` without it fails with `500` |
 
-The view's cache has to be on: over a view without one, every run answers `WARNING` — `The
-cache is not configured for the selected view and no tuples have been cached in its subviews` —
-and loads nothing. The run sends `select * from <view> CONTEXT('cache_preload'='true',
-'cache_wait_for_load'='true', 'cache_return_query_results'='false',
-'cache_invalidate'='all_rows', 'cache_atomic_operation'='true') TRACE` — the load statement of
-`/denodo:cache`. Several views go into one job as several load processes, each named.
+The view's cache has to be on, or every run is `WARNING` and loads nothing (Common errors).
+The run sends the load statement of `/denodo:cache` with `TRACE` (the exact query:
+`references/rest-api.md`). Several views go into one job as several load processes, each named.
 
 ### Export a view to a CSV file on a schedule
 
@@ -320,9 +315,6 @@ after it (*verified: 9.5.1 (live, 2026-10-06)*). The rules:
 - A statement on a view that is not there is accepted too, and fails at the run: `View '<v>'
   not found`. Run the statement — or, for a write, a `SELECT` of what it reads — before the job
   is created.
-- What the statement does every night is classified as if you ran it now: the tool flags a job
-  with `REFRESH` as `table`, with `DROP` as `drop`, and so on, and refuses it on a production
-  profile.
 
 ### Run it now, and wait for the report
 
@@ -339,8 +331,8 @@ second call every few seconds until `total` is one more than before, then read `
 `exportedDocs` and `exporterResources` for an export, and the error lists — `extractorErrors`,
 `initializationErrors`, `generalErrors`, `exporterErrors`, and `reports[]`, one entry per load
 process or query, where a warning's text is. A cache job's `query` shows the `CONTEXT` it sent:
-without `'cache_invalidate'` it ran with `NONE` and appended. `start` on a disabled job fails
-with `500 Internal error` — enable it first. Who may start which job is the table above.
+without `'cache_invalidate'` it ran with `NONE` and appended. Who may start which job is the
+table above.
 
 When a job loads the view, its `start` — after the job is right — is the reload: the same
 statement as the load file of `/denodo:cache`, with a report. The load file is still worth
@@ -357,7 +349,7 @@ api --server scheduler get /public/api/projects/<project_id>/jobs/<job_id>/statu
 
 `disable` → `state: DISABLED` and no `nextExecution`: the job keeps its definition and does not
 fire. `enable` brings `nextExecution` back. `stop` ends a run in progress (on a job that is not
-running it answers `204` and does nothing). The tool flags each of these `destructive: job`.
+running it answers `204` and does nothing).
 **After enabling, set `"disabled": false` in the job's file**: the file is what a `PUT` or a
 re-creation sends, and one that still says `true` switches the job off again without a word.
 
@@ -439,9 +431,7 @@ on different dates, or only one does, the hour moves twice a year; say so and na
 |---|---|
 | What runs: the view, the statement, the query and the file | the human; the view must exist and, for a cache job, have its cache on (`/denodo:cache`) |
 | When | the human, in their own words and time zone; the cron is yours to work out |
-| Project | the human; none named → a new one named after the VDP database |
-| VDP data source, so the user the job runs as | the human's choice among `GET /public/api/dataSources`; none → the human creates one in the administration tool |
-| Where the file goes | the human; it is a path on the Scheduler host |
+| Project, data source, file path | Before you create a job, steps 2-3; the export template |
 
 ## Verify
 

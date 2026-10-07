@@ -4,10 +4,8 @@ The administration tool of Denodo Scheduler serves the API at
 `<web container>/webadmin/denodo-scheduler-admin/public/api/…`, and its own description at
 `…/denodo-scheduler-admin/v3/api-docs` (OpenAPI, readable without logging in). Every call needs the `uri` query parameter — the Scheduler server as the
 administration tool reaches it, `//<host>:8000` by default — and HTTP Basic with a Virtual
-DataPort account; `api --server scheduler` adds both from the profile (`scheduler_url`,
-`scheduler_uri`; without them the origin of `marketplace_url` and `//<host>:8000`). The tool
-refuses a path with a `..` segment. *Everything below: verified: 9.5.1 (live, 2026-10-05),
-unless it says documentation.*
+DataPort account; `api --server scheduler` adds both (`/denodo:execute`, **Commands**).
+*Everything below: verified: 9.5.1 (live, 2026-10-05), unless it says documentation.*
 
 ## Calls
 
@@ -41,9 +39,7 @@ cloud sources — they take passwords and key files), `draftJobs`, Data Loader, 
 Management and Data Indexer jobs, `configuration/*`, `tool-configuration/*`, `roles`, `drivers`,
 `plugins`, `serverMetadata/export|import` (an import can replace existing jobs, data sources,
 plugins and drivers of the same name — documentation), the deletion of reports. The plugin's
-tool classifies them anyway: `PUT` of configuration and `POST` of drivers and plugins as
-`setting`, roles and passwords as `security`, the metadata import as `replace`, report deletions
-as `delete`.
+tool classifies them anyway (`/denodo:execute`, **Destructive operations**).
 
 ## A cache job (`VDPCache`, *Simple Cache Management*)
 
@@ -63,11 +59,10 @@ as `delete`.
 
 The query a run sends: `select * from <db>.<view> CONTEXT('cache_preload'='true',
 'cache_wait_for_load'='true', 'cache_return_query_results'='false', 'cache_invalidate'='all_rows',
-'cache_atomic_operation'='true') TRACE`. Measured on a three-row view: with `NONE`, 3 cached rows
-after the first run and 6 after the second, both runs `COMPLETE` with `cachedDocs: 3`; with
-`ALL_ROWS`, 3 and 3; with `MATCHING_ROWS` after a row was deleted from the source, 2 — the
-deleted row went too. Over a view without a cache the run is `WARNING`, `extractedDocs: 2`,
-`cachedDocs: 0`, `The cache is not configured for the selected view and no tuples have been
+'cache_atomic_operation'='true') TRACE`. Measured: with `NONE` both runs are `COMPLETE` and the
+rows are there twice after the second; `MATCHING_ROWS` without a condition also drops rows deleted
+from the source; over a view without a cache the run is `WARNING`, with rows extracted,
+`cachedDocs: 0` and `The cache is not configured for the selected view and no tuples have been
 cached in its subviews`. Its report's virtual exporter is `CacheLoader`.
 
 ## A VDP job (`VDP`, *Individual Query*)
