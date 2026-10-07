@@ -55,9 +55,9 @@ A project whose `.vql` files sit directly in `denodo/` keeps them in `denodo/tes
   unqualified: the database is the configuration's (`--database` below), so the same files run
   against every environment. Write the database name only where a procedure takes it
   (`GET_VIEWS()`, `GET_VIEW_COLUMNS()`). Such a test reads that database whatever `--database`
-  says: where none of that name exists it fails — the procedure raises an error, it does not
-  answer no rows (measured against 9.5.1) — and where one exists beside the tested one, it
-  checks that one.
+  says: run against another database, it still checks the named one, and where none of that
+  name exists it fails — the procedure raises an error, it does not answer no rows (measured
+  against 9.5.1).
 - No `configuration.properties`, no wrapper script and no password in the project. The CI
   pipeline writes its own configuration from its secret store (**Running it**, below).
 
@@ -356,10 +356,10 @@ yourself. Then:
   otherwise.
 - **Fixing the view is not fixing the test.** Re-applying a view that existed before this
   session changes what every reader of it gets — the dashboard, the report, the other views —
-  and a request about tests did not ask for that. Put the fix into the `.vql` file, say what it
-  changes, and leave applying it to the human's yes, even when the server would accept it
-  without a word. When the fix itself needs a decision the human has not made, describe the
-  options in the message instead of choosing one in the file.
+  and a request about tests does not cover changing a view, even one your project declares.
+  Put the fix into the `.vql` file, say what it changes, and leave applying it to the human's
+  yes. When the fix itself needs a decision the human has not made, describe the options in the
+  message instead of choosing one in the file.
 - **Show that the fix turns the suite green without applying it**: a copy of the suite outside
   the project, with the view's name replaced by the fixed definition as a subquery — `FROM
   ( SELECT … ) m` — run with `testing run`. It reads only, and it proves the
