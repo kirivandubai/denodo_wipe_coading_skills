@@ -79,14 +79,10 @@ Clause order: `FOLDER` → `DESCRIPTION` → `PRIMARY KEY` → `TAGS` → `( fie
 `FOLDER` in anyway, because a view without one lands at the root of the database.
 
 - **Every `CREATE VIEW` ends with `CONTEXT ('formatted' = 'yes')`.** Without it the server
-  stores the `SELECT` re-serialised on one line — function names lower-cased, table aliases
-  dropped, `UNION ALL` rewritten as `SQL UNION ALL` — so `DESC VQL` and Design Studio show text
-  nobody wrote, and comparing the server with the file is noise. With it, everything after
-  `AS` is stored as written — *verified: 9.5.1 (live, 2026-09-30)*. The header is not:
-  `DESC VQL` gives back `DROP VIEW IF EXISTS … CASCADE; CREATE VIEW` with `FOLDER`,
-  `DESCRIPTION` and `PRIMARY KEY` on one line, and `--` comments never reach the server (the
-  tool strips them), so what a reviewer must read goes into the `DESCRIPTION`. Design Studio
-  sets the same marker when someone edits a view's VQL by hand.
+  stores the `SELECT` re-serialised (lower-cased functions, dropped aliases, `SQL UNION ALL`),
+  and `DESC VQL` no longer matches the file; with it, everything after `AS` is stored as
+  written — *verified: 9.5.1 (live, 2026-09-30)*. `--` comments never reach the server, so
+  what a reviewer must read goes into the `DESCRIPTION`.
 
 - **One view per grain.** The join lives in `/02 - integration` at the row grain of the
   entity; the aggregate is a second view in `/03 - business entities`. Stacking `GROUP BY`
@@ -119,23 +115,13 @@ Clause order: `FOLDER` → `DESCRIPTION` → `PRIMARY KEY` → `TAGS` → `( fie
   in `/03 - business entities` there is no prefix and the name says what the consumer gets
   (`household_income_by_band`). `iv_` means *integration view*, not *interface view* — the
   interface view is the one below, and it is the one that gets the bare business name.
-- **Types an aggregate produces**, which you need the moment an interface view is declared
-  over the mart: `COUNT` gives `long` (`DESC` prints it as `BIGINT`) and `AVG` over an
-  integer gives `double` — *verified: 9.5.1 (live, 2026-09-10)*; and **`SUM` over an `int`
-  column stays `int`** — *verified: 9.5.1 (live, 2026-09-12)*. The last one costs data,
-  not just a type: past `2147483647` the sum comes back as `NULL` or as a wrong number that
-  reads like a real figure, with no error. **Cast the input for any `SUM` over an `int` fact
-  column — and only over an `int` one: `SUM(CAST('long', x))`.** Over a `decimal` measure
-  the very same cast truncates every row before the sum. `DESC VIEW` names the type;
-  `decimal` and `double` measures need no cast at all. The measurements behind both rules are
-  in `/denodo:vql`, `references/dialect.md`. This is the one aggregate where casting the input
-  is the fix — it is not one for `AVG`, and `AVG(TO_DECIMAL(x))` under a `GROUP BY` is
-  rejected outright (see Common mistakes).
-- **What does work under `GROUP BY`**, so you do not route around it: `COUNT(DISTINCT x)`,
-  `SUM(CAST('long', x))`, and expressions over the grouped columns in the projection —
-  `COALESCE(reason_sk, -1)`, `TRIM(reason_desc)` — *verified: 9.5.1 (live, 2026-09-12)*. Of the
-  casts, only `AVG` over one (`AVG(TO_DECIMAL(x))`) is refused. A mart that needs "returns" as
-  well as "return lines" wants both `COUNT(DISTINCT ticket_number)` and `COUNT(*)`.
+- **Types an aggregate produces** — needed for an interface view over the mart: `COUNT` →
+  `long` (`DESC` prints `BIGINT`), `AVG` over an integer → `double` — *verified: 9.5.1 (live,
+  2026-09-10)*. **`SUM` over an `int` stays `int`**, and past 2 147 483 647 returns `NULL` or
+  a wrong figure, with no error: `SUM(CAST('long', x))`, for an `int` column only — over a
+  `decimal` the cast truncates every row (`/denodo:vql`, Expressions). Under `GROUP BY`,
+  `COUNT(DISTINCT x)`, that cast and expressions over grouped columns work — *verified: 9.5.1
+  (live, 2026-09-12)*; `AVG(TO_DECIMAL(x))` is refused (Common mistakes).
 - Attaching tags: `TAGS ( pii )` before the field properties for the whole view,
   `( email ( description = '…' ) TAGS ( pii ) )` for one column — both
   *verified: 9.5.1 (live, 2026-09-10)*. The tag itself is `/denodo:catalog` and must
@@ -190,19 +176,18 @@ One branch per source, and a constant column that says which source a row came f
 - **The constant does nothing for speed by itself.** A query `WHERE channel = 'web'` reads
   every source unless each branch carries a `WHERE` on its own constant; then the branches
   that contradict the query are removed from the plan and only one source is read. The
-  `WHERE` wraps a subquery because a condition cannot name an alias of its own `SELECT`
-  (`Field not found 'channel'`). The consumer's filter decides too: `=`, `IN`, `<>` prune;
-  `UPPER(channel) = 'WEB'` reads everything, and `channel = 'Web'` contradicts every branch
-  and returns no rows. The constant's values are part of the contract — name them in the
-  `DESCRIPTION`.
+  `WHERE` wraps a subquery because a condition cannot name an alias of its own `SELECT`. The
+  consumer's filter decides too: `=`, `IN`, `<>` prune; `UPPER(channel) = 'WEB'` reads
+  everything, and `channel = 'Web'` contradicts every branch and returns no rows. The
+  constant's values are part of the contract — name them in the `DESCRIPTION`.
 - **When the split is a real column** — the current year in one database, earlier years in
   another — each branch filters that column of its source directly, no subquery needed, and
   **rows whose key is `NULL` fall into no branch and vanish**. Put `OR <key> IS NULL` into
   the branch of the source that owns them. When the sources overlap (a copy never trimmed),
   the ranges are also what keeps each row once.
-- Column descriptions cannot go on a union (`The field properties can only be specified for
-  derived fields`). When the consumer needs them, the union goes to `/02 - integration` as
-  `iv_…` and the `/03` view over it carries them; the pruning survives the layer.
+- Column descriptions cannot go on a union. When the consumer needs them, the union goes to
+  `/02 - integration` as `iv_…` and the `/03` view over it carries them; the pruning
+  survives the layer.
 
 `references/unions.md` has the measurements behind each point and how to read the plan.
 
@@ -253,10 +238,10 @@ CREATE OR REPLACE VIEW iv_customer_orders
   comes out as `lines_status`, while plain `status` is still the order's. Look at
   `SELECT * FROM FLATTEN … LIMIT 1` before you write the projection.
 - **`NEST` is an aggregate:** one array per `GROUP BY` group, its elements named after the
-  listed columns (`NEST(x AS y)` is a syntax error — rename below it). The server creates the
-  array's type itself (`_array_register_<fields>`), and the type outlives the view. A `WHERE`
-  before `NEST` drops the parents left with no element; keep them with a `LEFT OUTER JOIN`
-  from the parent view, and the array is then `NULL`.
+  listed columns (rename in the view below). The server creates the array's type itself
+  (`_array_register_<fields>`), and the type outlives the view. A `WHERE` before `NEST` drops
+  the parents left with no element; keep them with a `LEFT OUTER JOIN` from the parent view,
+  and the array is then `NULL`.
 - **A filter on the parent's fields is only as good as the JSON base view underneath.** One
   created without `CONSTRAINTS ( ADD <field> NOS ZERO () … )` silently drops every `WHERE` on
   its fields, and the loss reaches through `FLATTEN` and every view above — below a
@@ -264,12 +249,8 @@ CREATE OR REPLACE VIEW iv_customer_orders
   building on a JSON base view, run `SELECT COUNT(*) FROM <base view> WHERE <key> = '<one
   value>'`: anything but one row means `/denodo:datasources` has to fix the base view first.
   `DESC VQL` of the base view shows the cause directly: `ADD <column> (any) OPT ANY` where
-  `NOS ZERO ()` should be. **When the base view is not yours to fix**, tell its owner, and
-  meanwhile project every parent column a consumer will filter or group on through an
-  expression — `TRIM(o.order_id) AS order_id`, `TRIM((o.shipping).country) AS
-  shipping_country`, the same inside a `GROUP BY`: a condition on an expression is evaluated
-  by the server, a plain alias is still handed to the wrapper. `TRIM` also strips padding, so
-  look at the values first. Say in the `DESCRIPTION` why the `TRIM`s are there.
+  `NOS ZERO ()` should be. **When the base view is not yours to fix**, tell its owner;
+  `references/arrays.md` (filters on the parent's fields) has the workaround meanwhile.
 - **Where the element view goes**: when the consumer reads the element rows, it is the
   `/03 - business entities` object under its bare name — like a join with no aggregate —
   even if another view is built on it too. When only other views read it, it is an `iv_` in
@@ -297,8 +278,7 @@ CREATE OR REPLACE INTERFACE VIEW household_income (
 ```
 
 **Clause order is fixed and unforgiving: `( fields )` → `SET IMPLEMENTATION` → `FOLDER` →
-`DESCRIPTION`.** `SET IMPLEMENTATION` after `FOLDER` is
-`Syntax error: Exception parsing query near 'SET'` — *verified: 9.5.1 (live, 2026-09-10)*.
+`DESCRIPTION`** — *verified: 9.5.1 (live, 2026-09-10)*.
 
 Use an interface view when the *name and schema* have to survive a change of the thing
 underneath: a published data product, a consumer outside the team, a top-down design where
@@ -383,15 +363,13 @@ household has exactly one band `(1)`.
   dropped from every grouped figure, even with `RIGHT` written — *verified: 9.5.1 (live,
   2026-10-01)*. When some rows have a `NULL` or unknown key, write `(0,1)`
   (`/denodo:metrics`).
-- The `PRINCIPAL` endpoint must be `(1)` or `(0,1)`. Two `PRINCIPAL`s is
-  `In a 1:N association, the principal endpoint must have multiplicity 1 or 0..1`.
+- At most one endpoint is `PRINCIPAL`, and it must be `(1)` or `(0,1)`.
 - Multiplicity is `(1)`, `(0,1)`, `(*)` or `(0,*)`, and `(+)` or `(1,*)` for one or more; the
   server writes `(0,*)` and `(+)`. The dialog's `0..1` is a syntax error in VQL.
 - In `ADD MAPPING`, the left side — a column, or an expression or `CASE` over columns — is
   the **first** endpoint's view's, the right the second's. A composite key is several lines.
-- **Role names are unique per view**: a second association reusing a role name on the same
-  view is `The association endpoint role name 'x' already exists for the selected view`.
-  Name roles after the other view and the clash tells you something real.
+- **Role names are unique per view**: a second association cannot reuse one on the same
+  view. Name roles after the other view and the clash tells you something real.
 - Endpoints may be interface views, base views, derived views, and may live in different
   databases (`ENDPOINT band other_db.bv_income_band …`) — *verified: 9.5.1 (live,
   2026-09-10)*. An association does not make joins implicit: a query still writes its own
@@ -415,10 +393,9 @@ The one thing here that costs attempts. A column *declaration* takes VQL type na
 | floating point | `double` | `double precision` |
 | date | `localdate` | `date` |
 
-`bigint` in a field list is `error while loading the type of the field 'bigint'`;
-`CAST(x AS int)` is `Syntax error … near 'int'`. If you would rather hold one set of names in
-your head, the two-argument cast `CAST('int', x)` takes the VQL ones, so the whole file can
-then be written in VQL names. Unchanged either way: `decimal`, `float`, `boolean`, `timestamp`.
+If you would rather hold one set of names in your head, the two-argument cast
+`CAST('int', x)` takes the VQL ones, so the whole file can then be written in VQL names.
+Unchanged either way: `decimal`, `float`, `boolean`, `timestamp`.
 
 ## What you need before filling a template
 
@@ -559,22 +536,16 @@ its rows, and the step from a base view to the table and column in the database 
 
 **Renaming a view, or moving it to another database,** is the same question one level up:
 `ALTER VIEW <old> RENAME <new>` (`references/derived.md`) breaks every dependant that names the
-view, so step 1 above first, for the view itself. And one consumer no catalog query sees: the
-Data Marketplace. When the profile has a `marketplace_url`, ask it **before** the change — `api
-get … /public/api/view-details --param databaseName=… --param viewName=…`
-(`/denodo:marketplace`). `id` not null and `inLocal: true` means the view is an element there,
-with whatever people attached to it — tags, categories, descriptions, endorsements — and the
-next synchronisation removes that element unless the rename is matched in it; a move to another
-database cannot be matched at all. Then the rename is not finished without the marketplace
-half: `/denodo:marketplace`, "A view in the marketplace is renamed, recreated or moved", and
-one yes from the human has to cover both halves — ask for them together. A `DROP` and a
-`CREATE` under the same name keep the element only when both run in one go. What no query lists
-goes into the report as the list cannot see it: every client that reads the view by name —
-reports, JDBC and ODBC queries, its REST and OData URLs (`view-details` names them,
-`connectionUris`). And the view's own file: rename the `CREATE OR REPLACE VIEW` there in the
-same change, or the next time the file is applied it brings the old name back as a second view.
-A view moved to another database is a new object there: the grants on the old one do not come
-along.
+view, so step 1 above first, for the view itself. The Data Marketplace is a consumer no
+catalog query sees: when the profile has a `marketplace_url`, ask its `view-details`
+**before** the change and match the rename there (`/denodo:marketplace`, "A view in the
+marketplace is renamed, recreated or moved"): otherwise the next synchronisation removes its
+element with every tag, category and endorsement on it; a move to another database cannot be
+matched at all, and a `DROP` and `CREATE` of the same name keep it only in one run. Report
+what no query lists: every client reading the view by name — reports, JDBC and ODBC queries,
+REST and OData URLs (`view-details`, `connectionUris`). Rename it in its own file too, or the
+next apply brings the old name back as a second view. A moved view is a new object: the old
+one's grants do not come along.
 
 ## Reference
 
@@ -602,13 +573,12 @@ along.
 
 ## Verify
 
-**A successful statement is not a working object, and the two silent failures below are
-the reason this skill exists.** After applying, always:
+After applying, always:
 
 | Question | Read-back |
 |---|---|
 | Did the objects land, and where | `SELECT name, type, subtype, folder FROM GET_ELEMENTS() WHERE input_database_name = '<db>' AND type = 'view'` — `subtype` is `base`, `derived`, `interface` or `metric` (*verified: 9.5.1 (live, 2026-10-05)*); associations are `type = 'association'`. `type` is an output column and takes `IN`; the `input_…` parameters take `=` only |
-| **Is anything broken now** | `SELECT name, view_type, view_status FROM GET_VIEWS() WHERE input_database_name = '<db>' AND input_retrieve_invalid_views_only = true` — **empty is the only good answer.** It is not the whole answer: a view built on an `INVALID` one stays `OK` and fails on `SELECT`, so everything `USED_BY()` lists above an `INVALID` view is broken too. `view_type` here is the same fact as `subtype` above in numbers: `0` base, `1` derived, `2` interface, `5` metric |
+| **Is anything broken now** | `SELECT name, view_type, view_status FROM GET_VIEWS() WHERE input_database_name = '<db>' AND input_retrieve_invalid_views_only = true` — **empty is the only good answer** — not the whole one: Silent failure 1. `view_type` here is the same fact as `subtype` above in numbers: `0` base, `1` derived, `2` interface, `5` metric |
 | Does it carry rows | `SELECT * FROM <view> LIMIT 10`, and a count that can be checked against the input |
 | **Did the join keep every fact** | add the mart's row counters back up and compare with the fact it was built from: `SUM(<row count column>)` over the mart equals `COUNT(*)` of the input, minus exactly the rows you decided to drop. A join that quietly dropped the unmatched facts, or doubled them on a duplicated dimension key, passes every other check in this table |
 | Schema of the contract | `vql desc --env dev --database <db> <interface view>` — the columns the consumer sees |
@@ -630,11 +600,10 @@ association that mapped it goes to `valid = false`. Nothing is reported at DDL t
 replaced view itself still selects fine, and the failure lands on whoever queries the
 dependant next — *verified: 9.5.1 (live, 2026-09-10)*. The views built on those dependants
 do not even change status: they stay `OK` and fail on `SELECT` — *verified: 9.5.1 (live,
-2026-09-30)*. "Used" means anywhere in the definition — a join key or a filter column breaks
-the dependant exactly like a selected one. Adding a column is safe; restoring the column
-repairs the views and associations automatically. Not a REST web service that published the
-field: it drops the field from its own definition and does not take it back — *verified:
-9.5.1 (live, 2026-09-30)*.
+2026-09-30)*. Adding a column is safe; restoring the column repairs the views and
+associations automatically. Not a REST web service that published the field: it drops the
+field from its own definition and does not take it back — *verified: 9.5.1 (live,
+2026-09-30)*.
 
 **Silent failure 2: `SET IMPLEMENTATION` does not check the schema.** An implementation
 whose column names do not match the interface's field list, or that is missing a field
@@ -649,33 +618,24 @@ expression the database cannot run — `MEDIAN` on SQL Server, a `CAST` of text 
 PostgreSQL — keeps its node and everything above it in Denodo. The database still does the
 joins below it, and every joined row travels to Denodo to be aggregated there. The rows are
 right, nothing reports an error, and the cost grows with the fact table: a second on sample
-data, minutes in production — *verified: 9.5.1 (live, 2026-09-30)*. Views over two data
-sources are joined in Denodo, with no cause printed, unless a data movement or an MPP
-engine the server is set up for takes the join (`references/delegation.md`); at best Denodo
-pre-aggregates per join key in each database, and the plan shows whether it did. Which
-expressions delegate depends on the database, so read the plan (Verify), not a list. Then:
+data, minutes in production — *verified: 9.5.1 (live, 2026-09-30)*. Which expressions
+delegate depends on the database, so read the plan (Verify), not a list. Then:
 
 - **Tell the human, and let them decide.** Name the expression and the column it computes,
-  or the two data sources, and say that every row below that point is read into Denodo —
-  at production volume, not the sample's. Swapping the function for one that delegates
-  (`AVG` for `MEDIAN`) changes the answer, and even an exact rewrite is a second definition
-  of the measure with trade-offs of its own: both are their call. When you cannot ask,
-  build what was asked and put the cost and the options in the report.
-- **The answer is per query.** A column the query does not select is dropped from its plan:
-  over a mart with a `MEDIAN` column, a query without it goes to the database whole. Plan
-  `SELECT *` after creating the view, and the consumer's own query when the answer matters.
-  A `COUNT(*)` or a key check never runs the blocking column, so its timing proves nothing.
-- **`GET_DELEGATED_SQLSENTENCE` is not the check.** It returns the SQL of whatever part was
-  delegated, without an error, even when the aggregate stayed in Denodo — a `GROUP BY`
-  missing from its answer is the only sign.
+  or the two data sources: every row below that point is read into Denodo, at production
+  volume. Swapping the function for one that delegates (`AVG` for `MEDIAN`) changes the
+  answer, and even an exact rewrite is a second definition of the measure: both are their
+  call. When you cannot ask, build what was asked and put the cost and the options in the
+  report.
+- **The answer is per query:** plan `SELECT *` and the consumer's own query; a `COUNT(*)` or
+  key check never runs the blocking column.
 
 `references/delegation.md` has the measured causes, how to read each node, and the options
 to offer.
 
 So the read-back after any change to something that already existed is: `USED_BY()`
 before, `GET_VIEWS(… invalid only)` and `GET_ASSOCIATIONS().valid` after, then a `SELECT`
-through each dependant that matters — including the ones above an `INVALID` view, which
-still say `OK`.
+through each dependant that matters.
 
 These read-backs, kept in files the team's CI runs on every change — the counts that add up,
 the unique key, nothing `INVALID`, the contract, the plan — are `/denodo:testing`, with the

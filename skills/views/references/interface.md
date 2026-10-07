@@ -17,10 +17,6 @@ CREATE [ OR REPLACE ] INTERFACE VIEW <name>
     [ TAGS ( <tag> [, … ] ) ]
 ```
 
-`SET IMPLEMENTATION` sits between the field list and `FOLDER`, and nowhere else:
-`Syntax error: Exception parsing query near 'SET'` — *verified: 9.5.1 (live,
-2026-09-10)*.
-
 Field types are **VQL** names: `int`, `long`, `text`, `double`, `decimal`, `float`,
 `boolean`, `localdate`, `timestamp`. `bigint`, `integer` and `varchar` in a field list are
 `error while loading the type of the field '<name>'` — *verified: 9.5.1 (live,

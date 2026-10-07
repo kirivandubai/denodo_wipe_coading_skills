@@ -108,12 +108,9 @@ Studio), swapping (`SWAP`, `SWAPSIZE`, `MAXRESULTSIZE`),
 ALTER VIEW household_in_band RENAME household_by_band;
 ```
 
-A rename breaks every dependant that names the view, silently, the same way a renamed
-column does — `USED_BY()` first, and for a column, `SKILL.md`, "Before a column changes".
-In the Data Marketplace the view is an element found by its name, and the next
-synchronisation removes it with its tags, categories and endorsements unless the rename is
-matched there — `/denodo:marketplace`, "A view in the marketplace is renamed, recreated or
-moved".
+A rename breaks every dependant that names the view, and the marketplace element:
+`SKILL.md`, "Renaming a view", and `/denodo:marketplace`, "A view in the marketplace is
+renamed, recreated or moved".
 
 `LAYOUT (…)` is Design Studio's canvas geometry. It shows up in `DESC VQL` output and
 means nothing to the server; leave it out of hand-written files and do not treat its
@@ -138,8 +135,5 @@ DROP { VIEW | INTERFACE VIEW | TABLE } [ IF EXISTS ] <name> [ CASCADE ]
 |---|---|
 | Schema and types | `vql desc --env dev --database <db> <view>` |
 | The exact VQL, including everything underneath | `vql desc --env dev --database <db> <view> --vql` — one row holding the whole dependency chain **within the view's database**: a view that reads `other_db.bv_x` comes back without anything of `other_db` — *verified: 9.5.1 (live, 2026-09-30)*. The best syntax reference on any server, and **not something to apply as it stands**: it opens with `DROP … CASCADE` for every object in the chain |
-| Health | `SELECT name, view_type, view_status FROM GET_VIEWS() WHERE input_database_name = '<db>'` |
-| Dependants | `SELECT view_name, used_by_database_name, used_by_name, depth FROM USED_BY() WHERE input_view_database_name = '<db>' AND input_view_name = '<view>'` |
-| What it stands on | `SELECT * FROM VIEW_DEPENDENCIES() WHERE input_view_database_name = '<db>' AND input_view_name = '<view>'` — note `input_view_database_name`, not `input_database_name` |
-| Which source column feeds which output column | `COLUMN_DEPENDENCIES()` — output columns only: a column used only in a join, a filter or a grouping has no row. `references/dependencies.md` |
-| Whether it runs in the database | `SELECT execution_plan FROM GET_QUERY_EXECUTION_PLAN() WHERE input_query = 'SELECT * FROM <view>'` — `references/delegation.md` |
+
+Health, dependants, lineage and delegation: `SKILL.md`, Verify, and `references/dependencies.md`.

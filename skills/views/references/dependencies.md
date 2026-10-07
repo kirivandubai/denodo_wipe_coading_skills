@@ -38,10 +38,7 @@ Rules common to all three — *verified: 9.5.1 (live, 2026-09-30)*:
 
 ## `COLUMN_DEPENDENCIES()` sees output columns only
 
-Measured over one view `p_sales` and six dependants, each using its `customer_sk` a
-different way, before and after `CREATE OR REPLACE VIEW p_sales` without that column, and
-over a metric view built on an association that maps the column — *verified: 9.5.1 (live,
-2026-09-30)*:
+*verified: 9.5.1 (live, 2026-09-30)*:
 
 | The dependant uses the column | A row naming it in `COLUMN_DEPENDENCIES()` | After the column is gone |
 |---|---|---|
