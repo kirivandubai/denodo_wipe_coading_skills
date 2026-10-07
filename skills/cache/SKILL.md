@@ -41,7 +41,8 @@ with a check, and why the human sees the consequences before you apply them.
    adapter — the kind of database the cached queries will run in.
 2. **Who reads the view?** `SELECT used_by_database_name, used_by_name, depth FROM USED_BY() WHERE input_view_database_name = '<db>' AND input_view_name = '<view>'`
    — every view built on it reads the cache too, and runs its own `GROUP BY` and joins in the
-   cache database. (`view_name` in that answer is the view you asked about, not a reader.)
+   cache database. (`view_name` is the view `used_by_name` reads directly — the one you asked
+   about only at `depth = 1`.)
    It lists only the dependants the profile's user may see: when that user is not an
    administrator (`env check` → `vdp.admin`), tell the human the list may be incomplete.
    Consumers outside Denodo (a dashboard, a report) are the human's to name.
