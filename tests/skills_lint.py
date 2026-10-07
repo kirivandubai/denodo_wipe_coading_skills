@@ -126,7 +126,7 @@ def _skill_docs(root: Path) -> list[Path]:
 
 def _eval_cases(root: Path) -> list[Path]:
     """Files of the eval cases — prompts and graders, the outcome scenarios and their runner — not
-    the suites' own README, results or compiled modules."""
+    results or compiled modules. The suites' README is a document (``_docs``)."""
     evals = root / "evals"
     if not evals.is_dir():
         return []
@@ -137,7 +137,7 @@ def _eval_cases(root: Path) -> list[Path]:
 
 def _docs(root: Path) -> list[Path]:
     """Text a plugin user or the agent reads."""
-    top = [root / name for name in ("README.md", "CONTRIBUTING.md")]
+    top = [root / name for name in ("README.md", "CONTRIBUTING.md", "evals/README.md")]
     manifests = sorted((root / ".claude-plugin").glob("*.json"))
     return _skill_docs(root) + [path for path in top if path.is_file()] + manifests + _eval_cases(root)
 

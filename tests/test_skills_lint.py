@@ -100,9 +100,13 @@ class LanguageTest(TreeTestCase):
         self.assertNotIn("results", "\n".join(findings))
 
     def test_project_documents_are_not_checked(self):
-        root = self.tree({"evals/README.md": "Кейсы.\n", "docs/TASKS.md": "Задачи.\n",
-                          "CLAUDE.md": "Инструкции.\n"})
+        root = self.tree({"docs/TASKS.md": "Задачи.\n", "CLAUDE.md": "Инструкции.\n"})
         self.assertClean(lint.check_language(root))
+
+    def test_the_eval_suites_readme_is_checked(self):
+        # contributors are sent there to turn a misrouted session into a case
+        root = self.tree({"evals/README.md": "Кейсы.\n"})
+        self.assertFinds(lint.check_language(root), "evals/README.md:1")
 
     def test_other_non_ascii_sample_data_passes(self):
         root = self.tree({**skill("views", "# Views\n\n`straße`, `Tokyo 東京`, `domingo` — ∪\n")})
