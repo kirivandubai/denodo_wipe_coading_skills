@@ -328,11 +328,10 @@ the MCP Server create a query tool of its own for the view.
 
 - **The MCP Server** reads Denodo directly — the next schema refresh.
 - **Assisted Query and the AI SDK** read through the Data Marketplace: nothing changes for
-  them until the marketplace is synchronised with Denodo (`/denodo:marketplace`, a
-  server-wide call: yours only when its radius holds nothing you did not create in this
-  session, edited descriptions aside, and otherwise its own yes — and the way to see whether
-  the database is in the marketplace at all, on every registered server), and the AI SDK until its
-  `getMetadata` runs again for that database or tag — whoever runs the SDK does that.
+  them until the marketplace is synchronised with Denodo (`/denodo:marketplace`,
+  **Who sends it** — a server-wide call — and whether the database is there at all, on every
+  registered server), and the AI SDK until its `getMetadata` runs again for that database or
+  tag — whoever runs the SDK does that.
 - The AI SDK pointed at a **database** reads every view in it, base views included; pointed
   at a **tag**, only the tagged ones. Which it is decides whether base views need describing
   for it.
