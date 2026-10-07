@@ -23,7 +23,8 @@ a ``CREATE DATABASE`` that carries a ``GRANT`` change who may read what across t
 A remote table and a summary are tables in a source database: ``CREATE [OR REPLACE] REMOTE
 TABLE`` and ``CREATE [OR REPLACE] SUMMARY VIEW`` create one there and load it, and ``REFRESH``
 empties one and loads it again; ``CREATE OR REPLACE MATERIALIZED TABLE`` empties a table whose
-rows exist nowhere else (T34).
+rows exist nowhere else (T34). ``DEPLOY``, ``REDEPLOY`` and ``UNDEPLOY WEBSERVICE`` and ``EXPORT WAR |
+WSDL FROM WEBSERVICE`` serve a view over HTTP, or take it from its clients (T46).
 HTTP calls are classified by method and path, never
 by words in the body: the Data Marketplace has ``POST`` endpoints that overwrite whole sets
 (spike T11, section 6). The Scheduler (T36) has its own rules: every ``PUT`` replaces a
@@ -53,6 +54,11 @@ _VQL_KINDS = {
     # WEBCONTAINER sets, stops, starts or reloads the embedded web container
     "SET": "setting",
     "WEBCONTAINER": "setting",
+    # a web service deployed, redeployed or undeployed in the web container: a view served over
+    # HTTP to whoever the service lets in, or taken away from its clients
+    "DEPLOY": "publish",
+    "REDEPLOY": "publish",
+    "UNDEPLOY": "publish",
     # the owner of an element decides who may change it and grant on it
     "CHOWN": "security",
     # empties the table behind a remote table or a summary in its source database and loads the
@@ -121,6 +127,9 @@ _CACHE_WRITE = re.compile(r"'cache_invalidate'\s*=|'cache_preload'\s*=\s*'true'"
 # database it names. A CREATE DATABASE with a GRANT or REVOKE clause changes privileges too.
 _SECURITY_CREATE = re.compile(
     r"CREATE\s+(?:OR\s+REPLACE\s+)?(?:USER|ROLE|GLOBAL_SECURITY_POLICY)\b", re.IGNORECASE)
+# EXPORT WAR | WSDL FROM WEBSERVICE writes the service, with the credentials it connects with, into
+# the web container's export directory
+_WEBSERVICE_EXPORT = re.compile(r"EXPORT\s+(?:WAR|WSDL)\s+FROM\s+WEBSERVICE\b", re.IGNORECASE)
 _DATABASE_CREATE = re.compile(r"CREATE\s+(?:OR\s+REPLACE\s+)?DATABASE\b", re.IGNORECASE)
 # A table in a source database, created and loaded by the statement itself; OR REPLACE drops a
 # table of that name first, whoever made it. A materialized table keeps rows that were inserted
@@ -164,8 +173,8 @@ def classify_vql(statement: str) -> str | None:
     loads or invalidates the cache of a view, ``"security"`` for a statement that creates a
     user, a role or a global security policy, changes an owner, or grants in ``CREATE
     DATABASE``, ``"table"`` for one that creates, replaces or reloads a table in a source
-    database (a remote table, a summary, ``REFRESH``) or replaces a materialized table, else
-    ``None``."""
+    database (a remote table, a summary, ``REFRESH``) or replaces a materialized table,
+    ``"publish"`` for one that deploys, redeploys, undeploys or exports a web service, else ``None``."""
     body = _LEADING_NOISE.sub("", statement, count=1)
     match = re.match(r"([A-Za-z_]+)", body)
     if not match:
@@ -173,6 +182,8 @@ def classify_vql(statement: str) -> str | None:
     kind = _VQL_KINDS.get(match.group(1).upper())
     if kind and not _HARMLESS_FORMS.match(body):
         return kind
+    if _WEBSERVICE_EXPORT.match(body):
+        return "publish"
     if _SECURITY_CREATE.match(body):
         return "security"
     if _SOURCE_TABLE_CREATE.match(body):

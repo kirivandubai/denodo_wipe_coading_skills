@@ -156,11 +156,12 @@ file and into your message, not into `vql run`.
 
 The tool flags `DROP`, `ALTER`, `DELETE`, `TRUNCATE` and writes; server settings; the
 predefined procedures that change state; cache loads and invalidations; users, roles and
-global security policies; tables created, replaced or refreshed in a database; and the HTTP
+global security policies; tables created, replaced or refreshed in a database; a web service
+deployed, undeployed or exported; and the HTTP
 calls that delete or replace a set, on the marketplace and the Scheduler. The full list, with
 the kind of each, is `references/errors.md`, **What the tool flags**. Every result carries a
 `destructive` field: the kind (`drop`, `alter`, `delete`, `write`, `setting`, `procedure`,
-`cache`, `security`, `table`, `replace`, `job`) when it is one of these, and `null` — not
+`cache`, `security`, `table`, `publish`, `replace`, `job`) when it is one of these, and `null` — not
 `false` — when it is not. Session settings come back `null` and pass on any profile: `SET
 QUERYTIMEOUT TO …` (property name unquoted) and `ALTER SESSION SET 'querytimeout' = …` last
 until the connection closes; a quoted property after a bare `SET` is the server. The procedure

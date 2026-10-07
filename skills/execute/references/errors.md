@@ -176,6 +176,9 @@ The list `vql plan`, `api … --plan` and every result's `destructive` field app
   `CREATE DATABASE` with a `GRANT` (`/denodo:security`);
 - `CREATE [OR REPLACE] REMOTE TABLE`, `CREATE [OR REPLACE] SUMMARY VIEW`, `REFRESH` and
   `CREATE OR REPLACE MATERIALIZED TABLE` (`/denodo:materialize`);
+- `DEPLOY`, `REDEPLOY` and `UNDEPLOY WEBSERVICE`, `EXPORT WAR` and `EXPORT WSDL FROM WEBSERVICE`
+  (`publish`): a view served over HTTP, or taken from its clients. `CREATE … WEBSERVICE` is not
+  flagged, and `vql plan` holds every web-service statement for the yes (`/denodo:vql`);
 - HTTP `DELETE`, and the marketplace `POST`s that replace a whole set or delete what is missing
   from the payload — `tags/vdp/synchronize`,
   `element-management/{all,DATABASES,VIEWS,WEBSERVICES,EXTERNAL_ELEMENTS}/synchronize`, the

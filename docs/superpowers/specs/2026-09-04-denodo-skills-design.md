@@ -307,6 +307,8 @@ allow-listed shape, every other `SET` counts as the server), `ALTER SESSION SET 
 9.5.1: the value shows in `GETSESSION` on the same connection and is gone on the next one), and
 `WEBCONTAINER STATUS`.
 
+**Publishing a view (T46).** A web service — `CREATE [OR REPLACE] REST | SOAP WEBSERVICE`, `ALTER … WEBSERVICE`, and `DEPLOY`, `REDEPLOY`, `UNDEPLOY`, `EXPORT WAR | WSDL FROM WEBSERVICE` — is outside the plugin by the owner's roadmap decision (no template), and the parser used to read `REST` as the object type and `WEBSERVICE` as its name, so a `CREATE REST WEBSERVICE` planned as "a new object", the agent's own. `vql plan` now holds every web-service statement for the yes, the session's own new service included, and the classifier flags the four deploying and exporting statements `publish`: they serve a view over HTTP to whoever the service lets in, or take it from its clients. `CREATE … WEBSERVICE` stays unflagged — nothing is served until it is deployed. The rule the agent reads is a row of `vql`'s map (what is not in the plugin) and a row of its confirmation column; the built-in RESTful web service already serves every view to the caller's own privileges, which is the answer to most "expose it as an API" requests.
+
 **By CONTEXT (T27)**, a query that writes the cache of a view instead of reading it is flagged
 `cache`: `'cache_invalidate'` in any form (it deletes cached rows before the load — all of them
 with `'all_rows'`), and `'cache_preload' = 'true'` without it (it appends to what is cached, so

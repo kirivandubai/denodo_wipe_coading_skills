@@ -106,6 +106,38 @@ class AlterDropTest(unittest.TestCase):
         self.assertEqual(p("DROP DATABASE scratch CASCADE").obj, ObjectRef("database", None, "scratch"))
 
 
+class WebServiceTest(unittest.TestCase):
+    """Publishing a view as a web service: outside the plugin, and never "a new object" to the plan."""
+
+    def test_create_names_the_service_not_the_keyword(self):
+        cases = {
+            "CREATE OR REPLACE REST WEBSERVICE ws_returns CONNECTION ( CHUNKSIZE = 1000 ) RESOURCES ( VIEW mart )":
+                ("create", "rest web service", True),
+            "create soap webservice ws_returns CONNECTION ( CHUNKSIZE = 1000 ) I18N us_pst":
+                ("create", "soap web service", False),
+        }
+        for text, (action, kind, or_replace) in cases.items():
+            with self.subTest(text=text):
+                s = p(text)
+                self.assertEqual((s.action, s.or_replace), (action, or_replace))
+                self.assertEqual((s.obj, s.obj.kind), (ObjectRef("webService", "sales", "ws_returns"), kind))
+
+    def test_alter_and_drop(self):
+        s = p("ALTER REST WEBSERVICE ws_returns DROP VIEW IF EXISTS mart")
+        self.assertEqual((s.action, s.obj), ("alter", ObjectRef("webService", "sales", "ws_returns")))
+        self.assertEqual(p("DROP WEBSERVICE other.ws_returns").obj, ObjectRef("webService", "other", "ws_returns"))
+
+    def test_deploy_redeploy_undeploy_and_export_publish(self):
+        for text in ("DEPLOY WEBSERVICE ws_returns",
+                     "REDEPLOY WEBSERVICE ws_returns LOGIN = 'app' PASSWORD = 'x' ENCRYPTED",
+                     "UNDEPLOY IF EXISTS WEBSERVICE ws_returns",
+                     "EXPORT WAR FROM WEBSERVICE ws_returns NAME = 'r.war' URI = '//h:9999/sales'",
+                     "export wsdl from webservice ws_returns NAME = 'r.wsdl'"):
+            with self.subTest(text=text):
+                s = p(text)
+                self.assertEqual((s.action, s.obj), ("publish", ObjectRef("webService", "sales", "ws_returns")))
+
+
 class OtherStatementsTest(unittest.TestCase):
     def test_reads(self):
         for text in ("SELECT * FROM iv_orders", "DESC VQL VIEW iv_orders", "LIST ROLES",

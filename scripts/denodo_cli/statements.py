@@ -37,7 +37,7 @@ class ObjectRef:
 class Statement:
     text: str
     action: str                       # read, session, create, alter, rename, drop, insert, update,
-                                      # delete, refresh, call, cache, setting, other
+                                      # delete, refresh, call, cache, setting, publish, other
     obj: ObjectRef | None = None
     or_replace: bool = False
     new_name: str | None = None       # ALTER … RENAME
@@ -115,6 +115,9 @@ def _qname(toks: list[_Tok], i: int) -> tuple[list[str], int]:
 # (keywords, element type, kind); the longer shapes first.
 _KINDS = (
     (("GLOBAL_SECURITY_POLICY",), "globalSecurityPolicy", None),
+    (("REST", "WEBSERVICE"), "webService", "rest web service"),
+    (("SOAP", "WEBSERVICE"), "webService", "soap web service"),
+    (("WEBSERVICE",), "webService", None),
     (("INTERFACE", "VIEW"), "view", "interface view"),
     (("METRIC", "VIEW"), "view", "metric view"),
     (("SUMMARY", "VIEW"), "view", "summary"),
@@ -396,6 +399,20 @@ def _parse(text: str, database: str | None) -> Statement:
         parts, _ = _qname(toks, 1)
         obj = ObjectRef("view", parts[0] if len(parts) > 1 else database, parts[-1]) if parts else None
         return Statement(text, "refresh" if obj else "other", obj)
+
+    if head in ("DEPLOY", "REDEPLOY", "UNDEPLOY", "EXPORT"):
+        # DEPLOY | REDEPLOY | UNDEPLOY [IF EXISTS] WEBSERVICE <name>; EXPORT {WAR | WSDL} FROM WEBSERVICE <name>
+        i = 1
+        if head == "EXPORT":
+            if not (len(toks) > 2 and toks[1].up in ("WAR", "WSDL") and toks[2].up == "FROM"):
+                return Statement(text, "other")
+            i = 3
+        elif _words(toks, i, "IF", "EXISTS"):
+            i += 2
+        obj, _ = _object(toks, i, database)
+        if obj is None or obj.type != "webService":
+            return Statement(text, "other")
+        return Statement(text, "publish", obj)
 
     if head == "CONNECT":
         if _words(toks, 1, "DATABASE") and len(toks) > 2 and toks[2].is_name():

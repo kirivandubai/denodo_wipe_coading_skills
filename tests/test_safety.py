@@ -75,6 +75,18 @@ class ServerSettingTest(unittest.TestCase):
         self.assertEqual(classify_vql("webcontainer start 'denodo-restfulws'"), "setting")
         self.assertEqual(classify_vql("WEBCONTAINER RELOAD 'denodo-restfulws'"), "setting")
 
+    def test_deploying_or_exporting_a_web_service_publishes(self):
+        for text in ("DEPLOY WEBSERVICE ws_returns", "redeploy webservice ws_returns",
+                     "UNDEPLOY IF EXISTS WEBSERVICE ws_returns",
+                     "EXPORT WAR FROM WEBSERVICE ws_returns NAME = 'r.war' URI = '//h:9999/sales'",
+                     "EXPORT WSDL FROM WEBSERVICE ws_returns NAME = 'r.wsdl'"):
+            with self.subTest(text=text):
+                self.assertEqual(classify_vql(text), "publish")
+
+    def test_creating_a_web_service_is_not_flagged(self):
+        # a new object: nothing is served until it is deployed; the plan, not the refusal, holds it
+        self.assertIsNone(classify_vql("CREATE OR REPLACE REST WEBSERVICE ws CONNECTION ( CHUNKSIZE = 1 ) RESOURCES ( VIEW v )"))
+
     def test_web_container_status_is_a_read(self):
         self.assertIsNone(classify_vql("WEBCONTAINER STATUS"))
 

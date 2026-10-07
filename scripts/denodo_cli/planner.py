@@ -25,6 +25,9 @@ _COLUMNS_CONDITION = ("it keeps every column the views that read it use — drop
                       "breaks them without an error (/denodo:views, Before a column changes)")
 _TEXTS_CONDITION = ("a new description, field description, primary key or tag is a text the human approves "
                     "(/denodo:semantics)")
+_PUBLISH_WHY = ("publishes a view as a web service, served over HTTP to whoever the service lets in — outside "
+                "this plugin, which has no template for it: the human publishes it in Design Studio, or says yes to "
+                "these statements (/denodo:vql)")
 _TARGET_CONDITIONS = ["the data source and schema are the ones the human named (/denodo:materialize)",
                       "the table name is free in that schema — the reads show it (/denodo:materialize)"]
 
@@ -219,6 +222,8 @@ def _plan_one(index: int, st: Statement, walk: _Walk, ctx: PlanContext) -> dict:
     if ctx.production and st.action not in ("read", "session"):
         return _decision(entry, True, "the profile is production: every change waits for the human's yes")
 
+    if st.action == "publish" or (ref is not None and ref.type == "webService" and st.action in ("create", "alter")):
+        return _decision(entry, True, _PUBLISH_WHY)
     if st.ai_over_rows:
         return _decision(entry, True, "an AI function evaluated over the rows of a view: every row is a "
                                       "request to the provider; the human agrees to the number (/denodo:ai)")
