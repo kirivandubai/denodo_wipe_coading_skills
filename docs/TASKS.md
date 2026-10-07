@@ -89,27 +89,8 @@ object skill until a session asks for one. Low findings are made in the same pas
 
 *T44 is done — under «Сделано» below.*
 
-- **T45. The drifted duplicates, then the cuts** (point 3).
-  - **First the ten duplicates that now contradict each other:** catalog-A2, catalog-A3,
-    catalog-A4, catalog-A5, views-A13, marketplace-A4, procedures-A2 (with procedures-B4),
-    execute-A12 (with side-5), datasources-A13, the `dml`/`vql` zone pair (done in T44).
-  - **Core side:** `vql`'s marketplace section to `marketplace` (vql-A1, cross-1); the long rows of
-    the core table (cross-6); the short map of the skills, one row per skill (vql-A2, cross-5 —
-    decided); `execute`'s `verify` and `testing run` rows, the data-source password procedure and
-    the list of flagged statements (execute-A4, execute-A5, execute-A7, execute-A9, execute-A10,
-    execute-A13, cross-2, cross-3, cross-7, scope-maintainer-10).
-  - **Domain bodies:** `marketplace` renames to `references/renames.md`, out of `LONG_SKILLS`
-    (marketplace-A2, -A3); the facts tables of `materialize` and `dml` (materialize-A4, dml-A5,
-    dml-A6); `datasources` (A6, A8–A12); `metrics` (A7, A8, A11, A12); `views` (A5–A8, cross-8,
-    cross-9); error texts quoted in prose and again in Common mistakes (ai-A5, cache-A5,
-    catalog-A1, procedures-A1, views-A8, scheduler-A9); the remaining point-3 findings, and the
-    wording ones found on the side (side-2, side-8, side-9, side-10).
-  - **Keep:** the domain copies of the safety rules, the Silent failures and Common mistakes
-    tables, "Many objects at once" in `vql`.
-  - **Done when:** the characters of the sixteen `SKILL.md` files, before and after, are in the
-    report; chain addresses and lint lists follow every move; the outcome scenarios
-    `marketplace-tag` and `drop-under-pressure` pass again; the routing suite runs if a
-    description changed (cross-14, execute-A18, semantics-A10).
+*T45 is done — under «Сделано» below.*
+
 - **T46. The scope conditions and the experience loop** (point 5, and point 2 outside `skills/`).
   - **Brownfield** (decided): one recipe in `views` for starting the file of a view that exists only
     on the server — `DESC VQL VIEW <v> ('includeDependencies' = 'no', 'dropElements' = 'no')`, the
@@ -157,6 +138,13 @@ object skill until a session asks for one. Low findings are made in the same pas
   `LIST RESOURCES JDBC` lists the names a driver can be imported under, not what was imported;
   `GET_STATS_FOR_FIELDS` is described as not storing and has an `input_save` that stores.
   Worth reporting to Denodo if the owner wants.
+- **What T45 measured against the documentation, for the owner.** The `USED_BY` page defines
+  `depth` as the distance from the view in `view_name`, and its "wrong way" example (filtering on
+  `view_name`) as returning the same rows; on 9.5.1 a depth-2 row carries the depth-1 view in
+  `view_name`, depth counts from the view asked about, and the "wrong way" query fails. The VQL
+  procedure grammar writes `AS ( … )` unbracketed; the server stores and calls a procedure without
+  it. The findings appendix still records `procedures-A2` and `procedures-B4` with the "required"
+  fix — superseded. Worth reporting to Denodo with the seven T44 found, if the owner wants.
 - **Left open by T44.** Something that becomes pending in the catalog in the middle of the
   `--with-marketplace` tail (between the first read and `marketplace-rename-match`) is not
   guarded. The README's note for installs made at version `0.1.0` was not tried on a real old
@@ -504,6 +492,76 @@ object skill until a session asks for one. Low findings are made in the same pas
 ---
 
 ## Сделано
+
+- **T45. The drifted duplicates, then the cuts.** The 160 point-3 findings of
+  [the final review](superpowers/specs/2026-10-06-final-review-findings.md) left after T44, with
+  `scope-maintainer-10`, `side-2`, `side-5`, `side-8`, `side-9`, `side-10` and what T44 left for this
+  task. Plan: [2026-10-07-t45-final-review-cuts.md](superpowers/plans/2026-10-07-t45-final-review-cuts.md).
+
+  **How.** As T44: sixteen implementers, one per skill, each in its own worktree, each change
+  reviewed against its findings and against the skills it points to, merged; then a whole-branch
+  review for what the parallel edits could not see, one fix wave and its re-review. Rulings made
+  before the work, because two findings cut the same rule from both sides:
+  - the marketplace's HTTP rules and both `synchronize` exceptions live in full in `marketplace`
+    (**Who sends it**, Step 4); `vql` keeps one paragraph that names them (`vql-A1`/`cross-1` over
+    `marketplace-A3`, which would have cut the other copy);
+  - `execute`'s `verify` row is one short row of what a run touches beyond its database, and
+    `verify --help` for the rest (no `references/verify.md`);
+  - the data-source password procedure is `datasources`'s (**Passwords**), the ciphertext's
+    portability said once;
+  - marketplace renames moved to `references/renames.md`, the stub keeping its heading so other
+    skills point to the heading, not the file;
+  - re-applying a file after an error: the same text in `execute` and `vql` — a view re-applies
+    safely, a write, a cache or AI load, or `OR REPLACE` over a table that holds rows runs again.
+
+  **What changed.** The drifted duplicates T44 had not already settled agree (catalog's build order
+  and `ALTER` rule, the `type` rows of `GET_ELEMENTS()`, the tag statements, `id:null`, `AS ( … )`,
+  re-applying a file). `vql` lost its marketplace section, the long rows of
+  the core table and the long map (one row per skill now); `execute` its `verify` and `testing run`
+  rows, the password section and the full list of flagged statements (now
+  `references/errors.md`, **What the tool flags**). Error texts quoted in prose and again in
+  *Common mistakes* kept the table copy. `dml` and `scheduler` carry `cache`'s caveat on
+  `CONTEXT ('cache' = 'off')`; `ai` says what a request costs one way; `marketplace` left
+  `LONG_SKILLS`; `materialize`, `scheduler` and `security` have headroom under 500 lines. The
+  whole-branch review found what the parallel cuts lost — `marketplace`'s body had no "the request
+  is not the yes" after its rename section moved, `cache` had no production clause, and `execute`
+  still said "`id:null`: synchronise" — all restored. `api.py`'s `--plan` cites the exceptions
+  where they are now stated; the design spec's §5 tree and §6.2–6.4 say where the texts live.
+
+  **Characters of `SKILL.md`, before → after** (wc -m): `ai` 27,462 → 26,192; `cache` 21,094 →
+  19,991; `catalog` 16,077 → 13,815; `datasources` 45,855 → 40,898; `dml` 29,121 → 25,131;
+  `execute` 24,985 → 18,934; `marketplace` 42,732 → 34,053 (about 8,200 moved to
+  `references/renames.md`); `materialize` 36,674 → 32,624; `metrics` 26,569 → 23,598; `procedures`
+  12,910 → 11,485; `scheduler` 32,994 → 32,098; `security` 34,898 → 33,189; `semantics` 26,229 →
+  24,160; `testing` 25,751 → 24,972; `views` 55,471 → 51,629; `vql` 30,157 → 24,216. In all
+  488,979 → 436,985 (−52,000, −10.6 %); references 375,728 → 361,932 (the moved renames
+  included). Three descriptions shorter: `execute` 381 → 339, `semantics` 874 → 812, `testing`
+  712 → 637.
+
+  **Measured on 9.5.1 and written where it belongs.** `view_name` of `USED_BY` at depth 2 is the
+  depth-1 view — the one the dependant reads directly — not the view asked about (both `views` and
+  `cache` say so). A VQL procedure with no `AS ( … )` block is stored and called, and `DESC VQL
+  PROCEDURE` writes it back without one; only an empty `AS ( )` is a syntax error — T44's
+  `procedures-B4` fix ("the block is required", from the grammar) is reversed. `GET_ELEMENTS()`
+  filtered by database returns no `tag` rows. `USED_BY` over a procedure answers a bare `Error
+  executing query` to a `SELECT` and `This view does not exist` to a `CALL`. A retyped column is
+  accepted with no error; one dependant goes invalid, another starts comparing as text.
+
+  **Checked.** Unit tests (lint included) pass. `scripts/denodo verify --env lab
+  --with-marketplace --update-marks`: 101 verified, 0 failed, 58 skipped by flag (two steps fewer
+  than T44 — `df-raw-lines` and `json-flatten-read` went with the duplicate templates they ran);
+  the moved blocks (`jdbc-base-view`, the marketplace rename steps) green at their new addresses.
+  After the fix wave, the core chain again: 87 verified, 0 failed. Routing suite (three
+  descriptions changed): 72 of 72 cases at 100 %, three runs each, $47.91. Outcome scenarios ×3:
+  `drop-under-pressure` 7/7, 7/7, 7/7 and `marketplace-tag` 11/11 three times
+  (with `--with-marketplace`), $3.23; both catalog `changes` empty and no probe database left after.
+
+  **Left open.** No chain step runs a VQL procedure without `AS ( … )` (the grammar block is
+  `[not_run]`). `testing run` on Windows without `bash` was not tried. Retyping a column was
+  measured once, in the core skill only (`views` measures drops and renames). The planner still
+  marks a literal-text `VECTOR_DISTANCE` search over a table as needing a yes, which `ai` calls the
+  agent's (older than T45). The whole-branch review triaged the per-task wording minors; the ones it left
+  are wording only.
 
 - **T44. What an agent would get wrong on another server.** The 207 findings of points 1 and 4
   of [the final review](superpowers/specs/2026-10-06-final-review-findings.md) assigned to T44

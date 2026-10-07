@@ -35,9 +35,7 @@ while the documentation calls `description` optional; send all six. Duplicate `n
 `POWERBI` are the documented native ones, the rest a marketplace lists were created there.
 Existing ones usually carry their vendor's icon; a new one is a marketplace-wide object that
 everybody sees, and one created without an icon stands in that shared list logo-less next to
-the rest. The listing embeds those icons as base64 and can be large —
-*verified: 9.5.1 (live, 2026-09-10)*: save it and project
-`{externalProviderTypeId, name, visualName}`.
+the rest.
 
 **"None fits" is decided by whose logo ends up on the card.** A provider type is what the
 consumer sees as the origin of the asset, so reusing `TABLEAU` for a dashboard that is not
@@ -87,6 +85,7 @@ Skip the `CONNECT DATABASE` line if the session is already in that database.
 | `url` | text | no | becomes the "open in tool" link |
 | `created_at` | timestamp | yes | |
 | `updated_at` | timestamp | yes | **drives updates** — an element whose value has not moved is never refreshed |
+| `associations` | `external_element_association_array_type` | no | the 360 graph edges |
 
 Two gaps the source tool usually leaves, and both are yours to close: a date without a time
 (the columns are `timestamp`) — take midnight and write the convention down next to the
@@ -95,7 +94,6 @@ and the next import silently updates nothing; and a missing `description` — it
 in the contract but it is the first thing a consumer reads, so build one out of facts you
 already have (what the asset is, which view it reads) rather than leaving it empty or
 inventing an audience for it.
-| `associations` | `external_element_association_array_type` | no | the 360 graph edges |
 
 Association record: `associated_element_id`, `external_tool_server_name`,
 `associated_element_type`, `direction`, `role`.
@@ -121,12 +119,6 @@ Association record: `associated_element_id`, `external_tool_server_name`,
   differently with `IN` is *unverified*. Follow the marketplace's existing elements, say which
   you chose, and look at the arrow after the first import. `role` is free text and is the
   label drawn on the edge.
-
-**The type names are part of the contract.** Renaming
-`external_element_association_array_type` fails validation with
-`400 INVALID_EXTERNAL_ELEMENT_INTERFACE_VIEW … expected type
-external_element_association_array_type, but found …`. Types belong to a database, so the
-fixed names cost nothing.
 
 **Building the array.** `NEST(...)` over the association rows, cast to the array type, with a
 `GROUP BY` over every non-association column. When every element has at least one

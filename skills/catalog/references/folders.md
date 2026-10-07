@@ -50,8 +50,7 @@ ALTER FOLDER '/<target path>' COPY <element> <old name> AS <new name>;
 - `MOVE` is written on the **destination** folder and names the element:
   `ALTER FOLDER '/02 - integration' MOVE VIEW order_summary`. `TABLE` is a base view.
 - Moving an element does not change its name and does not break dependents.
-- `ALTER FOLDER` is a change to an existing object: human's confirmation first, and on a
-  production profile the tool refuses it without `--allow-destructive`.
+- `ALTER FOLDER`: `vql plan` says whether it waits for the human's yes (`/denodo:vql`).
 
 ## DROP FOLDER
 
@@ -77,21 +76,14 @@ DESC VQL FOLDER '/<path>';                        -- CREATE OR REPLACE FOLDER �
 
 SELECT name, type, subtype, folder, description
 FROM GET_ELEMENTS()
-WHERE input_database_name = '<db>' AND type IN ('folder', 'view', 'datasource', 'wrapper');
+WHERE input_database_name = '<db>' AND type <> 'type';
 ```
 
-`folder` in `GET_ELEMENTS()` is the **parent path** of the element (`/` for a top-level
-folder), in **lowercase** — `name` keeps its case: a folder `/Sales/EU` appears as
-`name = 'EU', folder = '/sales'`; the full path is `'/' + name` at the top level and
-`folder + '/' + name` below it, so compare paths with `lower()`. `type` values on
-9.5.1: `folder`, `datasource`, `wrapper`, `view` (subtype `base`, `derived`, `interface`,
-`materialized`, `metric`), `association`, `storedProcedure`, `webService`, `tag`, and
-`type` — registers and arrays (`CREATE TYPE`, or left by `NEST`/`REGISTER`), `folder = null`.
-Folder descriptions read back as `null` when unset, view descriptions as `''`. Before a
-`DROP FOLDER … CASCADE`, list with `WHERE input_database_name = '<db>' AND (lower(folder) =
-lower('/<path>') OR lower(folder) LIKE lower('/<path>/%'))` and **no type filter**. There is
-no `LIST FOLDERS`. Through the tool: `vql desc --env dev --database <db> "'/<path>'" --type
-folder` — the path keeps its single quotes inside the double quotes.
+`type` values in a database on 9.5.1: `folder`, `datasource`, `wrapper`, `view` (subtype
+`base`, `derived`, `interface`, `materialized`, `metric`), `association`, `storedProcedure`,
+`webService`, and `type` — registers and arrays, `folder = null`: your own `CREATE TYPE`s and
+the `_register_…` / `_array_register_…` types a view with `NEST` or `REGISTER` leaves behind
+(`/denodo:views`). Folder descriptions read back as `null` when unset, view descriptions as `''`.
 
 Server-generated VQL (`DESC VQL DATABASE`) lists folders under `# FOLDERS` in creation
 order, which is the order to reuse in a file.

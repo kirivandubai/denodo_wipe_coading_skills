@@ -129,17 +129,19 @@ denodo_skills/                        репозиторий = плагин = м
 │   │   └── references/dialect.md     text, numbers, dates, NULL and query shape, JSON, delegation
 │   ├── execute/
 │   │   ├── SKILL.md
-│   │   └── references/errors.md
-│   ├── catalog/SKILL.md
+│   │   └── references/errors.md      the server's errors, and what the tool flags `destructive`
+│   ├── catalog/
+│   │   ├── SKILL.md
+│   │   └── references/               database, folders, tags (the full syntax of each)
 │   ├── datasources/
 │   │   ├── SKILL.md
-│   │   └── references/               jdbc, json, xml, df, excel, odata, s3
+│   │   └── references/               df, json, jdbc (incl. a wrapper by hand), base-view
 │   ├── views/
 │   │   ├── SKILL.md
-│   │   └── references/               derived, interface, associations, unions, arrays, dependencies, delegation
+│   │   └── references/               derived, interface, associations, unions, arrays, dependencies, delegation, one-row-per-key
 │   ├── marketplace/
 │   │   ├── SKILL.md
-│   │   └── references/               tags, categories, external elements
+│   │   └── references/               tags, categories, external elements, renames (a view renamed, recreated or moved)
 │   ├── procedures/
 │   │   ├── SKILL.md
 │   │   └── references/               predefined, vql-procedures, java-procedures
@@ -151,7 +153,7 @@ denodo_skills/                        репозиторий = плагин = м
 │   │   └── references/metadata.md    what each AI consumer reads, every metadata ALTER, inheritance
 │   ├── metrics/
 │   │   ├── SKILL.md
-│   │   └── references/metric-views.md  grammar, joins per association measured, query rules, limits
+│   │   └── references/               metric-views (grammar, joins per association measured, query rules, limits), periods (year over year, to date, running totals)
 │   ├── security/
 │   │   ├── SKILL.md
 │   │   └── references/               policies (grammar, masks, audience per grant path), privileges
@@ -160,10 +162,10 @@ denodo_skills/                        репозиторий = плагин = м
 │   │   └── references/               functions (each LLM function as measured), vectors (type, distances, model choice, delegation)
 │   ├── dml/
 │   │   ├── SKILL.md
-│   │   └── references/               statements (grammar, RETURNING, upsert, how values land, transactions), writable-views (per view type, CHECK OPTION, wrapper switches, cache, impersonation)
+│   │   └── references/               statements (grammar, RETURNING, upsert, how values land, transactions), writable-views (per view type, CHECK OPTION, wrapper switches, impersonation)
 │   ├── materialize/
 │   │   ├── SKILL.md
-│   │   └── references/               remote-tables (procedure, command, types, REFRESH, materialized and temporary tables), summaries (grammar, rewrite measured, staleness, data movement)
+│   │   └── references/               remote-tables (procedure, command, types, REFRESH, materialized and temporary tables), summaries (grammar, rewrite measured, staleness, data movement), incremental (only what is new or changed since the last load)
 │   ├── testing/
 │   │   ├── SKILL.md
 │   │   └── references/format.md      the .denodotest format as the Testing Tool runs it: parsing, comparison rules measured, SETUP/TEARDOWN, exit codes, the configuration
@@ -246,7 +248,8 @@ Community KB), а не придуман: `ds_`, `bv_`, `iv_`, `a_`, `s_`, биз
 Проверено на живом стенде 9.5.1: имена папок с цифрой, пробелами и дефисом парсер
 принимает, путь папки регистронезависим, но родительская папка обязана существовать до
 дочерней (`Cannot create folder …: parent not found`) — создаются сверху вниз, удаляются
-снизу вверх.
+снизу вверх (the error and the drop order are `/denodo:catalog`'s; the core says "create
+parents first, drop bottom-up").
 
 ### 6.3 Правила безопасности
 
@@ -351,7 +354,10 @@ new table: on a production profile every change waits for the yes.
 уточнённый в T8d по OpenAPI живого сервера 9.5.1: разрушительна не только форма
 `element-management/all/synchronize`, но и `element-management/{DATABASES|VIEWS|WEBSERVICES|
 EXTERNAL_ELEMENTS}/synchronize`, а пути `views/{id}/categories` в API вовсе нет — «сет»-вызов
-для категорий живёт под `category-management/`.
+для категорий живёт под `category-management/`. Since T45 the per-call list is `marketplace`'s
+closing table; the core (`vql`) keeps one paragraph: which calls are as destructive as a `DROP`,
+the clause that a complete list to `tags/vdp/synchronize` still replaces a set the human has not
+seen, and the two exceptions in one line each.
 
 **When the agent synchronises the marketplace catalog itself (owner's decision, 2026-10-05).**
 `DATABASES/synchronize` and `VIEWS/synchronize` stay destructive in the classifier, but the
@@ -367,7 +373,10 @@ and tells the human at once about anything else. Any other radius waits for the 
 yes covers the `ALTER … RENAME` and the `synchronize` with the pair matched, when both are shown
 together. The first import on an external tool server created in the same session stays the
 other exception. The rule is the same as "your own new — yourself" for tables (T34): the call
-changes nothing in the shared catalog that the session did not make.
+changes nothing in the shared catalog that the session did not make. Since T45 the full rule
+lives in `marketplace`, **Who sends it**, and its Step 4 paragraph; "one yes covers the rename
+and the matched call" is `marketplace`'s rationalization row beside it plus
+`references/renames.md`.
 
 **The Scheduler's HTTP rule (T36).** On the Scheduler (`api --server scheduler`) every `PUT`
 replaces the whole object it names — a job, a project, a data source — and is `alter`; a
@@ -422,7 +431,9 @@ JSON-варианты источников и wrapper'ов — их закрое
 
 Две оговорки из того же спайка: `DROP FOLDER IF EXISTS` не спасает от папки с
 содержимым — удалять снизу вверх; а назначение тега через `ADD_TO` требует парного
-блока `REMOVE_FROM`, иначе это синтаксическая ошибка (раздел 4.1 отчёта).
+блока `REMOVE_FROM`, иначе это синтаксическая ошибка (раздел 4.1 отчёта). Since T45 both
+caveats live in `/denodo:catalog`, Common mistakes; `vql` keeps only the folder order, with a
+pointer there.
 
 **Проверено при работе над T6 на стенде 9.5.1 (2026-09-09), потому что дефолт без этого
 обходят:** `CREATE OR REPLACE DATABASE` поверх непустой базы **сохраняет её содержимое** —
@@ -437,6 +448,8 @@ Denodo не существует — `CREATE DATABASE IF NOT EXISTS` даёт
 вызовов: перед созданием — поиск по имени. Подтверждено T11: все операции идут по
 числовым `id`, дубликат имени — `409`, а статус повторного `DELETE` у разных объектов
 разный (`500`, `200`, `404`), так что опираться можно только на предварительный поиск.
+Since T45 `vql` keeps one line (look up by name, then `POST` or `PUT`, `/denodo:marketplace`);
+the `500`/`200`/`404` statuses are `marketplace`'s.
 
 ### 6.5 Many objects at once (T41)
 

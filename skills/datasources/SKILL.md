@@ -209,14 +209,11 @@ CREATE OR REPLACE TABLE bv_crm_customers I18N us_pst (
   *verified: 9.5.1 (live, 2026-09-09)*
 - **The base view lists the wrapper's columns in the wrapper's order; narrow in a derived
   view.** A base view with fewer columns creates and reads fine, but an equality `WHERE` on
-  it is handed to the DF wrapper **by position**: a base view of seven of a file's
-  twenty-four columns answered `WHERE item_sk = 29` with the rows whose *second file column*
-  is 29 — one row instead of seven, no error — while `<` and `item_sk + 0 = 29` were right.
-  The `(any) OPT ANY` block `DESC VQL` prints does not help. If the human wants the narrow
-  base view anyway, give it `CONSTRAINTS ( ADD <column> NOS ZERO () … )` for every one of
-  its columns: Denodo then filters itself, and the answer is right.
+  it is handed to the DF wrapper **by position** and filters another column of the file,
+  without an error; the `(any) OPT ANY` block `DESC VQL` prints does not prevent it. If the
+  human wants it narrow anyway, give it `CONSTRAINTS ( ADD <column> NOS ZERO () … )` for
+  every one of its columns: Denodo then filters itself, and the answer is right.
   *verified: 9.5.1 (live, 2026-09-30)*
-- `TIMETOLIVEINCACHE DEFAULT` is required between `CACHE OFF` and `ADD SEARCHMETHOD`.
 - The `CONSTRAINTS ( … )` block that the server prints in `DESC VQL` is optional for a
   delimited file whose base view mirrors the wrapper — the DF wrapper does filter what the
   server hands it — and so is `I18N` inside `ADD SEARCHMETHOD`. For a JSON file it is not optional (**JSON file** below). `I18N <map>` after the view name is not
@@ -227,9 +224,6 @@ CREATE OR REPLACE TABLE bv_crm_customers I18N us_pst (
 - The path is **on the Denodo server**, not on your machine. If it points to a directory,
   every file in it is read as one table — add `FILENAMEPATTERN = '.*\.csv'` and keep the
   files' schema identical.
-- `FOLDER = '…'` does **not** create the folder: a missing one is
-  `Error creating data source: destination folder '/x' not found`. Folders come first, and
-  they are `/denodo:catalog`.
 
 ### JSON file
 
@@ -324,17 +318,12 @@ CREATE OR REPLACE TABLE bv_oms_orders I18N us_pst (
 - **A compound column needs a named type.** `CREATE TABLE` takes a type identifier, so a
   register or array column must be declared first with `CREATE OR REPLACE TYPE`
   (register first, then the array of it). Inline structures do not parse.
-- A JSON document behind a URL is a REST source, not this template with another `ROUTE`:
-  Design Studio (**What you build** above).
-- Reading a register field in `SELECT` needs parentheses: `(shipping).country`. Plain
-  `shipping.country` is read as *view.column* and fails with `Field not found
-  'shipping.country' in view 'shipping'`. Flattening arrays is `/denodo:views`.
+- Flattening arrays is `/denodo:views`.
 
 ### Relational database over JDBC
 
-**Ask for the parts, build the URI yourself.** Nobody has a JDBC URL lying around; they
-have a host, a port and the name of a database. Ask for those, in one message, with the
-defaults already filled in, then assemble the string from the table below.
+Assemble `DATABASEURI` from the parts the human gives (**What you need before filling a
+template**):
 
 | Source | `DRIVERCLASSNAME` | `DATABASEURI` | `CLASSPATH` | `DATABASENAME` |
 |---|---|---|---|---|
@@ -394,69 +383,22 @@ SELECT creation_vql FROM GENERATE_VQL_TO_CREATE_JDBC_BASE_VIEW()
    AND folder = '/01 - connectivity';
 ```
 
-Given a `folder`, `GENERATE_VQL_TO_CREATE_JDBC_BASE_VIEW` returns **three rows**: a `CREATE OR
-REPLACE FOLDER` of it without a description — leave it out: the folder belongs in the project's
-folder file (`/denodo:catalog`), and over an existing folder it clears the description — then
-the `CREATE OR REPLACE WRAPPER JDBC` with every column and its Java type, and the matching
-`CREATE OR REPLACE TABLE`. Paste those two into the file under the data source; the wrapper is given the *base
-view's* name, so rename it to `wr_…` in both, and `DATASOURCENAME` comes back
-database-qualified. The `CREATE TABLE` ends with `CONTEXT('SIMULATE' = 'NO')`, a harmless hint.
+Given a `folder`, `GENERATE_VQL_TO_CREATE_JDBC_BASE_VIEW` returns **three rows** (*verified: 9.5.1
+(live, 2026-10-06)*): a `CREATE OR REPLACE FOLDER` of it without a description — leave it out: the
+folder belongs in the project's folder file (`/denodo:catalog`), and over an existing folder it clears
+the description — then the `CREATE OR REPLACE WRAPPER JDBC` with every column and its Java type, and
+the matching `CREATE OR REPLACE TABLE`. Paste those two into the file under the data source; the
+wrapper is given the *base view's* name, so rename it to `wr_…` in both, and `DATASOURCENAME` comes
+back database-qualified. The `CREATE TABLE` ends with `CONTEXT('SIMULATE' = 'NO')`, a harmless hint.
 **Every table of a schema at once** — what already has a base view, all the statements in one
 query, the check per view: `references/jdbc.md`, *Every table of a schema*.
 
 - `PING_DATA_SOURCE` before introspecting: a `DOWN` answer names the cause —
   `UnknownHostException` (network), `ClassNotFoundException` (wrong `CLASSPATH`), an
   authentication error (credentials).
-- Two listing procedures, not equivalent: `GET_JDBC_DATASOURCE_TABLES` takes
-  `input_catalog_name` / `input_schema_name` / `input_table_name` as **input** and is the one
-  to use; `LIST_JDBC_DATASOURCE_TABLES` is deprecated and walks everything (it failed on the
-  SQL Server measured, and a `WHERE` does not help).
 - A database that doubles as Denodo's cache store is full of the server's own cache tables
   (`C_…`); the real tables sit in the business schemas. Show the human the schema list
   before picking.
-
-When the database is unreachable from here (a different network zone, credentials not
-issued yet), introspection is not available and you write the wrapper by hand from the
-schema the human gives you — the DDL still parses and the objects still get created; only
-`SELECT` fails, on the connection. A JDBC wrapper may list **a subset of the table's
-columns** and works fine — that is the opposite of DF, where a subset returns zero rows:
-
-```sql
--- verified: 9.5.1 (live, 2026-10-07) — created against an unreachable host
-CREATE OR REPLACE WRAPPER JDBC wr_orders_db_orders
-    FOLDER = '/01 - connectivity'
-    DATASOURCENAME = ds_orders_db
-    SCHEMANAME = 'public'
-    RELATIONNAME = 'orders'
-    OUTPUTSCHEMA (
-        order_id = 'order_id' :'java.lang.Long' (OPT) SORTABLE,
-        customer_id = 'customer_id' :'java.lang.String' (OPT) SORTABLE,
-        order_dt = 'order_dt' :'java.sql.Timestamp' (OPT) SORTABLE,
-        total_amount = 'total_amount' :'java.math.BigDecimal' (OPT) SORTABLE,
-        status = 'status' :'java.lang.String' (OPT) SORTABLE
-    );
-
-CREATE OR REPLACE TABLE bv_orders_db_orders I18N us_pst (
-        order_id:long,
-        customer_id:text,
-        order_dt:timestamp,
-        total_amount:decimal,
-        status:text
-    )
-    FOLDER = '/01 - connectivity'
-    CACHE OFF
-    TIMETOLIVEINCACHE DEFAULT
-    ADD SEARCHMETHOD wr_orders_db_orders (
-        OUTPUTLIST ( order_id, customer_id, order_dt, total_amount, status )
-        WRAPPER (jdbc wr_orders_db_orders)
-    );
-```
-
-- JDBC wrappers **do** take types, and they are **Java** class names
-  (`java.lang.Long`, `java.sql.Timestamp`, `java.math.BigDecimal`) — the base view above
-  them uses VQL types (`long`, `timestamp`, `decimal`). Introspection also records the
-  source's own type (`sourcetypename='NUMBER'`, sizes, decimals); those properties are
-  informative, and a hand-written wrapper without them works.
 - The clause order of `CREATE DATASOURCE JDBC` is fixed, and the parser reports the token
   where it gave up, not the one that is out of place. Keep the order of the template.
   Everything the server prints back beyond it — `VALIDATIONQUERY`, `INITIALSIZE`,
@@ -464,11 +406,12 @@ CREATE OR REPLACE TABLE bv_orders_db_orders I18N us_pst (
   human asked for a specific pool.
 - `CLASSPATH` is the **name of a driver directory shipped with Denodo**, not a path to a
   jar (the table above; the server's full list is `references/jdbc.md`).
-  `DATABASENAME`/`DATABASEVERSION` **without** `CLASSPATH` fail at creation with
-  `error creating new data source: Cannot invoke "java.util.List.size()"` — a message
-  that says nothing about the missing clause.
 - The version is **not validated**: `DATABASEVERSION = '99'` is created happily. A wrong
   adapter silently changes what gets delegated to the source; confirm it with the human.
+
+When the server cannot reach the database, the wrapper is written by hand from the schema the
+human gives: `references/jdbc.md`, *A wrapper by hand* — a JDBC wrapper may list a subset of
+columns, unlike DF.
 
 ## When you cannot see the file
 
@@ -496,19 +439,14 @@ no shell. Three ways to get it, in order of preference:
    which is the one thing you came for. Reading other databases is allowed anywhere;
    changing them waits for the human's yes (`/denodo:vql`).
 
-   Two things not to copy from the donor. It is a source of **grammar, not of defaults**:
-   server-generated sources carry no `IGNOREMATCHINGERRORS` and often no `CHARSET`, so you
-   add `IGNOREMATCHINGERRORS = FALSE` yourself — inheriting the donor's silence is exactly
-   the failure the template protects you from. And its mappings may be spelled unlike the
-   template's — a header quoted and upper-case gives `hd_demo_sk = '"HD_DEMO_SK"'` where the
-   template writes `hd_demo_sk = 'hd_demo_sk'`: both work, because the mapping is positional
-   either way (*verified: 9.5.1 (live, 2026-09-12)*). Do not conclude the template is stale.
+   The donor is a source of **grammar, not of defaults**: server-generated sources carry no
+   `IGNOREMATCHINGERRORS` and often no `CHARSET`, so you add `IGNOREMATCHINGERRORS = FALSE`
+   yourself — inheriting the donor's silence is exactly the failure the template protects you
+   from. Its mappings may be quoted upper-case names (`'"HD_DEMO_SK"'`); both forms work, the
+   mapping is positional (*verified: 9.5.1 (live, 2026-09-12)*).
 
-   Mind the truncation: `GET_ELEMENTS()` on a populated server returns more rows than
-   `--max-rows` keeps (a well-populated server easily has more sources than the default of
-   100). Narrow the query, and **look at `truncated` in the answer** — a truncated read
-   looks exactly like "there is no such object", and that mistake sends you to way 3 for
-   nothing.
+   Look at `truncated` in the answer and narrow the query when it is true: a cut read looks
+   exactly like "there is no such object" and sends you to way 3 for nothing.
 2. **Ask the human for `head -1`** (or the first 20 lines of the JSON). Accurate, and they
    usually have access even when you do not — but it costs a round trip, so it comes second
    when the server already holds an object over the same file.
@@ -549,15 +487,15 @@ goes into a hidden prompt:
 ```
 
 They can also pipe it from a password manager (`op read op://vault/db/password | …`). Either
-way the answer carries one field, `encrypted`, and the project file then reads
-`USERPASSWORD = '<that string>' ENCRYPTED`.
+way the answer carries one field, `encrypted` — never the password, not even inside a server
+error — and the project file then reads `USERPASSWORD = '<that string>' ENCRYPTED`.
 
-The server decrypts and uses such a ciphertext: encrypt a wrong password, and the source answers
-its database's own authentication error, not a format error — a source on a Virtual DataPort
-server, `The username or password is incorrect`. *verified: 9.5.1 (live, 2026-09-12)*
+A wrong password encrypts just as happily, and the source answers later with its database's
+own authentication error, not a format error — a source on a Virtual DataPort server,
+`The username or password is incorrect`. *verified: 9.5.1 (live, 2026-09-12)*
 
 **Never assemble `ENCRYPT_PASSWORD '<password>'` yourself** — neither with `-e` nor through
-a temp file written by `printf`: both put the plaintext into a Bash argument, and Bash
+a file written by a heredoc or `printf`: both put the plaintext into a Bash argument, and Bash
 arguments are kept in the session transcript.
 
 - **The ciphertext is tied to the installation's encryption key.** `--env` names the
@@ -574,9 +512,6 @@ arguments are kept in the session transcript.
   one by accident. Encrypt before writing the file, not after.
 - If the human typed a production password into the chat, say so plainly once and suggest
   rotating it; the transcript keeps it.
-- A source that should read its password from a credentials vault, or log in by Kerberos,
-  OAuth or cloud IAM, is created in Design Studio (**What you build** above); the base views
-  over its tables are still yours.
 
 **`CREATE OR REPLACE DATASOURCE` rewrites the credentials every time the file is applied,
 and omitting the clause erases them.** Re-applying the same data source without
@@ -599,17 +534,17 @@ else yourself. Three or four lines, not an interview:
 | Slot | Where it comes from |
 |---|---|
 | JDBC host, port, database / service / SID | **the human** — then you assemble `DATABASEURI` from the table above; never ask for a JDBC URL |
-| JDBC product and version | **the human** — it picks `DRIVERCLASSNAME`, `CLASSPATH` and the adapter; a wrong adapter changes what gets pushed down and the server will not complain |
+| JDBC product and version | **the human** — it picks `DRIVERCLASSNAME`, `CLASSPATH` and the adapter |
 | JDBC login | **the human**; it goes into the file |
-| Any password | **the human**, through `secret encrypt` in their own terminal (**Passwords** above) — only the ciphertext reaches you and the file. Ask for it last, after everything else is settled |
+| Any password | **the human**, through `secret encrypt` (**Passwords**), asked last |
 | JDBC schema, tables, columns, types | **the server** — `GET_JDBC_DATASOURCE_TABLES` and `GENERATE_VQL_TO_CREATE_JDBC_BASE_VIEW` after the source is up. Ask only which tables the human wants, and only if they did not name them — "every table of the schema" names them |
-| File path | **the human** — and it is **server-side**: the file must be readable by the Denodo server, not by you. A URL, a bucket or an FTP server is Design Studio (**What you build** above) |
+| File path | **the human** — and it is **server-side**: the file must be readable by the Denodo server, not by you |
 | Delimiter, header, charset | the human, or a sample of the file; `,` + `HEADER = TRUE` + `UTF-8` is the common case |
-| **Every column name of a file, in order** | the file header, verbatim and complete — the server does **not** introspect files. Three ways to get it, including one that needs nobody: **When you cannot see the file** above. Never infer it from the columns the human wants |
+| **Every column name of a file, in order** | the file header, verbatim and complete (**When you cannot see the file**) — never inferred from the columns the human wants |
 | JSON shape | a sample of the document — nesting decides `REGISTER OF` / `ARRAY OF`, and you cannot guess it. Same three ways |
 | Object names | the conventions in `/denodo:vql` — unless the human asked for something specific in this request (a prefix, a naming scheme). An explicit instruction wins over the convention; keep the type marker inside it (`acme_ds_store`, not `acme_store`) |
 | Column types of a file source | your decision in `CREATE TABLE`: text unless the format is unambiguous; a wrong type costs `NULL`s, not an error |
-| Database, folder | `/denodo:catalog` and the conventions in `/denodo:vql`: `/01 - connectivity`, `ds_<source>`, `wr_<source>_<entity>`, `bv_<source>_<entity>` |
+| Database, folder | `/denodo:catalog`; folder and names from `/denodo:vql` |
 
 Do not ask about caching, pooling, statistics or delegation options. They have defaults,
 and they are in the references when the human raises them.
@@ -621,11 +556,11 @@ how a similar object is written here (`vql desc … --vql`), whether the source 
 
 - `references/df.md` — `CREATE DATASOURCE DF` / `WRAPPER DF` for a local delimited file:
   delimiters, a directory of files, quoting, `NULLVALUE`, what the parser accepts in
-  `OUTPUTSCHEMA`, reading a file as raw lines, typing.
+  `OUTPUTSCHEMA`, typing.
 - `references/json.md` — `CREATE DATASOURCE JSON` / `WRAPPER JSON` for a local JSON file:
   `TUPLEROOT`, nested registers and arrays, `CREATE TYPE`, reading registers.
 - `references/jdbc.md` — `CREATE DATASOURCE JDBC` / `WRAPPER JDBC` over tables: the driver
-  directory names on the server, adapters, password credentials, the connection pool,
+  directory names on the server, adapters, the connection pool, a wrapper by hand,
   introspection procedures.
 - `references/base-view.md` — full `CREATE TABLE`: search methods and constraints, cache
   clauses, primary keys, tags, indexes, `ONSCHEMACHANGE`, VQL types.
@@ -643,23 +578,18 @@ the data back, every time:
 | Values are values | `SELECT * FROM <bv>` with `--max-rows 5`, look at every column | a whole column of `NULL` = the type in `CREATE TABLE` does not match the data (`cust_id:int` over `C-10472`) |
 | Text values have no padding | the same read-back — look at where each string **ends**, not just at what it says | `"0-500          "` — an export padded to a fixed width. Nothing fails, and then every `WHERE col = '0-500'` and every `GROUP BY` a consumer writes is wrong. `TRIM` it in the view above and say so in the `DESCRIPTION`; `NULLVALUE ''` (text columns only) handles the empty-string half of the same problem |
 | Schema is what you wrote | `vql desc --env dev --database <db> <bv>` | missing or extra columns |
-| A JDBC source can be reached | `SELECT status, down_cause FROM PING_DATA_SOURCE() WHERE database_name='<db>' AND data_source_type='JDBC' AND data_source_name='<ds>'` | `DOWN` with `UnknownHostException` (network/host), `ClassNotFoundException` (wrong `CLASSPATH`), authentication errors (credentials) |
-| The folder exists before you use it | `SELECT name, folder FROM GET_ELEMENTS() WHERE input_database_name = '<db>' AND type = 'folder'` — `LIST FOLDERS` does not exist |  `Syntax error … near 'FOLDERS'`; and a missing folder fails the `CREATE` itself |
+| A JDBC source can be reached | `PING_DATA_SOURCE`, above | `DOWN` and its cause (above) |
+| The folder exists before you use it | `SELECT name, folder FROM GET_ELEMENTS() WHERE input_database_name = '<db>' AND type = 'folder'` — `LIST FOLDERS` does not exist |  `Syntax error … near 'FOLDERS'` |
 | The base view is in the catalog | `SELECT name, subtype, folder FROM GET_ELEMENTS() WHERE input_database_name = '<db>' AND type = 'view'` | **not** `LIST VIEWS`: it lists derived views only and answers an empty set for a database full of base views — *verified: 9.5.1 (live, 2026-09-09)*. `LIST TABLES` does not exist |
-| What already exists | `LIST DATASOURCES DF` / `JSON` / `JDBC`, `LIST WRAPPERS DF`, `LIST TYPES` — the **type is mandatory** on `LIST DATASOURCES` | `Syntax error … near 'DATASOURCES'` when you leave it out |
+| What already exists | `LIST DATASOURCES DF` / `JSON` / `JDBC`, `LIST WRAPPERS DF`, `LIST TYPES` — the **type is mandatory** on `LIST DATASOURCES` | — |
 
 `GET_ELEMENTS()` takes its filters as `input_database_name` / `input_type` and returns
 `database_name`, `name`, `type`, `subtype`, `folder` — the input columns carry the `input_`
 prefix, the output ones do not.
 
-**When a template does not cover a detail of one of the three sources, ask the server,
-not your memory.** `vql desc --env dev --database <db> <object> --type "datasource json" --vql`
-prints the server's own `CREATE` statement for any existing object of that type — the exact
-9.5.1 syntax, including the parts no documentation shows. A source of another kind is not
-a detail: it is Design Studio's (**What you build** above), whatever a donor shows. For a file already onboarded, ask its
-**base view** rather than its source: that answer carries the route, the parse clauses, the
-column list and the working types together (**When you cannot see the file** above, which
-also says what not to copy from it).
+A detail of the three sources no template covers: read an existing object's `vql desc …
+--type "<type>" --vql` — for a file, its base view (**When you cannot see the file**).
+Another kind of source stays Design Studio's, whatever a donor shows.
 
 ## Common mistakes
 

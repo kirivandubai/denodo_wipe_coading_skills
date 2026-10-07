@@ -84,25 +84,9 @@ exists; it is an `ALTER`, so it needs the human's yes. `CREATE OR REPLACE` does 
 
 ## Reading a file as raw lines
 
-`TUPLEPATTERN = '(.*)'` with `HEADER = FALSE` makes every line of the file one text value.
-It is the only way to look at a server-side file from VQL, and it works for any text
-format — CSV, JSON, XML:
-
-```sql
--- verified: 9.5.1 (live, 2026-10-07)
-CREATE OR REPLACE DATASOURCE DF ds_peek
-    FOLDER = '/01 - connectivity'
-    ROUTE LOCAL 'LocalConnection' '/data/exports/oms/orders.json'
-    CHARSET = 'UTF-8' TUPLEPATTERN = '(.*)' HEADER = FALSE;
-CREATE OR REPLACE WRAPPER DF wr_peek
-    FOLDER = '/01 - connectivity' DATASOURCENAME = ds_peek
-    OUTPUTSCHEMA ( line = 'line' );
-```
-
-The base view over it returns one row per line of the file. Give these objects the names
-the real source will use and rewrite the same file once you know the schema — the reading
-pass then leaves nothing behind. The trick also answers "is the file even there": a wrong
-path fails with `[DF ROUTE] [PARSE_ERROR] … Error getting input Stream`.
+`TUPLEPATTERN = '(.*)'` with `HEADER = FALSE` reads any text file (CSV, JSON, XML) as one row
+per line — the template is `SKILL.md`, **When you cannot see the file**, way 3; a wrong path
+fails with `[DF ROUTE] [PARSE_ERROR] … Error getting input Stream`.
 
 ## Typing a DF source
 

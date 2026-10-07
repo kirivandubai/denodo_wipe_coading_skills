@@ -25,7 +25,6 @@ Everything here is REST against `marketplace_url`, and every call takes `serverI
 | Web services | `POST`/`DELETE /public/api/tags/{id}/webservices` | `[webserviceId]` | |
 | Tags a view may still get | `GET /public/api/elements/{viewId}/view/available-tags` | | |
 
-`descriptionType` is `TEXT` or `RICH_TEXT`; `RICH_TEXT` renders HTML in the marketplace UI.
 All of the above is
 *verified: 9.5.1 (live, 2026-09-10)* except `delete-multiple`, the webservice endpoints and
 `available-tags`, which are *unverified: 9.5 documentation only* (the server's OpenAPI).
@@ -56,8 +55,8 @@ api get --env dev /public/api/views/<view_id>/tags
   … REMOVE_FROM`, `/denodo:catalog`) and the marketplace copy follows at the next import of VDP
   tags — the call below, the human's.
 - **Every unassignment waits for the human's yes** — one your own call made in this
-  conversation too: the core's table has two named exceptions, and this is not one of them
-  (`/denodo:vql`). Show the `DELETE` with what step 2 keeps. When the yes comes late, read step 1
+  conversation too: the two named exceptions (`SKILL.md`, **Who sends it**) are not this one.
+  Show the `DELETE` with what step 2 keeps. When the yes comes late, read step 1
   and 2 again right before the `DELETE`: ids do not move, assignments do. A label that is not
   a tag — a deprecation endorsement, `deprecations` in `view-details` — is another object.
 
@@ -80,8 +79,7 @@ marketplace tag.
 **The body is the complete set of imported tags, not an addition.** Every imported tag whose
 name is absent from that list is deleted, together with what it carried. The UI hides this by
 ticking the previously imported tags for you; the API has no such default —
-*verified: 9.5.1 (live, 2026-09-08) — the deletion was observed once and is
-deliberately not re-proven on every run, because it costs existing tags.* The safe form:
+*verified: 9.5.1 (live, 2026-09-08), observed once.* The safe form:
 
 ```bash
 # verified: 9.5.1 (live, 2026-10-07) — reading the list; the POST is the human's call

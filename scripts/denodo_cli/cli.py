@@ -167,26 +167,31 @@ def build_parser() -> argparse.ArgumentParser:
     verify.add_argument("--with-marketplace", action="store_true",
                         help="also run the Data Marketplace tail; it synchronises the whole marketplace "
                              "catalog with VDP, at the start and again in cleanup, so it is skipped unless "
-                             "nothing but the run's own database is pending there")
+                             "nothing but the run's own database is pending there; if something else appears "
+                             "meanwhile, cleanup holds its sync back and the run fails")
     verify.add_argument("--with-ai", action="store_true",
-                        help="also run the steps that call the server's LLM; every row they project is "
-                             "a paid request")
+                        help="also run the steps that call the server's LLM and embedding model; every row "
+                             "they project is a paid request")
     verify.add_argument("--with-writes", action="store_true",
                         help="also run the steps that create tables in the server's cache data source (or "
-                             "the one set in the values file) and insert, update and delete their rows")
+                             "the one set in the values file), insert, update and delete their rows, and "
+                             "drop them in cleanup")
     verify.add_argument("--with-scheduler", action="store_true",
                         help="also run the Scheduler tail: it creates a project on the shared Scheduler, "
-                             "creates and runs jobs there, and deletes the project in cleanup")
+                             "creates and runs jobs there, and deletes the project in cleanup; the CSV export "
+                             "leaves its file in the Scheduler's default export folder")
     verify.add_argument("--testing-tool", metavar="DIR",
                         help="also run the .denodotest templates with the Denodo Testing Tool installed in DIR "
                              "(its bin/denodo-test.sh needs Java on PATH or in JAVA_HOME)")
     verify.add_argument("--without", metavar="FEATURE", action="append", default=[], choices=FEATURE_NAMES,
-                        help="treat the server as lacking this feature (repeatable): its steps are skipped, "
-                             "as on a server without it — to rehearse a smaller server, or to skip the steps "
-                             "that cache")
+                        help="treat the server as lacking this feature (repeatable): its steps are skipped "
+                             "with the reason, as they are on a server without it (env check: features) — to "
+                             "rehearse a smaller server, or to skip the steps that cache")
     verify.add_argument("--values", metavar="FILE",
-                        help="values of this installation, one table per profile (default: verify.toml "
-                             "beside the profiles file)")
+                        help="values of this installation the server does not report, or that override "
+                             "what it reports (the folder the test files were copied to, on a server without "
+                             "internet access), one table per profile (default: verify.toml beside the "
+                             "profiles file)")
     verify.add_argument("--keep", action="store_true", help="leave the created objects on the server")
     verify.add_argument("--cleanup-only", action="store_true",
                         help="run no step, only the manifest's cleanup (under the same --with-* gates): "

@@ -128,7 +128,8 @@ def _plan_call(profile: Profile, method: str, path: str, body: Any, base: dict, 
         conditions = []
         if "/external-tool-servers/" in route + "/":
             conditions.append("the first import on an external tool server you created in this session is yours "
-                              "(/denodo:vql, second exception) — the ledger records no marketplace objects")
+                              "(/denodo:marketplace, Step 4 is a synchronize) — the ledger records no "
+                              "marketplace objects")
         return decide(True, "it replaces a whole set, or deletes what is missing from the body (/denodo:vql)",
                       conditions)
     return decide(None, "not a destructive call: whose element it changes decides (/denodo:marketplace)")
@@ -171,8 +172,8 @@ def _plan_radius(profile: Profile, body: Any, doc: dict, decide, *, transport_fa
                             "edited in the marketplace (/denodo:marketplace)")
     if not radius["own"]:
         return decide(True, "the radius holds what you did not create in this session — the body goes in a file and "
-                            "the call waits for the yes (/denodo:vql, first exception)")
-    return decide(False, "every entry of both changes is yours from this session (/denodo:vql, first exception)",
+                            "the call waits for the yes (/denodo:marketplace, Who sends it)")
+    return decide(False, "every entry of both changes is yours from this session (/denodo:marketplace, Who sends it)",
                   [_AFTER_SYNC])
 
 

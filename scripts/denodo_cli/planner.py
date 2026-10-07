@@ -21,8 +21,8 @@ from .statements import ObjectRef, Statement, parse_statement
 
 HEAD = 160
 _TABLE_KINDS = ("remote table", "summary", "materialized table")
-_COLUMNS_CONDITION = ("it keeps every column the views that read it use — dropping or renaming one breaks them "
-                      "without an error (/denodo:views, Before a column changes)")
+_COLUMNS_CONDITION = ("it keeps every column the views that read it use — dropping, renaming or retyping one "
+                      "breaks them without an error (/denodo:views, Before a column changes)")
 _TEXTS_CONDITION = ("a new description, field description, primary key or tag is a text the human approves "
                     "(/denodo:semantics)")
 _TARGET_CONDITIONS = ["the data source and schema are the ones the human named (/denodo:materialize)",
@@ -220,7 +220,7 @@ def _plan_one(index: int, st: Statement, walk: _Walk, ctx: PlanContext) -> dict:
         return _decision(entry, True, "the profile is production: every change waits for the human's yes")
 
     if st.ai_over_rows:
-        return _decision(entry, True, "an AI function evaluated over the rows of a view: every row is a paid "
+        return _decision(entry, True, "an AI function evaluated over the rows of a view: every row is a "
                                       "request to the provider; the human agrees to the number (/denodo:ai)")
     action = st.action
     if action == "cache":

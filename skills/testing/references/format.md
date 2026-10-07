@@ -3,14 +3,13 @@
 Sources: the Denodo Connects manual "Denodo Testing Tool — User Manual" (9.5), the tool's own
 sources (`dist/denodo-testing-tool-9-<date>-sources.jar` in the download), and runs of release
 `20260428` against Virtual DataPort 9.5.1 on 2026-10-05. A line marked *measured* was run; the
-rest is the manual or the sources. The tool is a separate download from the Denodo support site
-(Denodo Connects); the plugin does not ship it.
+rest is the manual or the sources.
 
 ## Files, folders and order
 
 - A test is a file ending in **`.denodotest`**. Anything else in a folder — `.csv`, `.vql`, a
   `.properties` — is skipped without a word, and so is a test whose name is misspelled
-  (`checks.denodotests`) — *measured*. Count the tests in the summary against the files.
+  (`checks.denodotests`) — *measured*.
 - A folder runs its files and subfolders in path order, with two exceptions: `first.denodotest`
   runs before everything else in its folder and must hold a `%SETUP`; `last.denodotest` runs after
   everything and must hold a `%TEARDOWN`. A folder holding only those two runs nothing.
@@ -79,9 +78,6 @@ on the way stops the pass, and the TEARDOWN after it does not run (below).
 | `boolean` | `true`, `false` |
 | An error in `%EXECUTION` | the test fails with `Test raised an unexpected java.sql.SQLException: <message>` |
 
-The simplest way past the date rules is to compare text: `FORMATDATE('yyyy-MM-dd HH:mm:ss', ts)
-AS ts` in the query.
-
 Inline data is CSV (RFC 4180): quote a value that holds a comma or a quote, starts with `#`, or
 has leading or trailing spaces; a quote inside a quoted value is doubled. Complex values (arrays,
 registers) have a text form of their own — braces for a register, brackets for an array, every
@@ -137,29 +133,12 @@ tool ships and with the server's own 9.5.1 driver alike. Check a plan with a que
 
 ## Running it
 
-`${CLAUDE_PLUGIN_ROOT}/scripts/denodo testing run --env <profile> --database <db> --tool <dir>
---java-home <java> <tests>` does what follows and reads the result for you (it starts
-`bin/denodo-test.sh`, so it needs a Unix shell). By hand (on Windows, the skill's
-`denodo-test.bat` line instead):
-
-```
-cd "<tool home>/bin" && JAVA_HOME=<java 17+> bash denodo-test.sh file:<config> file:<tests>
-```
-
-*measured*:
+By hand: the launcher line in SKILL.md (**Running it**). *measured*:
 
 - **Exit code `0` only when every test passed; `1` when one failed or the run broke** — a folder
   with no tests in it (`IllegalArgumentException: Testable cannot be null`), a path that does not
   exist (`The file: … does not exist.`), a configuration that cannot be read; those print a Java
   stack trace and no summary.
-- **With a missing argument the launcher prints its usage and exits `0`.** A CI step whose
-  variables expanded to nothing is green.
-- The launcher comes out of the zip without its execute bit: `bash denodo-test.sh`, or
-  `chmod +x` once.
-- It logs to `../log/testing-tool.log` **relative to the working directory**: started from a
-  project root, it creates a `log/` folder next to the project.
-- `ERROR DriverDataSource … Failed to load class of driverClassName com.denodo.vdp.jdbc.Driver`
-  at the start of every run is noise: the driver is then loaded from `drivers/<dbAdapter>/`.
 - The console prints each failed test twice. The last lines are the summary: `Tests run: N, OK:
   M (FAILED: K)`, `Total tuples`, `Zero-tuple tests` — the tests whose comparison saw no row.
 - `--failed-resumable` as a third argument reruns only what failed last time, through a
@@ -168,9 +147,7 @@ cd "<tool home>/bin" && JAVA_HOME=<java 17+> bash denodo-test.sh file:<config> f
 
 ## The configuration file
 
-`testing run` writes it for one run into a temporary file; `${CLAUDE_PLUGIN_ROOT}/scripts/denodo
-testing config --env <profile> --database <db>` writes it beside the profiles file, readable by
-its owner only, for a human who runs the tool themselves. Both write:
+What `testing run` (temporary) and `testing config` (lasting, 0600) write:
 
 ```
 encoding=UTF-8
@@ -184,8 +161,7 @@ vdp.password=<password>
 vdp.connectionTestQuery=SELECT * FROM Dual()
 ```
 
-- `jdbc_port` comes from the profile, 9999 when it names none; the profile's `port` is the ODBC
-  one. `jdbc:denodo://` and the older `jdbc:vdb://` both connect — *measured*. `vdp.dbAdapter`
+- `jdbc:denodo://` and the older `jdbc:vdb://` both connect — *measured*. `vdp.dbAdapter`
   is a folder under the tool's `drivers/`; the default, `denodo-9.0.0`, is the one the release
   measured here ships — another release may ship another. `--db-adapter` names another folder — *measured*: the 9.0.0
   driver the tool ships works against a 9.5.1 server, and so does the server's own driver

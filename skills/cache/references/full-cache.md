@@ -12,31 +12,20 @@ the 9.5 documentation, and says so — where the two disagree, the measurement w
 |---|---|---|
 | `'cache_preload'` | `'true'` | stores the result in the cache. Without it the query is an ordinary read. *live* |
 | `'cache_invalidate'` | `'all_rows'` | everything cached is replaced by the result, atomically on a `WITH_STATUS` table: readers see the old rows until the new ones are in. *live* |
-| | `'matching_rows'` | only the cached rows matching the `WHERE` are replaced; the rest stay. Without a `WHERE` it is `'all_rows'` (documentation). *live*: 143,526 rows (every row twice) became 132,761 after reloading the 10,765 rows of a slice — both copies of the slice went, one came back |
+| | `'matching_rows'` | only the cached rows matching the `WHERE` are replaced; the rest stay. Without a `WHERE` it is `'all_rows'` (documentation). *live*: on a cache holding every row twice, reloading a slice left one copy of the slice's rows |
 | | `'matching_pk'` | replaces rows by primary key — an incremental load: Design Studio, not this skill |
 | | *(left out)* | the result is **added** to what is cached. A second full load gives every row twice; the declared primary key is not enforced. *live* |
 | `'cache_wait_for_load'` | `'true'` | the query ends when the rows are stored, and a failed store is its error. *live*: a load that failed on a too-long text value answered `Error loading cache: There was an error during a batch insertion: String or binary data would be truncated …` |
 | | `'false'` | the query ends when the rows are read; a failed store is not reported. *live*: the same failing load answered `ok`, and the cache still held the previous content |
 | | *(left out)* | *live*: waits, like `'true'`. The documentation gives the default as `'false'` in the grammar and as `'true'` for a full cache in the text |
 | `'cache_return_query_results'` | `'false'` | the result is not sent back: `ok` with no rows. *live* |
-| | *(left out)* | every row of the view comes back as the query's result (71,763 rows for a 71,763-row load). *live* |
+| | *(left out)* | every row of the view comes back as the query's result. *live* |
 | `'cache'` | `'off'` | this one query reads the sources, ignoring every cache on the way. Not a load; the comparison for checking one. *live* |
 
 Rules of the load itself:
 
-- It projects every column — `SELECT *`. Fewer columns: `Invalid query to load data in
-  cache : All view fields should be projected with cache full mode`. *live*
-- It runs over the cached view itself. Over a view built on it, it answers `ok`, returns
-  nothing and loads nothing — `CACHE_CONTENT` keeps the old date. *live*
 - No `GROUP BY`, `HAVING`, or subquery in the `WHERE` (documentation).
-- A failed load keeps what was cached before and the date of that load. *live*
 - `'cache_invalidate'` without `'cache_preload'` changes nothing on a full cache. *live*
-- Over a view whose cache is off, it answers `ok` and loads nothing: switching the cache on
-  afterwards gives 0 rows. A refresh job left running after `CACHE OFF` fails silently. *live*
-- A Scheduler *Simple Cache Management* job builds this query from its options; its
-  *Invalidate* option (`cacheInvalidationMode`) defaults to `NONE` for a new job — in the
-  API and in the 9.5.1 administration tool, against the documentation's *Matching rows* —
-  so every run appends. Set `ALL_ROWS` (`/denodo:scheduler`). *live*
 
 ## `ALTER VIEW … CACHE` (`ALTER TABLE … CACHE` for a base view)
 
@@ -56,16 +45,9 @@ Rules of the load itself:
 
 The status column is the Design Studio option **Include control columns (legacy)**. The
 documentation recommends leaving it out; on 9.5.1 with a SQL Server cache, leaving it out
-broke every view above the cache on every full reload — *verified: 9.5.1 (live, 2026-09-30)*:
-
-```
-view above, queried once → load with 'all_rows' → view above:
-Error executing query. … QUERY [CACHE] [ERROR] … Invalid object name '<catalog>.<schema>.C_<VIEW>…'
-```
-
-It stayed broken for as long as it was polled (minutes), through further loads, until its own
-`CREATE OR REPLACE VIEW` was re-applied — and broke again on the next load. A view created
-after the load worked until the load after that. The cached view itself kept answering.
+broke every view above the cache on every full reload — *verified: 9.5.1 (live, 2026-09-30)*.
+Re-applying a view's `CREATE OR REPLACE VIEW` mended it until the next load broke it again; a
+view created after a load worked until the load after that.
 
 ## What survives re-applying a file
 
@@ -97,13 +79,11 @@ the view (documentation).
 
 ## Freeing the space
 
-- Invalidated rows stay in the table until the **cache maintenance task** deletes them —
-  every `maintainer_period` seconds when `maintenance` is on. *live*: after `CACHE
-  INVALIDATE`, with the cache still on, `CALL CLEAN_CACHE_DATABASE('<db>', '<view>')`
-  returned a row for that view with `deleted_tuples = 71763`, and nothing for any other.
-  After `CACHE OFF` the same call returned no row for the view and deleted nothing; the
-  rows were deleted once the cache was switched on again and the call repeated. *live*
-- `CLEAN_CACHE_DATABASE('<db>')` without a view runs the task over the whole database.
+- Invalidated rows, `CACHE OFF` before the clean: `CALL CLEAN_CACHE_DATABASE('<db>',
+  '<view>')` then returned no row for the view and deleted nothing; they were deleted once
+  the cache was switched on again and the call repeated. *live*
+- `CLEAN_CACHE_DATABASE('<db>')` without a view runs the cache maintenance task over the
+  whole database.
 - The table stays after `CACHE OFF`; it is deleted when the view is dropped (documentation).
 - `DROP_NONACTIVE_CACHE_TABLES` drops every cache table no cached view references, across
   every database whose cache is in the data sources it is given — by default all of them. A

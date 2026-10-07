@@ -26,16 +26,12 @@ The only thing built directly on a metric view is a **selection view** — the m
 alone in its `FROM`, dimensions in `SELECT` and `GROUP BY`, each metric as
 `evaluate_metric(<metric>)`, a filter on dimensions in `WHERE`. Everything else — another
 dimension view, another fact, a second metric view, arithmetic over metrics, a total — is
-done over selection views. Measured on 9.5.1, each without an error message:
-
-- a metric view joined to another view in the same `FROM` runs until the query timeout
-  (`Error: Time out processing data`) — over a few thousand rows too;
-- `evaluate_metric(a) * 100`, `ROUND(evaluate_metric(a), 2)` return `a` unchanged, and
-  `evaluate_metric(a) / evaluate_metric(b)` returns no rows — ad hoc and inside a `CREATE
-  VIEW` alike;
-- `evaluate_metric(x)` over a column of any other view returns `NULL`;
-- `SUM`, `AVG`, `MAX` or `COUNT` around a metric is ignored: the metric's own aggregation
-  runs, so `AVG(revenue)` returns the sum.
+done over selection views. Measured on 9.5.1, none of these says what is wrong: a join in the
+same `FROM` runs until the query timeout; arithmetic or `ROUND` around `evaluate_metric`, or
+`SUM`/`AVG` around a metric (`AVG(revenue)` returns the sum), is ignored, in a query and
+inside a `CREATE VIEW` alike; a ratio of two `evaluate_metric` returns no rows;
+`evaluate_metric` over another view is `NULL` (Silent failures, 1-3 and 10; Common mistakes,
+row 1).
 
 Over a selection view — a view or a subquery — joins, `ROUND`, ratios and `CASE` work as in
 any view.
@@ -61,25 +57,22 @@ The checks in the table — *verified: 9.5.1 (live, 2026-10-05)*.
 | `INNER`, or `RIGHT` over a `(1)` endpoint | **dropped** | absent |
 | nothing | from the association: dimension endpoint `(1)` → as `INNER`; `PRINCIPAL (0,1)` → as `LEFT` | |
 
-- **`RIGHT` keeps the fact's rows only when the dimension endpoint of the association is
-  `(0,1)`.** With `(1)` — "every fact row has exactly one" — the server runs `RIGHT` as
-  `INNER` (a `LEFT` keeps the members), and the facts without a match vanish from every
-  grouped query. The association template in `/denodo:views` declares `(1)`: right when the
-  check above finds no `NULL` key and no orphan, wrong otherwise — then the association says
-  `(0,1)`: `ENDPOINT <role> <fact view> (0,*)` and
+- **The association template in `/denodo:views` declares `(1)`**, under which `RIGHT` runs as
+  `INNER`: right when the check above finds no `NULL` key and no orphan, wrong otherwise — then
+  the association says `(0,1)`: `ENDPOINT <role> <fact view> (0,*)` and
   `ENDPOINT <role> <dimension view> PRINCIPAL (0,1)`, the rest of the template unchanged.
 - The order of the two aliases does not matter; the type is read against the fact.
 - A query without any dimension of a group applies no join for it: the grand total always
   counts every fact row, which is why a model that drops rows still shows the right total.
 - **Another association between the fact and the view under a dimension view** (the base
-  view a dimension `iv_` selects from) turned `RIGHT` into `INNER` — measured, reproduced by
-  adding and dropping it. Before you add an association near a metric view, run Verify.
-- Creating an association between views you did not create makes it a dependant of both:
-  propose it to their owner (`/denodo:semantics`). Over someone else's base views, build your
-  own `iv_` views for the fact and each dimension (`/denodo:views`) — with the key declared,
-  text trimmed — and put the associations between those: everything the model needs is then
-  yours, and no association lands next to theirs. The metric view can also live in your own
-  database and name views of another (`<db>.<view>` in `SOURCES`).
+  view a dimension `iv_` selects from) turned `RIGHT` into `INNER`; dropping it restores
+  `RIGHT`. Before you add an association near a metric view, run Verify.
+- An association between views you did not create is a proposal to their owner
+  (`/denodo:semantics`). Over someone else's base views, build your own `iv_` views for the
+  fact and each dimension (`/denodo:views`) — with the key declared, text trimmed — and put
+  the associations between those: everything the model needs is then yours, and no
+  association lands next to theirs. The metric view can also live in your own database and
+  name views of another (`<db>.<view>` in `SOURCES`).
 
 ## 2. Templates
 
@@ -128,34 +121,26 @@ Clause order: `FOLDER` → `DESCRIPTION` → `TAGS` → `( field properties )` �
 `ASSOCIATIONS` → `DIMENSIONS` → `METRICS`. Each alias in `SOURCES` is how dimensions and
 metrics name that view. `a_income_band_household` is the association template of
 `/denodo:views`; its `(1)` endpoint makes this `RIGHT` run as `INNER`, which is right here
-because every household has its band. `bv_income_band` declares `PRIMARY KEY (
-'ib_income_band_sk' )` in its own file — over a file source, a dimension view without its key
-declared answers every `HAVING` grouped by that key with no rows.
+because every household has its band. `bv_income_band` declares its `PRIMARY KEY` in its own
+file (Silent failures, 12).
 
 - **A dimension** is any expression over the sources without an aggregate: `TRIM`, `CASE`,
   `COALESCE(<dim>.<label>, '(not specified)')` to name the `NULL` group, `GETYEAR(<date>)`, a
-  `CONCAT` over two views. Labels and buckets belong here, in the definition — the same
-  expression written in a query and grouped by its alias can lose every `COUNT(DISTINCT …)`
-  metric from the result (Silent failures, 13). Groups (`income_band ( … )`) are how
-  consumers see them; an attribute after the last group, `, <name> AS <expr>`, is a generic
-  one.
+  `CONCAT` over two views. Labels and buckets belong here, in the definition (Silent failures,
+  13). Groups (`income_band ( … )`) are how consumers see them; an attribute after the last
+  group, `, <name> AS <expr>`, is a generic one.
 - **A metric** is an aggregate over fact columns: `SUM`, `COUNT(<column>)`, `COUNT(DISTINCT
   …)`, `AVG`, `MIN`, `MAX`, with `CASE` inside (`SUM(CASE WHEN … THEN amount ELSE 0 END)`) and
   arithmetic over aggregates (`SUM(fee) / NULLIF(SUM(amount), 0)`). It cannot name another
   metric or use `COUNT(*)` — both are `invalid field: missing source schema for field:
   <metric>`; repeat the aggregates instead.
-- **The dialect rules hold inside a metric** (`/denodo:vql`): `SUM` over an `int` column
-  stays `int`, hence `CAST('long', …)` above; an `int` divided by an `int` is an integer
-  division, so a share written `SUM(CASE … 1 ELSE 0 END) / COUNT(x)` is `0` — write
-  `1.0 * SUM(…) / COUNT(x)`. `AVG` over an integer is a `double` with noise in the last
-  digits; `AVG` over a `decimal` and a ratio of `decimal` sums come back as `decimal` with a
-  scale the server picks (a dozen digits and more). `ROUND` goes inside the metric
-  (`ROUND(AVG(x), 2)`) or over a selection view's column — around `evaluate_metric` it is
-  dropped.
-- **`AVG` and `COUNT(<column>)` skip `NULL`s**: over a fact with missing measures, "average
-  per return" is the sum over the rows that have one. Decide which the KPI means —
-  `AVG(x)`, or `SUM(x) / COUNT(<key>)` for "missing counts as zero" — and say it in the
-  metric's description.
+- **The dialect rules hold inside a metric** (`/denodo:vql`, **Expressions: VQL is not
+  PostgreSQL**): `SUM` over an `int` column stays `int`, hence `CAST('long', …)` above — never
+  over a `decimal`, which it truncates; an `int` divided by an `int` is an integer division
+  (Silent failures, 11). `ROUND` goes inside the metric (`ROUND(AVG(x), 2)`) or over a
+  selection view's column.
+- **`AVG(x)` and `COUNT(x)` skip `NULL`s**: say in the metric's description whether the KPI is
+  `AVG(x)` or `SUM(x) / COUNT(<key>)`, a missing value counted as zero.
 - **A filter that every metric obeys goes into the fact view** — an `iv_` derived view with
   the `WHERE`, named in `SOURCES`. The `FILTER ( … )` clause the Design Studio wizard writes
   after `SOURCES` fails on some queries with `Error applying metric transformation.` —
@@ -164,9 +149,9 @@ declared answers every `HAVING` grouped by that key with no rows.
   ALTER COLUMN … ADD ( DESCRIPTION = '…' ) )`. A selection view inherits the description of
   a dimension it passes through, never that of a metric: describe `evaluate_metric` columns
   in the selection view (`/denodo:semantics`).
-- `DESC VQL` gives the definition back as `CREATE METRIC VIEW` — without `OR REPLACE`,
-  functions lower-cased, `CONTEXT` dropped — so it is a reference, not your file. A metric
-  view takes no cache: `ALTER VIEW … CACHE FULL` is `Metric views do not support cache mode`.
+- `DESC VQL` returns `CREATE METRIC VIEW` without `OR REPLACE` and without `CONTEXT`: a
+  reference, not your file. A metric view takes no cache
+  (`Metric views do not support cache mode`): cache its sources (`/denodo:cache`, **Templates**).
 
 ### Selection views, a total and a share
 
@@ -209,7 +194,7 @@ CREATE OR REPLACE VIEW household_share_by_band
   literal next to them needs a `GROUP BY` (`For this type of query, the group by fields are
   mandatory.`). Summing the rows of `households_by_band` is right for a sum or a count and
   wrong for an average (an average of averages) and for a `COUNT(DISTINCT …)` (a customer in
-  two bands counts twice).
+  two bands counts twice); for a coarser grain ask the metric view at that grain.
 - **A view or fact from outside the model** joins to a selection view grouped by the join
   key — `GROUP BY <key>` in the selection, then `JOIN <other view> ON s.<key> = …`. **Two
   metric views side by side**: one selection view each, at the same dimensions — aliased to
@@ -218,8 +203,6 @@ CREATE OR REPLACE VIEW household_share_by_band
   b.<key>)`.
 - Arithmetic over metrics — a ratio, a percent, rounding — is a column of the view over the
   selections, as `household_share_pct` above.
-- Do not `GROUP BY` a selection view again to a coarser grain unless every metric in it is a
-  sum or a count; ask the metric view at that grain instead.
 - **An average per member** — per customer, per store — is a selection grouped by the
   member, averaged in the view above: `SELECT type, AVG(m.total) FROM (SELECT type,
   customer_id, evaluate_metric(revenue) AS total … GROUP BY type, customer_id) m GROUP BY
@@ -231,22 +214,10 @@ CREATE OR REPLACE VIEW household_share_by_band
 
 ### Periods: year over year, to date, running totals
 
-`references/periods.md` has the templates — the periods as dimensions over a calendar, year over
-year with the coverage of each year, to date against the same days of last year, a running total
-— and what decides them:
-
-- **A partial period makes its change meaningless**: data that starts or stops in the middle of a
-  period gives a first and a last period shorter than the others, and every total check still
-  passes. Show the
-  first and last date with data per period, and say it.
-- **A coarser period adds up only sums and counts** — months of a `COUNT(DISTINCT …)` summed into a
-  year count a customer once per month. The period is a dimension of the metric view.
-- **"Today" is the server's clock, not the data's**: over data loaded weeks ago a to-date view
-  answers `0` and a fall of 100 %. Read the last date with data, and check the view at dates you
-  choose.
-- The year before is a join on `<year> - 1`, not `LAG`; a window runs where it is delegated — the
-  metric view's sources in one database — or where the server is set up to move the data to an MPP
-  or the cache; elsewhere `Function <name> is not executable`.
+Read `references/periods.md` before any year-over-year, to-date or running-total figure: its
+templates, and what decides them — a partial first or last period, which every total check
+passes; a coarser period, which adds up only sums and counts; "today", the server's clock and not
+the data's; the year before, a join and not `LAG`.
 
 ### Query it ad hoc
 
@@ -266,7 +237,7 @@ HAVING evaluate_metric(household_count) > 50
 | `WHERE` on dimensions | `WHERE evaluate_metric(m) > …` — `Aggregate functions are not allowed here`; `WHERE <metric> > …` — an `Error executing query` from the route |
 | `HAVING evaluate_metric(m) > …`, `HAVING <dimension> …` | `HAVING <alias>` — `Field not found`; `HAVING <metric>` — `is not a group by field` |
 | `ORDER BY <alias>` or `ORDER BY evaluate_metric(m)` | `ORDER BY` a field not in the `SELECT` — `Field not found '<f>' in view with schema` |
-| an expression over a dimension in `SELECT`, grouped by the **raw dimension** — one row per raw value, every metric kept | the same expression grouped by its **alias**: regrouped, but a `COUNT(DISTINCT …)` metric can go missing from the result (Silent failures, 13) — put the expression in the dimension's definition |
+| an expression over a dimension in `SELECT`, grouped by the **raw dimension** — one row per raw value, every metric kept | the same expression grouped by it or by its **alias** (Silent failures, 13) |
 | `COUNT(*)` — the fact rows of the group | `GROUP BY <metric>` — `The group by fields can only be dimensions or literals` |
 | `LIMIT` | no `GROUP BY` with a dimension in `SELECT`, or `SELECT *` — **0 rows, no error** |
 
@@ -290,24 +261,16 @@ add `column_remarks` for the descriptions.
 The second gives the sources and, per association, the join type: `0` `INNER`, `1` `LEFT`,
 `2` `RIGHT`, `null` none written. `GET_METRIC_VIEWS` takes a `LIKE` pattern only as a
 positional argument; `WHERE input_name = '<pattern>'` returns nothing. These two are the way
-to read a metric view. `vql desc … --vql` of a metric view, or of a view built on one,
-rebuilds its sources down to the data sources — `ENCRYPTED` passwords included, into your
-transcript — and when the metric view is in another database, it leaves the metric view out
-and gives back that database's source views unqualified, as if they were yours. A metric view
-is
-`subtype = 'metric'` in `GET_ELEMENTS()` and `view_type = 5` in `GET_VIEWS()`. The
-description of a metric view written by someone else may show a query with `SUM(<metric>)`:
-it runs only because the outer `SUM` is ignored.
+to read a metric view; `vql desc … --vql` of it, or of a view built on it, brings back its data
+sources and their encrypted passwords (`/denodo:execute`, **Commands**).
 
 ## Who applies what
 
 A new metric view and the views over it, created in this session, are yours to apply and
-verify. Changing a metric view you did not create in this session — `CREATE OR REPLACE METRIC
-VIEW` over it, even to add one metric — rewrites what every dashboard on it reads: show the
-file and get a yes (`/denodo:vql`). A missing dimension or metric in another team's metric
-view is a proposal to them; until they add it, your own metric view over the same sources
-answers the question without touching theirs. Which metric views you created in this session
-is the `own` of `vql plan` (`/denodo:vql`).
+verify. Changing a metric view you did not create in this session, even to add one metric:
+show the file and get a yes (`/denodo:vql`). A missing dimension or metric in another team's
+metric view is a proposal to them; until they add it, your own metric view over the same
+sources answers the question without touching theirs.
 
 ## Verify — the totals check
 
@@ -344,9 +307,8 @@ Run step 3 for one attribute of each dimension group — each association is app
 when a query names its dimensions. Use a sum or a count for it; then compare every other
 metric with plain SQL over the fact and the dimension — one `FULL OUTER JOIN` of the
 selection and the plain `GROUP BY` on the dimensions, keeping the rows where any figure
-differs, checks every slice at once. Compare averages with a tolerance: an `AVG` over an
-integer is a `double` in the metric and a `decimal` in hand-written SQL over a decimal
-column, and a `ROUND` inside the metric can then differ in the last digit. Also: `SELECT
+differs, checks every slice at once. Compare averages with a tolerance: the metric and
+hand-written SQL may type them differently and differ in the last digit. Also: `SELECT
 name, view_status FROM GET_VIEWS() WHERE input_database_name = '<db>' AND
 input_retrieve_invalid_views_only = true` is empty, and every selection view returns rows —
 *verified: 9.5.1 (live, 2026-10-05)*.
@@ -391,5 +353,3 @@ Each runs without an error — *verified: 9.5.1 (live, 2026-10-01)*.
 - `references/metric-views.md` — the full `CREATE METRIC VIEW` grammar, the join types
   measured case by case, the `FILTER` clause, what a metric view refuses (cache, row
   restrictions), how consumers read it, summaries, and the procedures that describe it.
-- `references/periods.md` — periods as dimensions, year over year with coverage, to date against
-  the same days of last year, running totals, and their checks.

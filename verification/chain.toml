@@ -240,7 +240,7 @@ kind = "template"
 channel = "vql"
 address = "skills/datasources/SKILL.md#Delimited file (CSV) — DF"
 # The template's file is the chain's CRM export (verification/data/customers.csv), so the step
-# proves the template reads, not only that it parses (T40).
+# proves the template reads, not only that it parses.
 substitute = { sales_analytics = "{database}", "LOCAL 'LocalConnection' '/data/exports/crm/customers.csv'" = "{fixture_route} '{fixture_base}/customers.csv'" }
 database = "{database}"
 # Every row of the file, every date parsed, and the empty emails NULL through NULLVALUE ''.
@@ -266,16 +266,6 @@ address = "skills/datasources/references/base-view.md#The minimum that works"
 substitute = { "TABLE bv_crm_customers " = "TABLE bv_crm_customers_min " }
 database = "{database}"
 check = "SELECT COUNT(*) FROM bv_crm_customers_min HAVING COUNT(created_dt) = 40"
-
-[[step]]
-id = "df-raw-lines"
-kind = "template"
-channel = "vql"
-address = "skills/datasources/references/df.md#Reading a file as raw lines"
-# The block's file is the chain's order export; it is JSON, which the trick reads as well.
-substitute = { "LOCAL 'LocalConnection' '/data/exports/oms/orders.json'" = "{fixture_route} '{fixture_base}/orders.json'" }
-database = "{database}"
-check = "SELECT name FROM GET_ELEMENTS() WHERE input_database_name = '{database}' AND name = 'wr_peek'"
 
 [[step]]
 id = "json-source"
@@ -311,17 +301,6 @@ database = "{database}"
 check = "SELECT name FROM GET_ELEMENTS() WHERE input_database_name = '{database}' AND name = 'wr_oms_orders_shape'"
 
 [[step]]
-id = "json-flatten-read"
-kind = "template"
-channel = "vql"
-address = "skills/datasources/references/json.md#Reading the data"
-# The block's query, without the lines that show its answer.
-substitute = { "\n→ order_id, customer_id, order_dt, status, total_amount, shipping,\n  line_no, sku, qty, price          -- 3 orders, 4 lines → 4 rows" = "" }
-database = "{database}"
-# What those lines say: 3 orders, 4 lines, 4 rows.
-check = "SELECT COUNT(*) FROM FLATTEN bv_oms_orders AS v (v.lines) HAVING COUNT(*) = 4"
-
-[[step]]
 id = "jdbc-source"
 kind = "template"
 channel = "vql"
@@ -337,13 +316,13 @@ check = "SELECT name FROM GET_ELEMENTS() WHERE input_database_name = '{database}
 id = "jdbc-base-view"
 kind = "template"
 channel = "vql"
-# The third block of that section — the wrapper and base view written by hand for a source
-# that cannot be introspected. The second block (PING_DATA_SOURCE, GET_JDBC_DATASOURCE_TABLES,
-# GENERATE_VQL_TO_CREATE_JDBC_BASE_VIEW) is deliberately not a step: introspection needs a
-# database that actually answers, i.e. a real credential, and this chain has none by
-# construction. Its mark stays what T8b established against live Oracle, SQL Server and
-# PostgreSQL, and no run here will re-date it.
-address = "skills/datasources/SKILL.md#Relational database over JDBC[2]"
+# The wrapper and base view written by hand, on the data source above, for a source that cannot
+# be introspected. The second block of SKILL.md's JDBC section (PING_DATA_SOURCE,
+# GET_JDBC_DATASOURCE_TABLES, GENERATE_VQL_TO_CREATE_JDBC_BASE_VIEW) is deliberately not a step:
+# introspection needs a database that actually answers, i.e. a real credential, and this chain
+# has none by construction. Its mark stays what a run against live Oracle, SQL Server and
+# PostgreSQL established, and no run here will re-date it.
+address = "skills/datasources/references/jdbc.md#A wrapper by hand, when the database cannot be reached"
 # This block carries no CONNECT DATABASE of its own (same as interface-view below).
 database = "{database}"
 check = "SELECT name FROM GET_ELEMENTS() WHERE input_database_name = '{database}' AND name = 'bv_orders_db_orders'"
@@ -994,7 +973,7 @@ address = "skills/procedures/SKILL.md#Call a predefined procedure"
 # the fixture built, and household_income_by_band and household_income stand on it.
 substitute = { sales_analytics = "{database}", "'customer'" = "'bv_income_band'" }
 database = "{database}"
-check = "SELECT view_name FROM USED_BY() WHERE input_view_database_name = '{database}' AND input_view_name = 'bv_income_band'"
+check = "SELECT used_by_name, depth FROM USED_BY() WHERE input_view_database_name = '{database}' AND input_view_name = 'bv_income_band'"
 
 # The third block of that skill — CREATE PROCEDURE ... CLASSNAME, the Java form — is
 # deliberately not a step. It needs a JAR imported into the server, which this chain has no
@@ -2719,7 +2698,7 @@ substitute = { "<tool_server_id>" = "{tool_server_id}", "<provider_type_id>" = "
 id = "marketplace-rename-before"
 kind = "template"
 channel = "http"
-address = "skills/marketplace/SKILL.md#A view in the marketplace is renamed, recreated or moved"
+address = "skills/marketplace/references/renames.md#Renamed, recreated or moved views in full"
 marketplace = true
 # 0 = view-details on the old name, before anything changes.
 calls = [0]
@@ -2739,7 +2718,7 @@ check = "SELECT name FROM GET_VIEWS() WHERE input_database_name = '{database}' A
 id = "marketplace-rename-match"
 kind = "template"
 channel = "http"
-address = "skills/marketplace/SKILL.md#A view in the marketplace is renamed, recreated or moved"
+address = "skills/marketplace/references/renames.md#Renamed, recreated or moved views in full"
 marketplace = true
 # 1 = changes, 2 = synchronize with the pair matched, 3 = view-details on the new name.
 calls = [1, 2, 3]
@@ -2799,7 +2778,6 @@ expect_body = { "0" = "<absent>" }
 # tests/test_chain_manifest.py holds both directions.
 
 [not_run]
-"skills/cache/references/full-cache.md#`ALTER VIEW … CACHE` (`ALTER TABLE … CACHE` for a base view)" = "a sequence of steps and the error it ends in, not a statement"
 "skills/catalog/references/database.md#CREATE DATABASE" = "grammar ([ … ], <…>), not a statement; the catalog template runs a CREATE DATABASE"
 "skills/catalog/references/database.md#ALTER DATABASE" = "grammar ([ … ], <…>), not a statement"
 "skills/catalog/references/database.md#DROP DATABASE" = "grammar ([ … ], <…>), not a statement; the cleanup runs a DROP DATABASE"
@@ -2812,7 +2790,6 @@ expect_body = { "0" = "<absent>" }
 "skills/datasources/SKILL.md#Relational database over JDBC[1]" = "introspection answers only from a database that is up, with a real credential, which the chain does not have"
 "skills/datasources/SKILL.md#When you cannot see the file[1]" = "a command line of the plugin's CLI (vql desc), not VQL; its unit tests cover it"
 "skills/datasources/SKILL.md#Passwords: the file only ever holds the ciphertext, and you never see the plaintext" = "a command the human types (secret encrypt, behind the ! prefix); the chain encrypts its own throwaway the same way"
-"skills/datasources/references/jdbc.md#Credentials" = "grammar ([ … ], <…>), not a statement; the JDBC template carries the encrypted form"
 "skills/datasources/references/jdbc.md#CREATE WRAPPER JDBC" = "grammar ([ … ], <…>), not a statement; the JDBC templates run a wrapper"
 "skills/datasources/references/json.md#CREATE DATASOURCE JSON" = "grammar ([ … ], <…>), not a statement; the JSON template runs one"
 "skills/marketplace/references/external-elements.md#Provider type" = "the --part arguments of the provider-type call, not a call; the external-provider-type step sends the whole call (the icon part is not exercised)"

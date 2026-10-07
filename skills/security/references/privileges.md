@@ -1,4 +1,4 @@
-# Roles, users and privileges — full syntax and measured behaviour
+# Roles, users and privileges — syntax and measured behaviour
 
 Source: Virtual DataPort VQL Guide 9.5, "Creating Databases, Users, Roles and Access
 Privileges", and the Administration Guide, "Databases, Users and Access Rights"; rows marked
@@ -108,15 +108,6 @@ counted by default (`input_check_global_security_policies`). Its `rowpermissions
 `columnpermissions` say a restriction exists, not that it applies — the impersonated query
 is the proof.
 
-`GET_USERS_WITH_ROLE()` needs both inputs: `WHERE role = '<role>' AND
-include_indirect_roles = true`; without the second, `No search methods ready to be run`. A
-role that does not exist answers 0 rows, without an error — `DESC ROLE <name>` is the
-existence check (`Error loading role '<name>'`).
-
-The tool keeps 100 rows of a result unless told otherwise: `LIST ROLES` on a server with
-more roles comes back cut, with `truncated: true` — pass `--max-rows 5000` before deciding
-a role does not exist.
-
 ## Owners
 
 ```sql
@@ -149,12 +140,8 @@ The query runs with that user's — or those roles' — privileges and policies,
 password. The profile's user needs the role `impersonator` (a non-administrator also needs
 the server property `com.denodo.vdb.security.allowImpersonateToRegularUsers`).
 
-**Only a `SELECT`.** An `INSERT`, `UPDATE` or `DELETE` carrying the same `CONTEXT` was
-executed with the profile's own privileges — a user with only `EXECUTE` on a view updated
-it, and a base view they had no grant on; a user without `DELETE` deleted a row
-(*verified: 9.5.1 (live, 2026-10-02)*). A write privilege is checked only in a session as the
-writer — their own login, or (documentation only) `CONNECT USER <u>` without a password from a
-profile with the `impersonator` role — never by the `CONTEXT`; both run real writes.
+**Only a `SELECT`**: writes ignore impersonation (`SKILL.md`, *Check it as the people it is
+for*).
 
 | Answer | Meaning |
 |---|---|

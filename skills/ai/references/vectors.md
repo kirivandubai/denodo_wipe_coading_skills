@@ -1,7 +1,7 @@
 # Vectors and semantic search in full
 
 Everything `/denodo:ai` leaves out of its two search templates. Measured on 9.5.1 unless a
-line says *documentation only*. `EMBED_AI` is a paid request to the embedding model
+line says *documentation only*. `EMBED_AI` is a request to the embedding model
 configured on the server, one per value it embeds; the distance functions are arithmetic and
 cost nothing.
 
@@ -73,8 +73,7 @@ reads.
 | `VECTOR_DISTANCE(<vector column>, <text> [, <metric>])` | rewritten to `VECTOR_<metric>_DISTANCE(<column>, EMBED_AI(<text>, <column>))` | |
 
 - Vectors made by different models cannot be compared. Same dimension, different model: the
-  distances look real and are meaningless — no error anywhere (documentation). Different
-  dimension: `Error executing query`.
+  distances look real and are meaningless — no error anywhere (documentation).
 - A literal text is embedded once per occurrence in the query — a hybrid search with
   `VECTOR_DISTANCE` in both the `SELECT` list and the `WHERE` made two requests, over 32 rows.
 - **A view parameter is not a literal**: `VECTOR_DISTANCE(<column>, <parameter>)` plans as

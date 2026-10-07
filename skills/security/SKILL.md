@@ -17,15 +17,12 @@ being evaluated without anyone being told. Two facts shape every step below:
    or `('impersonate_roles' = '<role>')` — with their privileges and every policy, and no password.
    It needs `vdp.impersonation: true` (the profile's user has the `impersonator` role).
 
-This skill covers: a role with read access and giving it to a user; tagging the columns a
-policy should reach; a global security policy that masks columns, filters rows — by a value, or
-to each reader's own — or denies a view; taking someone's access away; checking it as each
-person. A tag as a plain label is `/denodo:catalog` (its full
-syntax lives there); descriptions and the MCP visibility tag are `/denodo:semantics`. User
-accounts and passwords, LDAP and identity-provider groups, per-role row and column
-restrictions, custom policies, session-attribute audiences and server properties are set
-in Design Studio by the administrator — say so and stop. Applying files is
-`/denodo:execute`; the working loop and the core safety rule are `/denodo:vql`.
+A tag as a plain label is `/denodo:catalog` (its full syntax lives there); descriptions and the
+MCP visibility tag are `/denodo:semantics`. User accounts and passwords, LDAP and
+identity-provider groups, per-role row and column restrictions, custom policies,
+session-attribute audiences and server properties are set in Design Studio by the
+administrator — say so and stop. Applying files is `/denodo:execute`; the working loop and the
+core safety rule are `/denodo:vql`.
 
 ## Before you change anything
 
@@ -89,11 +86,6 @@ SELECT view_name, column_name, tag_name FROM GET_VIEW_TAGS() WHERE input_databas
 
 `vql plan` on the file names, per statement, every existing object it touches that this
 session did not create (`touches`) — the first row needs that list empty (`/denodo:vql`).
-
-The second row includes the changes that look safe. A mask the human asked for still
-changes what people's reports compute tomorrow; a `CREATE` of a policy restricts people who
-exist; `CREATE OR REPLACE ROLE` over an existing role adds to it and removes nothing; and a
-re-created role brings back to life a policy that someone may have switched off on purpose.
 The tool marks `CREATE` of a role, a user or a policy `destructive: security`.
 
 The yes is to the statements, after you have shown them in this shape:
@@ -125,7 +117,6 @@ are the "before" the human compares with.
 | "It only restricts — it can only make things safer" | A mask changes what reports compute: a `GROUP BY` on the masked column collapses into one group, an aggregate over a hidden number becomes `NULL`, a filter on it finds nothing. Someone's dashboard breaks silently in the morning. |
 | "It is reversed with one `REMOVE_FROM` / `DROP`" | The readers already got the result; and `DROP TAG … CASCADE` deletes every policy that names the tag. |
 | "Only new objects — a pure `CREATE`" | A new policy restricts existing people; a re-created role revives an invalid policy; `CREATE OR REPLACE` of an existing role or user adds to it. Global objects are nobody's own by being new. |
-| "`GET_CATALOG_EFFECTIVE_PERMISSIONS` says the user is restricted" | Its `rowpermissions` says a restriction exists, not that it applies. It said "restricted" for a user who read every masked column in clear through a direct grant. |
 | "Revoking can only make it safer" | `ALTER ROLE … REVOKE` on a role others hold cuts them off too, and a data source or a Scheduler job that logs in as the person stops working tonight. The yes is to the revokes, shown with who keeps what. |
 | "I can't log in as them, so I'll create a test user" | A user with a password puts it in a file and in the transcript; a user with a role is a person with access. Impersonate the real people, or report the check as not done. |
 | "I'll give my profile the `impersonator` role to check" | That changes your account's privileges on a shared server — the administrator's decision. Ask for it; meanwhile the result is unverified. |
@@ -235,10 +226,8 @@ CREATE OR REPLACE VIEW iv_household_income
   the same `TAGS`, or their next apply unmasks it. `ALTER TAG` keeps the tag's description;
   `CREATE OR REPLACE TAG … ADD_TO` does the same assignment but rewrites the description and
   is not flagged by the tool at all — which changes nothing about the yes.
-- A mask applies where the tag is, and everything computed above sees the masked value:
-  `SUBSTR` gives `****`, `LEN` the length of the mask, `CONCAT('Mgr: ', …)` `Mgr: ********`.
-  A `NULL` stays `NULL` and an empty text becomes `********` — *verified: 9.5.1 (live,
-  2026-10-01)*.
+- A mask applies where the tag is, and everything computed above sees the masked value
+  (`references/policies.md`, Masking).
 
 ### Check it as the people it is for
 
@@ -256,9 +245,8 @@ SELECT avg_dependents FROM household_income_by_band LIMIT 3
 CONTEXT ('impersonate_roles' = 'sales_analyst,allusers');
 ```
 
-- One impersonated query **per person the request names**, plus one person outside the
-  audience who must still see the values, plus every view the audience can read below the
-  tagged one. Write down what each returned; that table is the result of the work.
+- The impersonated queries are the first three rows of *Verify* below; write down what each
+  returned — that table is the result of the work.
 - A role nobody holds yet is checked with `impersonate_roles` — named roles only, so `allusers`,
   which a local user holds too, goes with it. When no reader outside the audience exists, say so —
   the administrator is not one: it sees everything anyway.
@@ -266,9 +254,6 @@ CONTEXT ('impersonate_roles' = 'sales_analyst,allusers');
   privileges`) goes last, or into a call of its own.
 - A filter compares the masked value, so `unmasked` is `0` when every row is masked. For a
   row filter, compare `COUNT(*)` as the person with the admin's `COUNT(*) WHERE <condition>`.
-- `This user cannot impersonate` → `vdp.impersonation` is `false`: the restriction is
-  unverified. Hand the human these queries and the expected answers; do not create a user,
-  and do not grant your profile anything.
 - **Impersonation checks reads only.** An `INSERT`, `UPDATE` or `DELETE` with the same
   `CONTEXT` ran with the profile's own privileges: a user with nothing but `EXECUTE` on a view
   updated it and a base view they had no grant on — *verified: 9.5.1 (live, 2026-10-02)*.
@@ -403,14 +388,12 @@ ALTER USER kchen REVOKE CONNECT ON sales_analytics;
 | `ANY USERS ( u )`, `NOT_IN USERS ( u )` | what is granted to those users directly | everything that comes through their roles, a local administrator |
 | `ALL` | every path, every non-administrator | local and global administrators only |
 
-So: before a role audience, read query 1 above. Every user's row with an empty
-`userrolename`, and every role outside the audience that grants `EXECUTE` on a view carrying
-the tag, is a person who will keep reading in clear. One audience takes one form — roles or
-users, never both (`Syntax error … near 'USERS'`) — so the two ways to close a direct grant
-are revoking it (`ALTER USER kchen REVOKE EXECUTE ON sales_analytics.household_income`) or a
-second policy, the same but with `AUDIENCE ( ANY USERS ( kchen ) )` — either way the user
-was masked from then on, *verified: 9.5.1 (live, 2026-10-01)*. Both are the human's choice,
-with a yes.
+So: before a role audience, read query 1 — every path in the third column is a person who
+keeps reading in clear. One audience takes one form — roles or users, never both
+(`Syntax error … near 'USERS'`) — so the two ways to close a direct grant are revoking it
+(`ALTER USER kchen REVOKE EXECUTE ON sales_analytics.household_income`) or a second policy,
+the same but with `AUDIENCE ( ANY USERS ( kchen ) )` — either way the user was masked from
+then on, *verified: 9.5.1 (live, 2026-10-01)*. Both are the human's choice, with a yes.
 "Everyone except the auditors" with `ALL` is impossible — `ALL` restricts them too;
 `NOT_IN ROLES ( auditor )` works only while nobody reads by a direct grant.
 
@@ -418,17 +401,15 @@ with a yes.
 
 - A mask or a filter on a tagged column applies to that view and **to every view built on
   it**; an aggregate over the column changes with it.
-- A tag on the top view only leaves the views below it unrestricted: a role with `EXECUTE` on
-  the whole database read all rows of the base view while the derived view above returned
-  three of twelve. Tag the lowest view that carries the column — the base view when the
-  audience can read the whole database — or grant the audience only the views above the tag.
+- A tag on the top view only leaves the views below it unrestricted. Tag the lowest view that
+  carries the column — the base view when the audience can read the whole database — or grant
+  the audience only the views above the tag.
 - "It must also cover views built later": a tag on the base view's column covers every view
   built over it; a new source with its own copy of the column needs its own tag.
 - **Many columns** — "mask every column that holds an email": the list, its lineage, where each
-  assignment goes and the check row for row are `/denodo:catalog`, *One tag on many columns*.
-  Here every row whose view existed before this session waits for the human's yes — in its
-  view's file or in the `ALTER TAG` file — and the impersonated check runs per view of the list,
-  not on one example.
+  assignment goes and the check row for row are `/denodo:catalog`, *One tag on many columns*;
+  which rows wait, *Who applies what*. The impersonated check runs per view of the list, not on
+  one example.
 
 ## What you need
 
@@ -439,7 +420,7 @@ with a yes.
 | How each is shown | the human: masked text, empty, a filter, no access. Not said → ask; the treatment of numbers and dates is part of the question |
 | Which databases | the database of every view that carries the tag — the base view's own when the tag sits there — not only the one people query; always in `VIEW_DATABASES` |
 | Tag name | the concept (`personal_data`, `sales_territory`); check that no policy already names it (query 3) |
-| Can you do it, and check it | `env check` → `features.enterprise_plus` (tags and global security policies need the Enterprise Plus bundle: `false` → say so and stop); `vdp.admin` (`false` → a role needs `create_role`, giving it to someone `assign_all_roles`, a privilege `ADMIN` on the database or `assignprivileges`, a tag `manage_tags`, a policy `ADMIN` on every database it names or `manage_policies`; without them the files go to the human); `vdp.impersonation` |
+| Can you do it, and check it | `env check` → `features.enterprise_plus` (`false`: tags and policies need Enterprise Plus — say so and stop); `vdp.admin` (`false`: a role needs `create_role`, assigning it `assign_all_roles`, a privilege `ADMIN` on the database or `assignprivileges`, a tag `manage_tags`, a policy `ADMIN` on each database it names or `manage_policies` — else the files go to the human); `vdp.impersonation` |
 
 ## Verify
 
@@ -486,7 +467,7 @@ Each runs without an error — *verified: 9.5.1 (live, 2026-10-01)*; rows 13–1
 | an audience role that does not exist | `There was an error creating the global security policy. Role 'x' does not exist` | the role first; check the spelling with `--max-rows` |
 | a tag that does not exist | `The following tags do not exist: 'x'` | `CREATE OR REPLACE TAG` first |
 | `CREATE USER u EXTERNAL GRANT ROLE r` | `Syntax error … near 'GRANT'` | accounts are the administrator's; a role is given with `ALTER USER u GRANT ROLE r` |
-| an impersonated query | `This user cannot impersonate. Only users with role 'impersonator' can impersonate.` | the check is unverified — ask the administrator |
+| an impersonated query | `This user cannot impersonate. Only users with role 'impersonator' can impersonate.` | the check is unverified — hand the human the queries and the expected answers; ask the administrator |
 | an impersonated query | `The user does not have CONNECT privileges on the database '<db>'` | a real answer: that user cannot read the database |
 | `GET_USERS_WITH_ROLE()` with only `role` | `No search methods ready to be run. … include_indirect_roles` | `WHERE role = 'r' AND include_indirect_roles = true` |
 

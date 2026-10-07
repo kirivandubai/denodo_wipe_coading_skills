@@ -32,7 +32,7 @@ took 0.7–2 s on the server it was measured on:
 | The AI function is | Requests |
 |---|---|
 | only in the `SELECT` list, the query has `LIMIT n` | `n` — the only form a `LIMIT` bounds |
-| in the `WHERE`, or a condition on an AI column of a view or subquery | one per row read, until `n` rows match — up to every row; and again for each row kept and projected. Over a file source the condition is evaluated **before** your other filters, on every row of the file — measured once, 4 rows wanted cost 39 requests over a 35-row file. Over JDBC the other filters went to the database first, and the same 4 rows cost 8 |
+| in the `WHERE`, or a condition on an AI column of a view or subquery | one per row read, until `n` rows match — up to every row; and again for each row kept and projected. Over a file source the condition is evaluated **before** your other filters, on every row of the file; over JDBC the delegated filters run first |
 | under `ORDER BY`, `GROUP BY`, `DISTINCT`, an aggregate, a join condition | every row, whatever the `LIMIT` |
 | a column of a view the query does not read (`COUNT(*)`, other columns, a filter on another column) | none |
 | a column of a view with a loaded full cache | none |
@@ -42,8 +42,6 @@ took 0.7–2 s on the server it was measured on:
 | given the same text in many rows, or a literal | one per row — nothing is reused |
 | given a literal, under `GET_QUERY_EXECUTION_PLAN` | evaluated while planning: a plan is a request too |
 
-- **`--max-rows` cuts what the tool prints, not what the server computes**: the tool reads
-  every row the query returns. Only a `LIMIT` in the query bounds the work.
 - A filter on source columns runs first — delegated to the database when the source can —
   so only the rows that pass it are sent.
 - Time the `Dual()` tries — a text from the rows, the function you will run — and multiply:
@@ -53,8 +51,9 @@ took 0.7–2 s on the server it was measured on:
 ## The rule: the human's number
 
 **An AI function runs over the rows of a view or a table only up to a number the human
-agreed to.** Every row is a paid request, and the text of every row goes to the configured
-model. The number counts requests: rows × the AI functions evaluated per row.
+agreed to.** Every row is a request, billed if the provider is hosted, and its text goes with
+it. The number counts requests: rows × the AI functions evaluated per row. Hosted or not, the
+number is the human's.
 
 | You run it yourself | Only with the human's number |
 |---|---|
@@ -70,7 +69,7 @@ back to me" lets you run anything under 400, the `Dual()` tries, samples and any
 counted against it. A vague one — "a handful", "a few examples" — is at most five rows
 (with two AI columns, ten requests); say which rows you took — a filter on a column may pick
 them so that the sample covers each case. "Tag every ticket", said before anyone saw the
-count, is the task, not the number. A second full run is a new number.
+count, is the task, not the number.
 
 Show it in this shape, after the `Dual()` tries and before any run over rows:
 
@@ -98,7 +97,6 @@ stored run is what the dashboard will show.
 | "I deduplicated / filtered first — it is far fewer calls" | Still a run over rows. Show the number you will actually run; that is the one they agree to. |
 | "They need the counts for the deck in 30 minutes" | Files, `Dual()` tries, the message. A guess run under a deadline is still a run nobody agreed to. |
 | "A cache load is setup, not a query" | A load is the full run: every row of the view, every AI column. |
-| "`--max-rows 10` keeps it small" | It keeps the printout small. The server computed every row. |
 | "A sample of five is harmless" | It is a run over rows. Try the expression on `Dual()`, or ask for the sample size with the count. |
 
 **Red flags — stop:** an AI function under `ORDER BY`, `GROUP BY`, `DISTINCT` or in a `WHERE`;
@@ -160,16 +158,14 @@ LIMIT 5;
 
 - **The AI functions stay in the `SELECT` list**, so the `LIMIT` is the number of rows sent.
   Filter on columns (`WHERE review_date >= …`), never on an AI result.
-- **Always an `other` label.** A text that fits none of them still gets one of yours: "what
-  are your opening hours" came back `billing` from a scale without `other`, and `other` with
-  it. It returns the label as you wrote it.
+- **Always an `other` label.** A text that fits none of them still gets one of yours. It
+  returns the label as you wrote it.
 - **Every label has the same fields** — all `ROW(label)`, all `ROW(label, description)` or all
   `ROW(label, description, example)`. Mixed: `classify_ai: invalid classification scales.`
   Descriptions are what tell close labels apart; read them as the model will — two that
   overlap send borderline texts to either. **One label per row**: a text that asks for three
   things gets one of them.
-- **The `CASE` sends no request for an empty text.** `NULL` costs nothing anyway; `''` would be
-  a request and a confident `neutral` or label.
+- **The `CASE` sends no request for an empty text.**
 - `SENTIMENT_AI` answers `negative`, `neutral`, `mixed` or `positive`: lower case where
   measured, capitalised in the documentation's screenshots. Read the case off the `Dual()`
   call, or wrap the call in `LOWER(…)` before anything filters on it.
@@ -223,31 +219,29 @@ CONTEXT ('cache_preload' = 'true',
   number. Every later run of it is a new number: a refresh job runs it again every night.
 - **Without the cache, every read of the AI column is a run**: a dashboard's `GROUP BY topic`
   sends every row on every refresh, the labels drift between refreshes, and every reader needs
-  the role `use_large_language_model` — a reader without it got `The current user does not
-  have the required privileges to execute this function.` from a view whose AI column was
-  computed, and its rows from a cached one. *verified: 9.5.1 (live, 2026-10-02)*
+  the role `use_large_language_model`; readers of a cached view need none. *verified: 9.5.1
+  (live, 2026-10-02)*
 - **A new view, not a column in someone's view.** The view people already read keeps its
   readers, its privileges and its cost; they move to the new one when they choose — say that
   the dashboard has to be pointed at it, after the load, not before. Built over
   another team's view, it becomes one of its dependants (`USED_BY`) and goes with their
   `DROP … CASCADE` — say so.
-- The cache rules are `/denodo:cache`'s, and three of them cost money here: from the
-  `ALTER VIEW … CACHE` until the load finishes the view returns 0 rows; re-applying the
-  view's file with a column added, removed or retyped empties the cache, and refilling it is
-  a new full run; a text longer than the cache column (4,000 characters on SQL Server) fails
-  the load, which then keeps serving the previous content.
+- The cache rules are `/denodo:cache`'s, and three matter here: from the `ALTER VIEW … CACHE`
+  until the load finishes the view returns 0 rows; re-applying the view's file with a column
+  added, removed or retyped empties the cache; a text longer than the cache column (4,000
+  characters on SQL Server) fails the load. A failed load keeps serving the previous content;
+  every refill or retry is a full run, inside the number or a new one.
 - The texts and the answers are stored in the cache database. Say so when the texts may hold
   personal data.
 - **A sample before the full load**, without touching the cache: `SELECT * FROM
   product_review_ai WHERE TRIM(review_text) <> '' LIMIT 20 CONTEXT ('cache' = 'off')` reads
-  the source and computes the 20 rows — 20 × the AI columns — and stores nothing; the loaded
-  rows and their date stayed as they were — *verified: 9.5.1 (live, 2026-10-06)*.
+  the source — on a view you hold WRITE on (`/denodo:cache`, **Verify**) — and computes the 20
+  rows — 20 × the AI columns — and stores nothing; the loaded rows and their date stayed as
+  they were — *verified: 9.5.1 (live, 2026-10-06)*.
 - **The view holds only what the load stored**: a row added to the source afterwards is not
   in the view at all until the next load. And a load is never incremental here — it re-sends
   every row with text, old ones included, so over a source refreshed nightly each refresh is
   a full run. Incremental loads are set in Design Studio (`/denodo:cache`).
-- **A failed load keeps the previous content**, and a retry is the full run again — inside
-  the number, or a new one.
 - **When texts repeat word for word** (`COUNT(DISTINCT review_text)` far below `COUNT(*)`), the
   cached view can classify `SELECT DISTINCT review_text` instead, and the view people read
   joins it back on the text: one request per distinct text, and identical texts get identical
@@ -313,20 +307,15 @@ CREATE OR REPLACE VIEW product_review_search
 
 - **Not `VECTOR_DISTANCE(review_vector, search_text)`**, the documentation's own example: with
   a parameter instead of a literal, the plan keeps `embed_ai(search_text, …)` in the per-row
-  projection, and every search sends **one embedding request per row of the table** — measured
-  once, 4 rows took 2 s and 32 rows 13 s, against 0.9 s for this form. *verified: 9.5.1 (live,
-  2026-10-02)*
+  projection, and every search sends **one embedding request per row of the table**.
+  *verified: 9.5.1 (live, 2026-10-02)*
 - **The model is written out** — the one the column's `embeddingmodel` names (the read above).
   Over `Dual()` there is no column to read it from; without it the server's default is used
-  silently, and a model other than the server's configured one is refused: `Cannot execute embed_ai() function:
-  the model '…' specified in the query does not match the configured`.
-- The reader passes the sentence as an equality: `SELECT * FROM product_review_search WHERE
-  search_text = '…'`. Without it: `View without search methods: The following obligatory
-  fields cannot be removed: search_text`.
+  silently, and a model other than the configured one is refused (Common mistakes).
 - **What it costs at scale:** the cross join with `Dual()` runs in Denodo, so every query
-  reads every vector from the source (4 bytes a dimension: 12 KB a row at 3,072) and no vector index
-  or approximate search can serve it — right for thousands of rows; for millions, say so and
-  leave the design to the human. A user who only queries it needs no LLM role.
+  reads every vector from the source and no vector index or approximate search can serve it
+  — right for thousands of rows; for millions, say so and leave the design to the human. A
+  user who only queries it needs no LLM role.
 - A `WHERE` on another column is applied **before** the five are chosen: `WHERE review_id =
   5` returned review 5, ranked sixth without it. A filtered search is a search within the
   filter.
@@ -341,7 +330,7 @@ CREATE OR REPLACE VIEW product_review_search
 | Who reads the answers | the human: a dashboard or a report means the view with a cache |
 | Whether the server answers | the `Dual()` call |
 | The vector column and its model | `GET_VIEW_COLUMNS()` → `column_extra_properties` |
-| Target language | the human; `'en'` and `'German'` both worked for `TRANSLATE_AI` |
+| Target language | the human (formats: `references/functions.md`) |
 
 ## Verify
 
@@ -357,9 +346,8 @@ a search, and planning embeds its sentence — one request:
 | Readers send nothing | `SELECT execution_plan FROM GET_QUERY_EXECUTION_PLAN() WHERE input_query = 'SELECT topic, COUNT(*) FROM <view> GROUP BY topic'` | the SQL names the `C_<VIEW>…` cache table, and no `_ai` function appears |
 | A search sends one request | the plan of the search view's query | `embed_ai` only under the `Dual()` branch |
 
-A `LIMIT` in the planned query makes `GET_QUERY_EXECUTION_PLAN` answer `Error executing
-query`: plan it without the `LIMIT`. A view with a `LIMIT` inside, like the search view,
-plans fine.
+A view with a `LIMIT` inside, like the search view, plans fine; a `LIMIT` in the planned
+query does not (Common mistakes).
 
 ## Silent failures
 

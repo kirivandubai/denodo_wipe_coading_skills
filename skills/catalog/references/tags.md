@@ -5,9 +5,6 @@ optional description, attached to views and to columns of views. It is a differe
 from a Data Marketplace tag (REST, `/denodo:marketplace`); the marketplace can *import*
 VDP tags, and the imported copies are read-only there.
 
-Tags are not per database: `CREATE TAG` while connected to any database creates the same
-global tag, and `LIST TAGS` shows all of them. The assignments carry the database name.
-
 ## CREATE TAG / CREATE TAGS
 
 ```sql
@@ -48,11 +45,10 @@ ALTER TAG <name>
 
 Same rules as `CREATE TAG`. `REMOVE_FROM` with a target detaches the tag from it:
 `ALTER TAG pii ADD_TO ( VIEWS () COLUMNS () ) REMOVE_FROM ( VIEWS () COLUMNS ( db.v.email ) )`.
-`ALTER` is a change to an existing object: human's confirmation first, and the tool
-refuses it on a production profile without `--allow-destructive`. Derived views have no
-ALTER for tags: their side is `TAGS ( <tag> [, …] )` inside `CREATE OR REPLACE VIEW`. A base
-view has `ALTER TABLE <bv> ( ALTER TAGS ( VIEW (…) COLUMNS (…) ) )`, which replaces every tag
-of the view and its columns (`/denodo:semantics`). `ALTER TAG … ADD_TO` is the additive path.
+`ALTER`: `vql plan` says whether it waits for the human's yes (`/denodo:vql`). Derived views
+have no ALTER for tags: their side is `TAGS ( <tag> [, …] )` inside `CREATE OR REPLACE VIEW`. A
+base view has `ALTER TABLE <bv> ( ALTER TAGS ( VIEW (…) COLUMNS (…) ) )`, which replaces every
+tag of the view and its columns (`/denodo:semantics`). `ALTER TAG … ADD_TO` is the additive path.
 
 ## DROP TAG / DROP TAGS
 
@@ -95,7 +91,3 @@ WHERE tag_name = 'pii';                           -- everywhere one tag is assig
 execute condition using types 'text' and 'array'`; filter on `tag_name` instead),
 `database_name`, `view_name`, `column_name` (`null` for a whole-view assignment),
 `tag_name`. Without a `WHERE` it returns every assignment on the server.
-
-`DESC TAG` fails on a tag that does not exist (`Error loading tag '<name>'`), which
-makes it a cheap existence check before deciding between `CREATE OR REPLACE TAG` and
-touching someone else's tag.

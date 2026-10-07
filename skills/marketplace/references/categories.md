@@ -58,11 +58,6 @@ api get --env dev /public/api/category-management/views/<view_id>/categories
 
 ## What differs from tags
 
-- **Delete cascades to children**, silently: deleting a parent removes every descendant and
-  their assignments, and the response mentions none of it. Read `…/categories/tree` and show
-  the human what goes.
-- **Repeated delete is `200`**, not `500`. Neither status tells you whether the object was
-  there — look it up first.
 - **Two "assign" endpoints on the view's side**, and their names are nearly identical:
   `category-management/views/{id}/categories` replaces the view's set,
   `category-management/add/views/{id}/categories` adds to it. The path that reads as the

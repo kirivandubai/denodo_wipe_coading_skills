@@ -46,8 +46,6 @@ Denodo user the MCP client authenticates with; the AI SDK's synchronisation user
 | `DESC VQL VIEW <view>` | the view's own clauses: `DESCRIPTION`, `PRIMARY KEY`, `TAGS`, field properties — not the inherited descriptions |
 | `GET_VIEW_STATISTICS()` | per field: rows, distinct values, `NULL`s, min, max, average size — only when statistics were gathered; 0 rows also for a misspelt view or no `EXECUTE` |
 
-The `input_…` parameters take `=` only; `IN` returns zero rows.
-
 ## Writing — every form
 
 All *verified: 9.5.1 (live, 2026-09-30)*; each is marked `destructive: alter` by the tool.
@@ -79,7 +77,6 @@ ALTER TAG <tag>
     REMOVE_FROM ( VIEWS () COLUMNS () );
 ```
 
-- `DESCRIPTION` needs `=`; without it: `Syntax error: Exception parsing query near '''`.
 - A view description of 4,001 characters fails with `Error storing views modified during
   transaction: Error storing view '<view>': Error accessing the metadata while
   loading/storing objects`; 4,000 is stored. A field description of 4,001 was stored.
@@ -132,7 +129,7 @@ The MCP Server prints both as `[PK] [NOT NULL]` (documentation).
 LLM configured for the Denodo Assistant and return text; they need the Enterprise Plus bundle,
 that configuration and the role `use_large_language_model` — the documentation of these
 procedures says `use_large_language_model_role`, which does not exist on 9.5.1
-(`Error loading role`). Each call is a paid LLM request (*documentation only*; the role,
+(`Error loading role`). Each call is one LLM request (*documentation only*; the role,
 measured). The LLM functions in a query are `/denodo:ai`.
 What they return is a draft built from the view's metadata (names, types, existing
 descriptions, tags, associations), plus sample values only when data usage and the cache are

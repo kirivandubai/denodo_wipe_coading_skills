@@ -9,18 +9,18 @@ Two classes of errors reach the agent through `scripts/denodo`:
 2. **Data Marketplace** (`api`, exit `1`): HTTP `status`, plus `body.code` when the
    server bothers to send a body — it often does not.
 
-Client-side failures (exit `2`/`3`, `error.kind` set) are listed last.
+Client-side failures (exit `2`/`3`, `error.kind` set) come third; what the tool flags
+`destructive` comes last.
 
-Every row was reproduced on a 9.5.1 server — the first ones on 2026-09-08, the rest as the
-skills that meet them were verified — unless marked *observed once* (recorded during an
-exploratory session rather than re-triggered).
+Every row was reproduced on a 9.5.1 server unless marked *observed once*.
 
 ## 1. Virtual DataPort messages
 
 ### Object already exists (idempotency)
 
 Fix for all of them: use `CREATE OR REPLACE` — supported by every VQL object type these
-skills create — instead of retrying `DROP` + `CREATE`.
+skills create (a table that holds rows: `/denodo:materialize`) — instead of retrying `DROP` +
+`CREATE`.
 
 | Substring | Statement | Meaning |
 |---|---|---|
@@ -89,7 +89,6 @@ datasources → folders → database.
 | Substring | Where | Meaning |
 |---|---|---|
 | `Error executing query. Total time …` + in `raw`: `[DF ROUTE] [PARSE_ERROR] … Error getting input Stream` | `SELECT` from a DF base view | the file path in the datasource `ROUTE` is wrong or unreadable on the *server* (paths are server-side) |
-| `authentication error: The username or password is incorrect` | any (arrives as `error.kind: connection`) | profile password wrong — the human edits `profiles.toml` |
 
 Silent failures worth knowing — `ok:true` and a broken object, every one of them reproduced
 on a 9.5.1 server like the rows above:
@@ -111,7 +110,6 @@ object back** — that is what the Verify section of every domain skill is for.
 
 | `status` | `body.code` / body | When | Action |
 |---|---|---|---|
-| `401` | `{"status":401,"error":"Unauthorized"}` (Spring) — *observed once* | no `Authorization` header (not reachable through the tool) | — |
 | `401` | `AUTHENTICATION_SERVER_NOT_FOUND` "Server not found" | wrong `marketplace_server_id` in the profile, **or** wrong VDP password with a serverId set | fix the profile; a single registered VDP server may leave `marketplace_server_id` unset |
 | `500` | `GENERIC` "Session Expired." | **more than one VDP server is registered and no server was named** — the marketplace cannot tell which catalog you mean | set `marketplace_server_id` in the profile and the tool names the server on every call; the ids are in `GET /public/api/configuration/servers`. `--param serverId=<id>` overrides the profile for one call |
 | `403` | empty, on `/external-tool-servers` and other server-scoped paths | the same missing `serverId` — this family answers `403` where tags answer `500` | as above: name the server |
@@ -122,7 +120,7 @@ object back** — that is what the Verify section of every domain skill is for.
 | `409` | empty | duplicate name: tag, category, element type, provider type | find by name (`GET` list) and `PUT` instead of `POST` |
 | `409` | `SERVER_DUPLICATED` — *observed once* | duplicate external tool server name | same |
 | `400` | `VALIDATE_FIELD` `{"description":"must not be null",…}` | body missing required fields (`description`, `descriptionType` on tags) | send all fields; `descriptionType` is `"TEXT"` |
-| `400` | `INVALID_VDP_EXTERNAL_ELEMENT_METADATA` "The view '…' does not exist" | an association names a view the **marketplace catalog** does not have — it may well exist in VDP | synchronise the catalog (`/denodo:marketplace`), then re-run the import |
+| `400` | `INVALID_VDP_EXTERNAL_ELEMENT_METADATA` "The view '…' does not exist" | an association names a view the **marketplace catalog** does not have — it may well exist in VDP | check the server first — under a wrong `serverId` the import fails the same way (`/denodo:marketplace`, rule 2); otherwise synchronise the catalog, then re-run the import |
 | `400` | `INVALID_VDP_EXTERNAL_ELEMENT_METADATA` "Required field 'associated_element_id' is null … association index 0" | the interface view built its association array with a `LEFT OUTER JOIN`, so an element with no associations carries one all-null record | `INNER JOIN` plus a `UNION ALL` branch with a NULL array — `/denodo:marketplace` |
 | `400` | `INVALID_EXTERNAL_ELEMENT_INTERFACE_VIEW` "expected type external_element_association_array_type" | the association array type was renamed; the marketplace matches the contract's type name literally | keep the names from `…/vql-metadata` |
 | `400` | `INVALID_EXTERNAL_TOOL_SERVER` — *observed once* | `…/changes` on a CUSTOM server (endpoint is for Tableau/Power BI only) | use `synchronize`, not `changes` |
@@ -131,20 +129,13 @@ object back** — that is what the Verify section of every domain skill is for.
 | `500` | `GENERIC` "Cannot invoke \"java.lang.Long.longValue()\" because \"elementId\" is null" | `null` inside the id list of a body | resolve every id before the call |
 | `500` | `GENERIC` "Error executing query…" (`view-details`) | `databaseName` does not exist in VDP | fix the database name |
 | `200` | `[<viewId>, …]` from `POST /tags/{id}/views` or `/categories/…` | ids that were **not** assigned: unknown view, or already assigned | success is `[]`; unknown ids are not errors for the server |
-| `200` | `{"id":null,"inLocal":false,"inVDP":true}` from `GET view-details` | the view exists in VDP but is not synchronised into the marketplace, so it has no id to assign anything to | synchronise the catalog first — `/denodo:marketplace` covers which call and which conflict mode; a radius that holds only what you created in this session is yours to synchronise, any other the human confirms (`/denodo:vql`) |
-
-Repeated `DELETE` is not idempotent across object types: `500` for tags, `200` for
-categories, `404` for element types and servers. Look up by name before deleting
-instead of relying on the status.
+| `200` | `{"id":null,"inLocal":false,"inVDP":true}` from `GET view-details` | the view is not in this server's copy of the catalog — **or** the call named the wrong `serverId`, which answers the same body | ask the other registered servers first (`/denodo:marketplace`, rule 2); only then synchronise (**Who sends it**) |
 
 ## 2a. Scheduler HTTP (`api --server scheduler`)
 
-The Scheduler answers in the shape `{"status": "<code> <REASON>", "timestamp": …, "message": …}`,
-with `subErrors` for a validation failure. Its `500 Internal error. If the error persists,
-contact your administrator.` is the answer to several different mistakes — a five-field cron,
-`start` on a disabled job, a `PUT` without a section — and a job accepted on creation can
-still fail every run. The table of what each answer means is in `/denodo:scheduler`, "Common
-errors"; a run's own errors are in its report, not in the call's answer.
+The Scheduler answers `{"status": "<code> <REASON>", "timestamp": …, "message": …}`
+(`subErrors` on validation). What each answer means is `/denodo:scheduler`, "Common errors";
+a run's own errors are in its report, not in the call's answer.
 
 ## 3. Client-side (`error.kind`)
 
@@ -165,3 +156,33 @@ errors"; a run's own errors are in its report, not in the call's answer.
 | `connection` | 1 | `authentication error: The username or password is incorrect` | wrong password in the profile |
 | `refused` | 2 | `profile 'x' is marked production and … destructive …; nothing was executed` | show `error.destructive` to the human; flag only after their yes |
 | `environment` | 3 | `the Denodo driver stack is not importable` + `hint` | show the hint verbatim; the launcher normally handles this |
+
+## What the tool flags
+
+The list `vql plan`, `api … --plan` and every result's `destructive` field apply (SKILL.md,
+*Destructive operations*):
+
+- `DROP`, `ALTER`, `DELETE`, `TRUNCATE`; `INSERT` and `UPDATE` — a write through a view lands in
+  the source behind it, `INSERT … ON DUPLICATE KEY UPDATE` included (VQL has no `MERGE`);
+- the server-wide `SET '<property>' = …` (it rewrites the configuration of the whole server,
+  `= NULL` deletes the property) and `WEBCONTAINER` except `STATUS`;
+- a `SELECT … FROM name(…)` or `CALL name(…)` of a predefined procedure that changes state —
+  `GENERATE_STATS`, `CREATE_REMOTE_TABLE`, `DROP_REMOTE_TABLE`, `CLEAN_CACHE_DATABASE`,
+  `COMPACT_CACHE`, `REFRESH_BASE_VIEW`, `LOGCONTROLLER` and the rest of the list in
+  `/denodo:procedures`, `references/predefined.md`, with what each one changes;
+- a query whose `CONTEXT` loads or invalidates a view's cache — `'cache_preload' = 'true'` or
+  any `'cache_invalidate'` (`/denodo:cache`);
+- a `CREATE [OR REPLACE]` of a `USER`, a `ROLE` or a `GLOBAL_SECURITY_POLICY`, `CHOWN`, and a
+  `CREATE DATABASE` with a `GRANT` (`/denodo:security`);
+- `CREATE [OR REPLACE] REMOTE TABLE`, `CREATE [OR REPLACE] SUMMARY VIEW`, `REFRESH` and
+  `CREATE OR REPLACE MATERIALIZED TABLE` (`/denodo:materialize`);
+- HTTP `DELETE`, and the marketplace `POST`s that replace a whole set or delete what is missing
+  from the payload — `tags/vdp/synchronize`,
+  `element-management/{all,DATABASES,VIEWS,WEBSERVICES,EXTERNAL_ELEMENTS}/synchronize`, the
+  `external-tool-servers/synchronize` family, `views/{id}/tags`,
+  `category-management/views/{id}/categories` and `property-management/views/{id}/groups`;
+- on the Scheduler (`--server scheduler`): every `DELETE` and report deletion; a `PUT` of a job,
+  project or data source (`alter`); a job's status change (`job`); a job's creation, by what it
+  runs (`cache`, a VDP job's statement kind, or `write` for an exporter); configuration, drivers
+  and plugins, roles, passwords and metadata imports (`setting`, `security`, `replace`)
+  (`/denodo:scheduler`).

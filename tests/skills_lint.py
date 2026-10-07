@@ -36,7 +36,7 @@ SKILL_LINES_LIMIT = 500    # a SKILL.md is read whole; the detail belongs in ref
 OVER_BUDGET: dict[str, int] = {}
 
 # SKILL.md files over the limit, with their length in lines — the same ratchet.
-LONG_SKILLS: dict[str, int] = {"datasources": 696, "marketplace": 560, "views": 722}
+LONG_SKILLS: dict[str, int] = {"datasources": 626, "views": 682}
 
 # Fenced blocks in skills/ that are not templates and so carry no verification mark:
 # grammar, diagrams, what a server or a tool prints, a report the agent writes, a command
@@ -78,7 +78,6 @@ UNMARKED_BLOCKS: dict[str, list[tuple[str, str]]] = {
     ],
     "skills/execute/SKILL.md": [
         ("! ${CLAUDE_PLUGIN_ROOT}/scripts/denodo env init", HUMAN_COMMAND),
-        ("! ${CLAUDE_PLUGIN_ROOT}/scripts/denodo secret encrypt", HUMAN_COMMAND),
     ],
     "skills/materialize/SKILL.md": [("Created dwh.reporting.household_income (ds_dwh)", SHAPE)],
     "skills/materialize/references/remote-tables.md": [
@@ -103,10 +102,10 @@ UNMARKED_BLOCKS: dict[str, list[tuple[str, str]]] = {
         ("denodo/sales_analytics/\n  00_database.vql", "a folder layout"),
         ("scripts/denodo testing run --env dev", "a command of the plugin's CLI; its unit tests cover it"),
         ("bash denodo-test.sh file:", LAUNCHER),
+        ("denodo-test.bat file:", LAUNCHER),
     ],
     "skills/testing/references/format.md": [
         ("%RESULTS[exception] not found", GRAMMAR),
-        ("bash denodo-test.sh file:", LAUNCHER),
         ("maxRowsInMemoryForMatching=10000", "the configuration file `testing config` writes"),
     ],
     "skills/views/SKILL.md": [("ENDPOINT <role name>  <view>  [PRINCIPAL]  (<multiplicity>)", GRAMMAR)],
@@ -114,10 +113,6 @@ UNMARKED_BLOCKS: dict[str, list[tuple[str, str]]] = {
     "skills/vql/SKILL.md": [
         ("intent in words\n  → read .denodo/conventions.md", "a diagram of the loop"),
         ("# Base views over ds_erp, schemas sales and billing", "the shape of a plan file the agent writes"),
-    ],
-    "skills/vql/references/dialect.md": [
-        ("vql run --env dev -e \"SELECT SUBSTR('abcdef', 1, 3) AS want_abc",
-         "a probe through the CLI; the mark at the top of the file covers its expressions"),
     ],
 }
 

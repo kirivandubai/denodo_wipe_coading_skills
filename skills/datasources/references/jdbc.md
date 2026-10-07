@@ -58,31 +58,10 @@ human asked for a specific pool. *verified: 9.5.1 (live, 2026-09-09)*
 
 ## Credentials
 
-```sql
-USERNAME = <literal> USERPASSWORD = <literal> [ ENCRYPTED ]
-```
-
-| Mechanism | Syntax | Status |
-|---|---|---|
-| Password, encrypted | `USERPASSWORD = '<string>' ENCRYPTED`, string from `ENCRYPT_PASSWORD '<password>'` | *verified: 9.5.1 (live, 2026-09-09)* — and the encrypted string can be copied between data sources **on the same server**, which is how you reuse an existing source's credentials without ever seeing the password |
-| Password, plain | `USERPASSWORD = '<password>'` | works, and the server stores it encrypted anyway — but the file keeps the clear text, so never in git |
-
-A credentials vault, Kerberos, OAuth, AWS IAM, GCP service accounts and pass-through session
-credentials are set up in the Design Studio wizard, not here.
-
-The ciphertext comes from `${CLAUDE_PLUGIN_ROOT}/scripts/denodo secret encrypt --env <env>` —
-never write the underlying `ENCRYPT_PASSWORD '<password>'` yourself, because the plaintext
-would land in a Bash argument and stay in the transcript (`/denodo:execute`, "A password for
-a data source"). Encrypt on the environment the data source will live on: the ciphertext is
-tied to the installation's encryption key, and it is salted, so the same password encrypts
-to a different string every time. A ciphertext produced this way is accepted as a real
-credential — with a deliberately wrong password the source answers with its database's own
-authentication error, not a format error (a source on a Virtual DataPort server answers
-`The username or password is incorrect`). *verified: 9.5.1 (live, 2026-09-12)*
-
-Credentials are **replaced, never merged**: re-applying `CREATE OR REPLACE DATASOURCE`
-without the `USERPASSWORD` clause leaves the source with no password, and the next query
-answers `no password was provided`. *verified: 9.5.1 (live, 2026-09-09)*
+The clause is `USERNAME = <literal> USERPASSWORD = <literal> [ ENCRYPTED ]`. Where the
+ciphertext comes from, reusing an existing source's, and why re-applying without the clause
+erases the password: `SKILL.md`, **Passwords**. The ciphertext is salted, so one password
+encrypts to a different string every time.
 
 ## Driver directories (`CLASSPATH`)
 
@@ -157,6 +136,46 @@ CREATE [ OR REPLACE ] WRAPPER JDBC <name>
   `DELEGATESQLSENTENCEASSUBQUERY`, `DATAINORDERFIELDSLIST`,
   `SUPPORTSDISTRIBUTEDTRANSACTIONS`.
 
+## A wrapper by hand, when the database cannot be reached
+
+When the server cannot reach the database (a different network zone, credentials not issued
+yet), introspection is not available: write the wrapper and the base view by hand, on the
+data source of the `SKILL.md` template (`ds_orders_db`), from the schema the human gives you.
+The DDL still parses and the objects still get created; only `SELECT` fails, on the
+connection. Java types in the wrapper, VQL types in the base view, and a subset of the columns
+is fine (above):
+
+```sql
+-- verified: 9.5.1 (live, 2026-10-07) — created against an unreachable host
+CREATE OR REPLACE WRAPPER JDBC wr_orders_db_orders
+    FOLDER = '/01 - connectivity'
+    DATASOURCENAME = ds_orders_db
+    SCHEMANAME = 'public'
+    RELATIONNAME = 'orders'
+    OUTPUTSCHEMA (
+        order_id = 'order_id' :'java.lang.Long' (OPT) SORTABLE,
+        customer_id = 'customer_id' :'java.lang.String' (OPT) SORTABLE,
+        order_dt = 'order_dt' :'java.sql.Timestamp' (OPT) SORTABLE,
+        total_amount = 'total_amount' :'java.math.BigDecimal' (OPT) SORTABLE,
+        status = 'status' :'java.lang.String' (OPT) SORTABLE
+    );
+
+CREATE OR REPLACE TABLE bv_orders_db_orders I18N us_pst (
+        order_id:long,
+        customer_id:text,
+        order_dt:timestamp,
+        total_amount:decimal,
+        status:text
+    )
+    FOLDER = '/01 - connectivity'
+    CACHE OFF
+    TIMETOLIVEINCACHE DEFAULT
+    ADD SEARCHMETHOD wr_orders_db_orders (
+        OUTPUTLIST ( order_id, customer_id, order_dt, total_amount, status )
+        WRAPPER (jdbc wr_orders_db_orders)
+    );
+```
+
 ## Introspection procedures
 
 `PING_DATA_SOURCE` and the listing and generating procedures need the source to be reachable.
@@ -169,20 +188,12 @@ without it: both answered over a host that does not resolve, as measured on a 9.
 | `PING_DATA_SOURCE` | `SELECT status, down_cause FROM PING_DATA_SOURCE() WHERE database_name='<db>' AND data_source_type='JDBC' AND data_source_name='<ds>'` | `UP` / `DOWN` plus the Java exception. Positional arguments work too; a bare `Error executing query. Total time …` comes, for one, from a database or data source that does not exist |
 | `GET_JDBC_DATASOURCE_TABLES` | `… WHERE input_datasource_name='<ds>' [ AND input_catalog_name='<cat>' ] [ AND input_schema_name='<schema>' ] [ AND input_table_name='<t>' ] [ AND input_type='TABLE' ]` | the reliable one: the filters are input parameters, so the server asks the source only about what you want |
 | `LIST_JDBC_DATASOURCE_TABLES` | `… WHERE data_source_name='<ds>'` | Deprecated (documentation); walks every catalog and schema the login can list. It failed on the SQL Server measured, and a `WHERE` does not help because the walk happens first. Use `GET_JDBC_DATASOURCE_TABLES` |
-| `GENERATE_VQL_TO_CREATE_JDBC_BASE_VIEW` | `SELECT creation_vql FROM …() WHERE data_source_name='<ds>' [ AND catalog_name='<cat>' ] AND schema_name='<s>' AND table_name='<t>' AND base_view_name='<bv>' AND folder='<path>'` | with `folder`, returns **three rows**: a `CREATE OR REPLACE FOLDER` of that folder with no description, the wrapper and the `CREATE TABLE` — *verified: 9.5.1 (live, 2026-10-06)*. `catalog_name` is required where the product has catalogs (SQL Server), omitted for Oracle |
+| `GENERATE_VQL_TO_CREATE_JDBC_BASE_VIEW` | `SELECT creation_vql FROM …() WHERE data_source_name='<ds>' [ AND catalog_name='<cat>' ] AND schema_name='<s>' AND table_name='<t>' AND base_view_name='<bv>' AND folder='<path>'` | `catalog_name` is required where the product has catalogs (SQL Server), omitted for Oracle |
 | `GET_SOURCE_TABLE`, `GET_SOURCE_COLUMNS` | `… WHERE input_database_name='<db>' AND input_view_name='<view>'` | the other direction: which source table and columns an existing base view sits on — the way to answer "where does this column come from" |
 
-What generated VQL looks like, and what to change in it:
-
-- the wrapper is named after `base_view_name`, not `wr_…` — rename it in both statements
-  if the project's conventions ask for a prefix;
-- `DATASOURCENAME` comes back database-qualified (`<db>.<ds>`);
-- the `CREATE TABLE` ends with `CONTEXT('SIMULATE' = 'NO')`, which is harmless to keep;
-- types are chosen by the adapter: Oracle `NUMBER(10)` → `long`, `NVARCHAR2` → `text`,
-  PostgreSQL `date` → `localdate`, SQL Server `bigint` → `long`;
-- the first row, `CREATE OR REPLACE FOLDER`, is not part of the base view: leave it out. Over a
-  folder that exists it clears the folder's description, and over a folder you did not create
-  in this session it is a re-declaration that waits for the human's yes.
+What to change in the generated statements: `SKILL.md`, **Relational database over JDBC**.
+Types are chosen by the adapter: Oracle `NUMBER(10)` → `long`, `NVARCHAR2` → `text`,
+PostgreSQL `date` → `localdate`, SQL Server `bigint` → `long`.
 
 ## Every table of a schema
 

@@ -41,25 +41,13 @@ CREATE [ OR REPLACE ] METRIC VIEW <name>
   definition anyway.
 - `CHECK_INDIRECT_ACCESS` belongs to the indirect-access privilege (*documentation*;
   Administration Guide, "Limit Indirect Access to Views Shared with Other Development Teams").
-
-### What an expression may hold
-
-| Where | Accepted | Refused |
-|---|---|---|
-| dimension | any row-level expression over one or several sources: `TRIM`, `CASE`, `COALESCE`, `CONCAT`, `GETYEAR`, casts, literals | an aggregate — `The following fields cannot be projected: max(…) AS <dim>` |
-| metric | `SUM`, `COUNT(<col>)`, `COUNT(DISTINCT <col>)`, `AVG`, `MIN`, `MAX`; `CASE` inside them; arithmetic over aggregates (`SUM(a) / NULLIF(SUM(b), 0)`); `ROUND(AVG(x), 2)`; `SUM(CAST('long', x))` | another metric's name and `COUNT(*)` — `invalid field: missing source schema for field: <metric>`; columns of two views — `There are metric fields referencing different views. Metrics must be built using fields from the same view.` |
-| metric without an aggregate (`n AS f.qty`) | **accepted** | — and every query that names it returns no rows |
-
-The Administration Guide says a metric may be "derived by referencing other metrics"
-(Average Order Value = Total Revenue / Order Count); in VQL that is the refusal above —
-repeat the aggregates. Types follow the dialect: `SUM` over `int` stays `int`, `COUNT` is
-`long`, `AVG` over an integer is `double`, `SUM(int) / COUNT(x)` is an integer division.
+- The Administration Guide says a metric may be derived from other metrics; VQL refuses it
+  (`invalid field: missing source schema for field`, `SKILL.md`, Common mistakes) — repeat the
+  aggregates.
 
 ## Joins: what each association does to the rows
 
-Measured over a fact with `NULL` foreign keys and a calendar dimension whose members mostly
-have no facts, every variant built and queried separately — *verified: 9.5.1 (live,
-2026-10-01)*.
+*verified: 9.5.1 (live, 2026-10-01)*
 
 | Association's dimension endpoint | Join type written | Unmatched facts (`NULL` or orphan key) | Members without facts |
 |---|---|---|---|
@@ -78,10 +66,10 @@ have no facts, every variant built and queried separately — *verified: 9.5.1 (
   `INNER JOIN PLAN`.
 - **Interference.** With an extra association between the fact and the base view under a
   dimension view (`iv_fact → bv_calendar` next to `iv_fact → iv_calendar`), the metric
-  view's `RIGHT` ran as `INNER`; dropping the extra association brought it back, adding it
-  again repeated it. A second association on the same pair of views, or one from the fact
-  to an unrelated view, changed nothing. Three associations of different multiplicity
-  between the same two base views also made `RIGHT` run as `INNER`.
+  view's `RIGHT` ran as `INNER`; dropping it restored `RIGHT`. A second association on the
+  same pair of views, or one from the fact to an unrelated view, changed nothing. Three
+  associations of different multiplicity between the same two base views also made `RIGHT`
+  run as `INNER`.
 - `GET_METRIC_VIEWS().associations` gives per pair the join type written: `0` `INNER`, `1`
   `LEFT`, `2` `RIGHT`, `null` none — not the one run.
 - The Administration Guide has a table of default join types per pair of cardinalities;
@@ -90,31 +78,14 @@ have no facts, every variant built and queried separately — *verified: 9.5.1 (
 
 ## Queries
 
-| Shape | Result |
-|---|---|
-| `SELECT <dims>, evaluate_metric(<m>) FROM <mv> GROUP BY <dims>` | the metric at that grain |
-| `SELECT evaluate_metric(<m>) FROM <mv>` | the grand total (the Data Marketplace page says a query needs a dimension; VQL accepts this) |
-| a literal next to metrics only | `For this type of query, the group by fields are mandatory.`; `GROUP BY '<literal>'` works |
-| `SELECT <dims> FROM <mv> GROUP BY <dims>` | every member of the dimension views, with or without facts |
-| `SELECT *`, or dimensions without `GROUP BY` | **0 rows**; as a view: `Error applying metric transformation.` |
-| `SUM`/`AVG`/`MAX`/`COUNT(<metric>)` | the metric's own aggregation, the outer one ignored (*documented*) |
-| `COUNT(*)` | the number of fact rows in the group |
-| `evaluate_metric(a) * k`, `ROUND(evaluate_metric(a), n)` | `a` unchanged |
-| `evaluate_metric(a) / evaluate_metric(b)` | 0 rows |
-| `evaluate_metric(<dimension>)` | `There are dimensions fields with function aggregation (…). A dimension field can not be used with an aggregation function.` |
-| `evaluate_metric(x)` over any other view | `NULL` |
-| `WHERE <dimension> …` | filters the facts before aggregation |
-| `WHERE evaluate_metric(m) > …` / `WHERE m > …` | `Aggregate functions are not allowed here` / `Error executing query … [JDBC ROUTE] [ERROR]` |
-| `HAVING evaluate_metric(m) > …` | filters groups; **0 rows** when grouped by the key of a dimension view with no declared `PRIMARY KEY` over a file source (plan `INCOMPATIBLE_QUERY_VIEW`, `VOID PLAN`) — declaring the key fixed it; over a view delegated to SQL Server, without a key, it answered |
-| `HAVING <dimension> …` | works |
-| `HAVING <alias>` / `HAVING <metric>` | `Field not found …` / `Field '<m>' is not a group by field` |
-| `GROUP BY <metric>` | `There are metric fields inside the group by fields (<m>). The group by fields can only be dimensions or literals.` |
-| `<expr over dims> AS a … GROUP BY a` | grouped by the expression; over sources delegated to a database (SQL Server measured), every `COUNT(DISTINCT …)` metric is dropped from the plan and the result — over file sources it stayed. An expression in the dimension's own definition keeps it |
-| `<expr over dims> AS a … GROUP BY <dims>` | grouped by the raw dimensions, `a` repeated |
-| `ORDER BY <alias>`, `ORDER BY evaluate_metric(m)`, `LIMIT` | work |
-| `ORDER BY <field not selected>` | `Field not found '<f>' in view with schema: …` |
-| `<mv> JOIN <view> ON …` with `GROUP BY` | runs until the query timeout: `Error: Time out processing data` (the server's or the client's query timeout; `CONTEXT ('queryTimeout' = '<ms>')` shortens it). `CREATE VIEW` over it is accepted |
-| a subquery or view of the shape in the first row, joined to anything | works |
+Beyond `SKILL.md`, "Query it ad hoc":
+
+- A query of metrics only is accepted and gives the grand total, although the Data Marketplace
+  page says a query needs a dimension.
+- `WHERE <metric> > …` fails with `Error executing query … [JDBC ROUTE] [ERROR]`.
+- A metric view joined in the same `FROM` runs until the server's or the client's query
+  timeout; `CONTEXT ('queryTimeout' = '<ms>')` shortens it. `CREATE VIEW` over such a query is
+  accepted.
 
 ## Over a metric view: selection views
 
@@ -131,11 +102,6 @@ a `FROM` of its own — the selection view — and build everything else over it
   following views are in an invalid state`), and putting it back makes it valid again.
   `DROP VIEW <metric view>` without `CASCADE` is refused while selection views exist
   (`There are some elements that depend on this one`). `USED_BY()` lists them.
-- A selection view inherits the description of a dimension it passes through and none of a
-  metric (an aggregate inherits nothing — `/denodo:semantics`).
-- Totals: a metrics-only selection view (`households_total` in the skill) gives the
-  grand total; a `CROSS JOIN` of it with a grouped one gives shares. An average or a distinct
-  count is never re-aggregated from the grouped rows.
 
 ## What a metric view refuses or ignores
 
@@ -154,9 +120,8 @@ a `FROM` of its own — the selection view — and build everything else over it
 A summary built from a metric-view query (`SELECT <dims>, evaluate_metric(…) … GROUP BY
 <dims>`) answers that query and any query over a subset of its dimensions (*documentation*,
 Administration Guide, "Materialization and Smart Query Acceleration using Summaries"; it
-needs every metric of the view in the summary). Summaries are
-created by a server administrator with the right licence — `/denodo:materialize`, where a
-summary over plain views is measured; one over a metric view was not tried.
+needs every metric of the view in the summary). Summaries are created by a server
+administrator with the right licence (`/denodo:materialize`; not verified over a metric view).
 
 ## Consumers
 
@@ -178,6 +143,4 @@ summary over plain views is measured; one over a metric view was not tried.
 |---|---|
 | `GET_VIEW_COLUMNS()` | per field `column_organization` (`dimension` / `metric`), `column_dimension` (the group), `column_definition` (the expression), `column_vdp_type`, `column_remarks` (the description); a pattern goes in `input_view_name = 'x%'`, not `LIKE` |
 | `GET_METRIC_VIEWS('<db>', '<name pattern>')` | sources, associations with join type, filter, dimensions and metrics as arrays; a `LIKE` pattern works positionally only — `WHERE input_name = 'x%'` returns nothing |
-| `GET_VIEWS()` | `view_type = 5` |
-| `GET_ELEMENTS()` | `subtype = 'metric'` |
-| `DESC VQL VIEW <mv> ('includeDependencies' = 'no', 'dropElements' = 'no')` | `CREATE METRIC VIEW` without `OR REPLACE`, functions lower-cased; a wizard-made one ends with `ALTER VIEW … LAYOUT (…)`, which only places boxes on the canvas. Without the options, `DESC VQL` of a view built on a metric view of another database leaves the metric view out and returns that database's source views unqualified, with their tags |
+| `DESC VQL VIEW <mv> ('includeDependencies' = 'no', 'dropElements' = 'no')` | `CREATE METRIC VIEW` without `OR REPLACE`, functions lower-cased; a wizard-made one ends with `ALTER VIEW … LAYOUT (…)`, which only places boxes on the canvas |

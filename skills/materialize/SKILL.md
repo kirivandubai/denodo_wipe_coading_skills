@@ -28,31 +28,12 @@ source is `/denodo:datasources`. **Nothing here schedules anything**: a nightly 
 Denodo Scheduler job (`/denodo:scheduler`) or the team's own scheduler running a file from this
 skill.
 
-## What a stored result does
-
-*verified: 9.5.1 (live, 2026-10-02)* — against SQL Server:
-
-| Fact | Consequence |
-|---|---|
-| `CREATE_REMOTE_TABLE` creates the table, inserts the query's rows, creates a base view with the query as its `DATA_LOAD_QUERY`, and answers three rows — `inserted_rows` on the second | the count you report comes from that row |
-| The `CREATE REMOTE TABLE` **command** creates and loads the table and nothing else: no base view, no count, and the table can neither be refreshed (`The REFRESH command is only valid for Summaries and Remote Tables`) nor dropped by `DROP_REMOTE_TABLE` | use the procedure |
-| **`REFRESH` empties the table first.** When the load then fails — a source down, a column added under a `SELECT *` load query — the table **stays empty** until the next run that succeeds | everyone reading it sees 0 rows; the refresh job has to alert, and the load query names its columns |
-| `replace_remote_table_if_exist = true` and `CREATE OR REPLACE REMOTE TABLE` drop **whatever table has that name** — another team's included — and the readers of the old one keep their catalog status `OK` until a query asks for a column that is gone | a name that is taken is the human's question |
-| A remote table has **no lineage**: `USED_BY` of the view it was loaded from does not list it (a summary is listed) | when that view changes, nothing warns that the table's load will fail |
-| **A summary answers from its table until the next `REFRESH`** — after rows changed in the source, and after the definition of a view under it changed (a filter added under it: the old count kept coming back) | every rewritten query returns the old figures, and nothing says they are old |
-| **A summary whose load failed is empty and still used**: every query the optimizer sends to it answers 0 rows, or `NULL` and `0` for a total, while the sources are fine | after a failed load, `ALTER SUMMARY VIEW … QUERY REWRITE ENABLED = FALSE` at once — the load job checks and does it |
-| A summary is used for its own grain, a coarser one, a filter on its columns, `COUNT(*)` from its count; a `COUNT(DISTINCT)` it computes only at exactly its own grain — and **never** for `AVG` or a column it does not hold | prove it with the plan before promising "faster" |
-| A query answered from a summary or a remote table runs in **that database's collation**: through a summary on SQL Server `region = 'DELHI'` found `Delhi`, through the views nothing | an answer can change with the place it runs; check the values the filters compare |
-| `DROP VIEW` of a remote table's base view or of a summary leaves the table in the database | `DROP_REMOTE_TABLE` drops both |
-| `CREATE OR REPLACE MATERIALIZED TABLE` over one with rows **empties it**, without a word; `UPDATE` and `DELETE` are refused | its rows exist nowhere else: plain `CREATE`, run once |
-| Types land as the database's own: a text with a known source size keeps it (`nvarchar(2000)`), any other text becomes `varchar(4000)`, a sum of `decimal(7,2)` becomes `numeric(38,20)`, a `timestamptz` a `datetimeoffset` | a longer text fails the load — after the table was created (below) |
-| In a `varchar` column, **characters outside the database's code page become `?`** without an error: `Tokyo 東京` landed as `Tokyo ??` | `CAST(<text> AS nvarchar(<n>))` in the query keeps them |
-| **A load that fails after the table was created leaves it there, empty, with no base view**; the next call with `replace_remote_table_if_exist = false` then fails on the name | the empty table is yours to replace — it is from this session — and the cause is fixed first |
+Most of what goes wrong here gives no error: read "Silent failures" at the end first.
 
 ## Which one
 
 First find out **why** the query is slow, or **who** reads the table, before choosing:
-`/denodo:views`, "delegation", shows whether rows travel between data sources.
+`/denodo:views`, `references/delegation.md`, shows whether rows travel between data sources.
 
 | The human wants | Use | Not |
 |---|---|---|
@@ -80,13 +61,12 @@ changes the answers of queries you did not write, waits for the human's yes.
 | `REFRESH` of a remote table you created in this session, and `replace_remote_table_if_exist = true` over one — the empty table a failed load left included; an incremental load into one (`references/incremental.md`) | `REFRESH` of any table older than this session — it is emptied first; an incremental load into one — every run writes into it |
 | a summary created **unloaded** (`DATA_LOAD_IMMEDIATE = FALSE`) and its plan checked: unloaded, it writes nothing and the optimizer never uses it — the data source and schema it names become part of the yes for its load. When the human named none, propose the data source the big table already lives in and its data-load schema, and say it is a proposal | **every load of a summary** — the first `REFRESH`, a `CREATE` that loads, every reload: from that moment it answers queries you did not write |
 | data movement in a view you created in this session | data movement added to a view that existed before this session: every query of it then creates a table in the target database |
-| a new materialized table in your project's database, and inserting into one you created in this session | `CREATE OR REPLACE MATERIALIZED TABLE` over one that exists — it empties it |
+| a new materialized table in your project's database, and re-declaring or inserting into one you created in this session | `CREATE OR REPLACE MATERIALIZED TABLE` over one older than this session — it empties it |
 | writing every file | a new load query for a remote table older than this session (the base view re-declared, "Refresh it") — it decides what the next refresh writes |
 | — | `DROP_REMOTE_TABLE`, `DROP VIEW` of any of these — your own included |
 
-The tool flags every statement here `table` or `procedure`, the new table included: it cannot
-see whose a table is. On a profile marked production that means every one of them waits for
-the yes and `--allow-destructive` (`/denodo:execute`).
+The tool flags all of these `table` or `procedure`, the new table included: it cannot see
+whose a table is, and the flag is not the rule (`/denodo:execute`).
 
 Report what you did and ask for the rest in this shape:
 
@@ -213,9 +193,6 @@ WHERE remote_table_name = 'household_income'
   view is a `REFRESH` handle and writable: put "frozen, never REFRESH" in its `DESCRIPTION`,
   and tell the human that only the database's owner can make the table read-only (a `DENY` on
   SQL Server, a `REVOKE` of the write privileges elsewhere).
-- When the query runs entirely in the target data source, the copy happens inside the database
-  (measured once: sixty thousand rows in under a second); otherwise every row passes through
-  Denodo.
 
 ### Refresh it
 
@@ -329,10 +306,9 @@ CONTEXT ('summary_rewrite' = 'off');
 - **Its filters run in the summary's database.** On a case-insensitive database a filter that
   matched nothing through the views matches through the summary (`'DELHI'` found `Delhi`).
   Check that no two values the queries filter on differ only by case or trailing spaces.
-- A summary goes stale the moment its sources or the views under it change, and nothing marks
-  it: it needs a scheduled `REFRESH` like a remote table, and the dashboards show figures as of
-  that load. Say both in the message. `ALTER SUMMARY VIEW s_household_band QUERY REWRITE
-  ENABLED = FALSE` takes a stale one out of every plan at once — an `ALTER`, for the yes.
+- A summary needs a scheduled `REFRESH` like a remote table, and the dashboards show figures
+  as of that load: say both in the message. Switching rewrite off for a stale summary is an
+  `ALTER`, for the yes.
 
 ### Data movement for a federated join
 
@@ -447,7 +423,6 @@ WHERE base_view_database_name = 'sales_analytics' AND base_view_name = 'bv_dwh_h
 | The types landed as meant | `SELECT creation_vql FROM GENERATE_VQL_TO_CREATE_JDBC_BASE_VIEW() WHERE data_source_name = 'ds_dwh' AND catalog_name = 'dwh' AND schema_name = 'reporting' AND table_name = 'household_income' AND base_view_name = 'type_check'` — it only generates text and creates nothing; with `folder = '/'` it fails; read `sourcetypename`, `sourcetypesize` | text widths, `nvarchar` where text is not Latin, the decimals the readers expect |
 | A loaded summary answers like the views | the pair in "Load it", after every load | equal; a failed load → rewrite off at once |
 | A refresh worked | `COUNT(*)` after `REFRESH` | the new count, not `0` |
-| A summary answers what the views answer | the same query with and without `CONTEXT ('summary_rewrite' = 'off')` | equal |
 | A summary is used | the plan of the readers' query | `acceleratedWithSummaries = [<db>.<summary>]` |
 | A data movement does its job | the plan | one `SQLSentence` in the big side's data source joining `t_<view>_<id>` |
 | Nothing old was touched | `GET_JDBC_DATASOURCE_TABLES` of the target schema before and after | one new table, nothing gone |

@@ -1,4 +1,4 @@
-# Global security policies — full syntax and measured behaviour
+# Global security policies — syntax and measured behaviour
 
 Source: Virtual DataPort VQL Guide 9.5, "Global Security Policies", and the Administration
 Guide page of the same name; every row marked *verified* was run on 9.5.1. A global security
@@ -147,18 +147,6 @@ second policy, identical but for `AUDIENCE ( ANY USERS ( <u> ) )`. Either way th
 read through the role and the direct grant was masked from then on, and a user outside both
 audiences kept the values — *verified: 9.5.1 (live, 2026-10-01)*.
 
-## Where the tag sits
-
-- A filter or a mask on a tagged column applies to that view and to every view built on it.
-  A tag on a column of the top view leaves the views below it unrestricted: a role with
-  `EXECUTE` on the whole database read all 12 rows of the base view while the derived view
-  above returned 3. Tag the column in the lowest view that carries it, or grant the
-  audience only the views that carry the tag — *verified: 9.5.1 (live, 2026-10-01)*.
-- Re-applying a `CREATE OR REPLACE VIEW` without the column's `TAGS` removes the tag, and
-  the mask or filter with it, silently. `DESC VQL` prints a column tag as
-  `CREATE VIEW v ( manager TAGS ( pii ) ) AS SELECT …` — the view's own file carries it the
-  same way.
-
 ## What removes a policy, or switches it off, without saying so
 
 | Statement | What happens | *verified: 9.5.1 (live, 2026-10-01)* |
@@ -188,15 +176,12 @@ FROM GET_GLOBAL_SECURITY_POLICIES_TAGS();              -- which policy names whi
 `GET_GLOBAL_SECURITY_POLICIES_TAGS()` filters by array arguments
 (`WHERE input_tag_names = {ROW('pii')}`, documentation); filtering its `tag_name` column is
 simpler. A policy whose audience names a role and whose elements name no tag (`ALL VIEWS`)
-has no row there — `DESC VQL` each policy listed by `LIST` to be complete.
+has no row there — `DESC VQL` each policy listed by `LIST` to be complete. `DESC VQL` of a view
+prints a column tag as `CREATE VIEW v ( manager TAGS ( pii ) ) AS SELECT …` — the view's own
+file carries it the same way.
 
 ## Errors
 
 | Statement | Server says |
 |---|---|
-| audience names a role that does not exist | `There was an error creating the global security policy. Role 'x' does not exist` |
-| elements or restriction name a tag that does not exist | `The following tags do not exist: 'x'` |
 | `VIEW_DATABASES` names a database that does not exist | `There was an error creating the global security policy. Database 'x' does not exist` |
-| `ENABLED` left out | `Syntax error: Exception parsing query near 'AUDIENCE'` |
-| `MASKING` without `FILTER = ''` | `Syntax error: Exception parsing query near 'MASKING'` |
-| `MASKING ANY ( t )` without `WITH` | `Syntax error: Cannot invoke "…MaskingExpressionHolder.getDefaultMasking()" because "mt" is null` |

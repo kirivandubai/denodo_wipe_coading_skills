@@ -39,14 +39,11 @@ CREATE [ OR REPLACE ] DATABASE <name> [ '<description>' ]
     [ <grant> ]*
 ```
 
-Order matters: the description literal is the first thing after the name; `CHARSET`
-after it. With `CHARSET` before the description the parser stops at the quote.
-
 | Clause | Meaning | Default |
 |---|---|---|
 | `'<description>'` | free text, shown by `DESC DATABASE` and `GET_DATABASES()` | none |
 | `CHARSET` | which characters Design Studio lets users put in identifiers. `UNICODE` any; `RESTRICTED` a limited set; `DEFAULT` the server setting. Does not change the server's behaviour | `DEFAULT` — what that means is the server's setting; `GET_DATABASES()` → `charset`, `charset_default` |
-| `AUTHENTICATION LOCAL` | users are VDP users. This is "Global authentication settings" in Design Studio | this, when the clause is absent |
+| `AUTHENTICATION LOCAL` | Design Studio's "Global authentication settings": whatever the server's global authentication is (`SKILL.md`, **What you need before filling the template**) | this, when the clause is absent |
 | `AUTHENTICATION LDAP …` | authentication and roles delegated to an LDAP server through an LDAP data source that already exists in `<db>`. Needs the six values — two base DNs, two attribute names, two search patterns — get them from the human or the Administration Guide setup, never guess | — |
 | `VCS` | per-database version-control integration | server setting |
 | `CREDENTIALS_VAULT` | HashiCorp / CyberArk configuration for this database | server setting |
@@ -88,8 +85,7 @@ ALTER DATABASE <name> [ '<description>' ]
     [ <grant> ]*
 ```
 
-`ALTER` is a change to an existing object: the human confirms it first (`/denodo:vql`),
-and on a production profile the tool refuses it without `--allow-destructive`. For a
+`ALTER`: `vql plan` says whether it waits for the human's yes (`/denodo:vql`). For a
 database that only this project's file has configured, re-applying the file's `CREATE OR
 REPLACE DATABASE` is enough. For any other database, change only the clause in question with
 `ALTER DATABASE`, after the human's yes: `CREATE OR REPLACE` is not documented to keep the

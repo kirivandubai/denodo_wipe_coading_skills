@@ -1,6 +1,6 @@
 ---
 name: execute
-description: Use when VQL or a Data Marketplace or Scheduler REST call has to run against a live Denodo 9.5 server — applying a .vql file, running DESC or a test SELECT, calling the marketplace or Scheduler API, checking a connection — or when `scripts/denodo` returned JSON with `ok:false` that needs interpreting. Not for writing VQL — that is /denodo:vql and the domain skills.
+description: Use when VQL or a Data Marketplace or Scheduler REST call has to run against a live Denodo 9.5 server — applying a .vql file, running DESC or a test SELECT, checking a connection — or when `scripts/denodo` returned JSON with `ok:false` that needs interpreting. Not for writing VQL — that is /denodo:vql and the domain skills.
 allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/scripts/denodo *)
 ---
 
@@ -28,19 +28,19 @@ tool reads host, user and password from `~/.denodo/profiles.toml` itself.
 | What a file would do, before applying it | `vql plan --env dev model/sales/views.vql` (also `-e`, `-`, `--database`) — reads the server and the session's ledger, executes nothing; per statement `action`, `object`, `exists`, `own`, `needs_yes`, `why`, `conditions`, and `yes` — what the yes is — when anything waits. The rule it applies is `/denodo:vql`'s safety table |
 | What this session created | `vql ledger --env dev` — every object a `vql run` of this session created on the profile's server, each with its `state`, re-checked against the server: `present`, `missing` (gone without a `DROP` this session ran), `replaced` (the name now has another object), `dropped`; `states` counts them |
 | Schema of an object | `vql desc --env dev bv_orders` (`--type view` is the default and covers base views too — there is no `DESC TABLE`) |
-| Server-generated VQL | `vql desc --env dev bv_orders --vql` — read it, do not apply it: it opens with `DROP … CASCADE` and rebuilds the object **together with what it depends on** in its own database — dependencies in another database are left out, except under a metric view of another database: the metric view is left out and its source views come back unqualified, as if they were in yours — never with what depends on it. Which object you ask therefore decides what you get: a base view returns source, wrapper and `CREATE TABLE` in one answer; the source alone returns only itself, without the column list. A name can be qualified — `vql desc --env dev "other_db.bv_orders" --vql` reads another database without switching yours — *verified: 9.5.1 (live, 2026-09-12)*. The object alone, without the data source its dependencies bring (and that source's encrypted password): `vql run --env dev -e "DESC VQL VIEW bv_orders ('includeDependencies' = 'no', 'dropElements' = 'no')"` — *verified: 9.5.1 (live, 2026-10-02)* |
-| Other types | `--type database`, `--type "datasource df"`, `--type "wrapper df"`, `--type tag`, `--type association`, `--type "interface view"`, `--type role`, `--type global_security_policy` (with `--vql`, read only: it starts with `DROP … CASCADE`); folders take a quoted path: `vql desc --env dev "'/sales'" --type folder --vql` |
+| Server-generated VQL | `vql desc --env dev bv_orders --vql` — read it, do not apply it: it opens with `DROP … CASCADE` and rebuilds the object **together with what it depends on** in its own database — dependencies in another database are left out, except under a metric view of another database: the metric view is left out and its source views come back unqualified, as if they were in yours — never with what depends on it. A name can be qualified — `vql desc --env dev "other_db.bv_orders" --vql` reads another database without switching yours — *verified: 9.5.1 (live, 2026-09-12)*. The object alone, without the data source its dependencies bring (and that source's encrypted password): `vql run --env dev -e "DESC VQL VIEW bv_orders ('includeDependencies' = 'no', 'dropElements' = 'no')"` — *verified: 9.5.1 (live, 2026-10-02)* |
+| Other types | `--type database`, `--type "datasource df"`, `--type "wrapper df"`, `--type tag`, `--type association`, `--type "interface view"`, `--type role`, `--type global_security_policy` (with `--vql`, as above); folders take a quoted path: `vql desc --env dev "'/sales'" --type folder --vql` |
 | Marketplace call | `api get --env dev /public/api/tags` |
 | … planned, not sent | add `--plan` to any `api` call: `needs_yes`, `why`, `conditions`, `sent: false`; for `element-management/{DATABASES,VIEWS}/synchronize` it reads both `…/changes` and marks every entry against the session's ledger (`radius.own`, `radius.not_own`) |
 | … with a body | `api post --env dev /public/api/tags --json '{"name":"pii","description":"…","descriptionType":"TEXT"}'` |
 | … with the body in a file | `api put --env dev /public/api/views --json-file body.json` — for HTML, quotes, or a body you want to keep |
 | … query params / multipart | `--param k=v` (repeatable), `--part field=@file` / `field=json:{…}` |
 | Scheduler call | `api --server scheduler get --env dev /public/api/projects` — the same command against the Scheduler administration tool: the profile's account, and its Scheduler server as the `uri` parameter, are added. The profile may name both (`scheduler_url`, `scheduler_uri`); by default the web container of `marketplace_url` (or `http://<host>:9090`) and `//<host>:8000`. A path with a `..` segment is refused on either server. What to call is `/denodo:scheduler` |
-| Encrypt a source password | `secret encrypt --env dev` — the password is typed into a hidden prompt (in a terminal) or piped in on stdin, never passed as an argument; the answer carries `encrypted` and nothing else. See **A password for a data source** below |
-| Run `.denodotest` tests | `testing run --env dev --database sales_analytics --tool <Testing Tool dir> --java-home <Java 17+> <tests folder>` — starts the Denodo Testing Tool with its configuration from the profile in a temporary file, answers with `exit_code`, `summary` and each test; `ok` only when the tool exited `0` and every test passed. `testing config` writes the same configuration to a lasting 0600 file beside the profiles file for a human who runs the tool themselves (never inside a git work tree, never printed). Both refuse a production profile without `--allow-destructive`. The JDBC port is the profile's `jdbc_port` (9999 by default). Writing the tests is `/denodo:testing` |
+| Encrypt a source password | `secret encrypt --env dev` — the password is typed into a hidden prompt (in a terminal) or piped in on stdin, never passed as an argument; the answer carries `encrypted` and nothing else; the human runs it in their own terminal, and the procedure is `/denodo:datasources`, **Passwords** |
+| Run `.denodotest` tests | `testing run --env dev --database <db> --tool <dir> --java-home <Java 17+> <tests folder>`, or `testing config` for a human who runs the tool — `/denodo:testing`, **Running it** |
 | Which profiles exist | `env list` (never shows passwords) |
 | Is the server reachable, and who am I on it | `env check --env dev` (VDP, the marketplace if configured, and the Scheduler where the profile names a web container — `scheduler.server_version`, `mode`, `roles`; a missing Scheduler does not fail the check); `vdp.admin` — the profile's user is an administrator, so security policies do not apply to its own queries; `vdp.impersonation` — it may run a query as another user (`/denodo:security`) |
-| Verify the skills' own templates | `verify --env dev` runs the chain in `verification/chain.toml` and removes what it made: its own test database, and the server-level `verify_` tags, user, role and global security policy beside it — its security checks read as that user by impersonation, so they need `vdp.impersonation: true`; `--with-marketplace` adds the REST tail, which synchronises the shared marketplace catalog and is skipped while anything but the run's own database is pending there (if something appears mid-run, cleanup keeps its sync back and the run fails); `--with-ai` adds the steps that call the server's LLM and embedding model — about 50 paid requests; `--with-writes` adds the steps that create a table in the source database the manifest names (`[values]`, the server's cache data source by default) and insert, update and delete its rows through a view — the table is dropped in cleanup; `--with-scheduler` adds the Scheduler tail — a `verify_` project with a cache job and a CSV export job, run and then deleted with the project; the export leaves its file in the Scheduler's default export folder; `--testing-tool <dir>` adds the `.denodotest` templates of `/denodo:testing`, run by the Denodo Testing Tool installed in `<dir>` (Java on `PATH` or in `JAVA_HOME`); a step that needs what the server lacks (`env check` → `features`: the Enterprise Plus bundle, the cache, an LLM, …) is skipped with the reason (`--without <feature>` skips it on purpose); the values of the installation (embedding model, cache data source, Scheduler data source) are read from the server, and what it does not say — or the folder its test files were copied to on a server without internet access — goes into `verify.toml` beside the profiles, one table per profile (`--values <file>` for another); `--keep` leaves it all for inspection, `--update-marks` rewrites the `verified:` lines that passed, `--allow-destructive` is required on a production profile — without it the whole run is refused before it creates anything |
+| Verify the skills' own templates | `verify --env dev` runs `verification/chain.toml` and removes what it made: its own test database, and the server-wide `verify_` tags, user, role and global security policy — its security checks impersonate that user, so they need `vdp.impersonation: true`. The `--with-…` tails reach further: `--with-marketplace` synchronises the shared marketplace catalog (skipped while anything but the run's own database is pending there), `--with-writes` creates a table in a source database and writes its rows, `--with-scheduler` creates and runs jobs on the shared Scheduler, `--with-ai` sends about 50 paid LLM requests. A production profile needs `--allow-destructive`. Everything else: `verify --help` |
 
 Prefix every command with `${CLAUDE_PLUGIN_ROOT}/scripts/denodo`. Keep results
 readable: `--max-rows N` (default 100) caps every result set; `row_count` is the
@@ -60,12 +60,15 @@ response** — it tells you where you are connected. `env.database` is the profi
 or `--database`; a `CONNECT DATABASE` inside the file moves the session but not this field,
 so `GET_ELEMENTS()` is where to see what landed where.
 
-| Exit | Meaning | What to do |
-|---|---|---|
-| `0` | success | verify the object (DESC / SELECT), report |
-| `1` | the server refused a statement or call, or the network failed | read the message in `references/errors.md` |
-| `2` | usage, configuration, or a refused destructive operation | fix the command, the profile, or stop for a human |
-| `3` | driver stack could not be set up | show the human `error.hint` verbatim; do not `pip install` yourself |
+| `error.kind` | Exit | Cause | Action |
+|---|---|---|---|
+| — | `0` | success | verify the object (DESC / SELECT), report |
+| *(none)* | `1` | the server rejected a statement or call | `references/errors.md`, fix the VQL/call, re-apply |
+| `connection` | `1` | host/port unreachable, wrong password, marketplace down | `env check --env <name>`; report the message; do not retry blindly |
+| `usage` | `2` | wrong arguments (no `--env`, no input, both file and `-e`) | fix the command; `--help` on the subcommand |
+| `config` | `2` | profile missing, incomplete or unreadable; no `marketplace_url` for `api` | **No profile** below |
+| `refused` | `2` | destructive operation on a production profile | **Destructive operations** below |
+| `environment` | `3` | driver stack could not be set up | show the human `error.hint` verbatim and stop; do not `pip install` yourself |
 
 **`vql run`** returns `statements[]` (one entry per statement: `index`, `statement`
 head, `destructive`, `ok`, `error`, `columns`, `rows`, `row_count`, `affected`), `failed_at`,
@@ -113,17 +116,6 @@ nothing about the type in Denodo. To check a type, read it — `vql desc --env d
 <view>` — or do arithmetic on the server (`SELECT SUM(price * 2) …`); a text column
 would fail there.
 
-## When it fails — by `error.kind`
-
-| `error.kind` | Cause | Action |
-|---|---|---|
-| `usage` | wrong arguments (no `--env`, no input, both file and `-e`) | fix the command; `--help` on the subcommand |
-| `config` | profile missing, incomplete or unreadable; no `marketplace_url` for `api` | see **No profile** below |
-| `connection` | host/port unreachable, wrong password, marketplace down | `env check --env <name>`; report the message; do not retry blindly |
-| `refused` | destructive operation on a production profile | see **Destructive operations** below |
-| `environment` | driver stack not importable | show `hint` to the human, stop |
-| *(none, exit 1)* | the server rejected a statement or call | `references/errors.md`, fix the VQL/call, re-apply |
-
 ### No profile
 
 `config` with "profiles file not found" or "profile 'x' not found" means the human
@@ -140,32 +132,6 @@ It is interactive and hides the password. Then re-run your command.
 - Do not pass a password through an argument, an environment variable, `-e`, or a
   heredoc — anything that goes through Bash is kept in the session transcript.
 - If the human already pasted a password into the chat, say so and suggest rotating it.
-
-### A password for a data source
-
-The password a data source needs is not the profile's, and it must never reach the `.vql`
-file in clear text. `secret encrypt` is the whole procedure: it prints the ciphertext for
-`USERPASSWORD = '…' ENCRYPTED` and nothing else — not the password, not the statement that
-carried it, not even inside a server error.
-
-Ask the human to run it in their own terminal input, so the password goes into a hidden
-prompt and never into the transcript:
-
-```
-! ${CLAUDE_PLUGIN_ROOT}/scripts/denodo secret encrypt --env dev
-```
-
-A password manager can feed it instead — `op read op://vault/db/password | … secret
-encrypt --env dev` — which keeps the plaintext out of the terminal as well.
-
-- **Never build the statement yourself.** `vql run -e "ENCRYPT_PASSWORD '…'"` and a heredoc
-  into a file both put the password into a Bash argument, and that is kept in the transcript.
-- **The ciphertext belongs to the server that produced it** — `--env` therefore names the
-  environment the `.vql` will be applied to. Another environment means encrypting again there.
-- A wrong password encrypts just as happily; the mistake surfaces later, on the first use of
-  the source, as that database's own authentication error — from a JDBC source pointing at a
-  Virtual DataPort server, `The username or password is incorrect`; other databases word it
-  their own way. *verified: 9.5.1 (live, 2026-09-12)*
 
 ### Destructive operations
 
@@ -188,40 +154,20 @@ that table makes the request itself the yes, as it does for the tag of a view na
 visible to an agent. When the human cannot answer — away, a deadline — the statements go into a
 file and into your message, not into `vql run`.
 
-`DROP`, `ALTER`, `DELETE`, `TRUNCATE`; `INSERT` and `UPDATE` (a write through a view lands in
-the source behind it — `INSERT … ON DUPLICATE KEY UPDATE` included, VQL has no `MERGE`); the
-server-wide `SET '<property>' = …` (it rewrites the configuration of the whole server, `= NULL`
-deletes the property) and `WEBCONTAINER` except `STATUS`; a `SELECT … FROM name(…)` or `CALL name(…)` of a
-predefined procedure that changes state — `GENERATE_STATS`, `CREATE_REMOTE_TABLE`,
-`DROP_REMOTE_TABLE`, `CLEAN_CACHE_DATABASE`, `COMPACT_CACHE`, `REFRESH_BASE_VIEW`,
-`LOGCONTROLLER` and the rest of the list in `/denodo:procedures`, `references/predefined.md`,
-with what each one changes; a query whose
-`CONTEXT` loads or invalidates a view's cache — `'cache_preload' = 'true'` or any
-`'cache_invalidate'` (`/denodo:cache`); a `CREATE [OR REPLACE]` of a `USER`, a `ROLE` or a
-`GLOBAL_SECURITY_POLICY`, `CHOWN`, and a `CREATE DATABASE` with a `GRANT` — each changes who
-may read what across the server, and re-declaring an existing role or user adds to it
-instead of replacing it (`/denodo:security`); `CREATE [OR REPLACE] REMOTE TABLE`, `CREATE [OR
-REPLACE] SUMMARY VIEW`, `REFRESH` and `CREATE OR REPLACE MATERIALIZED TABLE` — each creates,
-replaces or empties a table in a database (`/denodo:materialize`); HTTP `DELETE`, and
-the marketplace `POST`s that replace a whole set or delete what is missing from the payload
-— `tags/vdp/synchronize`,
-`element-management/{all,DATABASES,VIEWS,WEBSERVICES,EXTERNAL_ELEMENTS}/synchronize`, the
-`external-tool-servers/synchronize` family, `views/{id}/tags`,
-`category-management/views/{id}/categories` and `property-management/views/{id}/groups`; on the
-Scheduler (`--server scheduler`), every `DELETE` and report deletion, every `PUT` of a job, a
-project or a data source (`alter` — it replaces the whole object), a job's `status` change —
-start, stop, enable, disable (`job`) — the creation of a job by what it will run (a cache job
-`cache`, a VDP job the kind of its VQL statement, or `write` for any exporter — a table, an
-index or a file), and configuration, roles, passwords and a metadata import (`setting`, `security`,
-`replace`). Every result carries a `destructive` field: the
-kind (`drop`, `alter`, `delete`, `write`, `setting`, `procedure`, `cache`, `security`, `table`, `replace`, `job`) when it is one of
-these, and `null` — not `false` — when it is not. Session settings come back `null` and pass on
-any profile: `SET QUERYTIMEOUT TO …` (property name unquoted) and `ALTER SESSION SET
-'querytimeout' = …` last until the connection closes; a quoted property after a bare `SET` is
-the server. The procedure check goes by name and catches only
-the names on that list: a VQL procedure of your own that runs `DROP` through `EXECUTE` inside its body
-comes back `null`, and reading what a procedure does before calling it stays your job. On a profile with `production: true` the tool refuses them with
-`error.kind = "refused"` and executes **nothing**.
+The tool flags `DROP`, `ALTER`, `DELETE`, `TRUNCATE` and writes; server settings; the
+predefined procedures that change state; cache loads and invalidations; users, roles and
+global security policies; tables created, replaced or refreshed in a database; and the HTTP
+calls that delete or replace a set, on the marketplace and the Scheduler. The full list, with
+the kind of each, is `references/errors.md`, **What the tool flags**. Every result carries a
+`destructive` field: the kind (`drop`, `alter`, `delete`, `write`, `setting`, `procedure`,
+`cache`, `security`, `table`, `replace`, `job`) when it is one of these, and `null` — not
+`false` — when it is not. Session settings come back `null` and pass on any profile: `SET
+QUERYTIMEOUT TO …` (property name unquoted) and `ALTER SESSION SET 'querytimeout' = …` last
+until the connection closes; a quoted property after a bare `SET` is the server. The procedure
+check goes by name and catches only the names `/denodo:procedures` lists: a VQL procedure of
+your own that runs `DROP` through `EXECUTE` inside its body comes back `null`, and reading what
+a procedure does before calling it stays your job. On a profile with `production: true` the
+tool refuses them with `error.kind = "refused"` and executes **nothing**.
 
 `--allow-destructive` is set only after the human has read the list of destructive
 statements from `error.destructive` and confirmed, in this conversation, after the
@@ -245,18 +191,17 @@ When refused:
 | "The profile is not production and nothing depends on it" | Not production only means the tool will not stop you. A `DROP` waits for the yes on every profile, and an object nothing reads is still someone's. |
 
 **Red flags — stop and ask the human:** you are typing `--allow-destructive`; the
-previous result had `error.kind: "refused"`; `env.production` is `true` and the VQL
-contains `DROP` or `ALTER`, writes with `INSERT` or `UPDATE`, sets a server property with
-`SET '…'`, loads a cache with `'cache_preload'` or `'cache_invalidate'`, or calls a procedure
-on the list of `/denodo:procedures` — `DROP_…`, `CLEAN_…`, `COMPACT_CACHE`, `LOGCONTROLLER` and
-the rest.
+previous result had `error.kind: "refused"`; `env.production` is `true` and the input
+changes anything.
 
 ### Error in the middle of a file
 
 Do not reach for `--continue-on-error` to get past a failure. Read
-`statements[failed_at].error.message`, fix the statement in the file, re-apply the
-whole file: templates are `CREATE OR REPLACE`, so re-applying already-created
-statements is safe. `--continue-on-error` is for two cases: the human's explicit request on a
+`statements[failed_at].error.message`, fix the statement in the file, `vql plan` it again and
+re-apply the file whole (`/denodo:vql`). Statements before the failed one stay applied: a
+`CREATE OR REPLACE` of a view re-applies safely, but a write, a cache or AI load, or `OR
+REPLACE` over a table that holds rows runs again (`/denodo:dml`, `/denodo:materialize`).
+`--continue-on-error` is for two cases: the human's explicit request on a
 file whose statements are independent, and a file of reads that checks many objects, one
 statement per object — there each entry of `statements[]` is one object's answer, and a
 failed read is that object's failure, not the end of the check (`/denodo:vql`, **Many objects
@@ -276,8 +221,4 @@ rows — the SELECT is what catches it.
 
 ## Not this skill
 
-Writing the VQL or choosing where an object lives: `/denodo:vql` (conventions,
-safety, idempotency) and the domain skills `/denodo:catalog`, `/denodo:datasources`,
-`/denodo:views`, `/denodo:marketplace`, `/denodo:procedures`, `/denodo:cache`, `/denodo:semantics`, `/denodo:metrics`, `/denodo:security`, `/denodo:ai`, `/denodo:dml`, `/denodo:materialize`, `/denodo:testing`, `/denodo:scheduler`. Trigger phrase confusion: VDP tags
-(`CREATE TAG`, VQL) and marketplace tags (`POST /public/api/tags`, REST) are
-different objects on different servers; the tool does not translate between them.
+Writing the VQL or choosing where an object lives: `/denodo:vql` and the domain skills it routes to.

@@ -54,9 +54,7 @@ where the SQL union would have refused the column count.
 
 When a query's `WHERE` contradicts the condition a branch is defined by, the optimizer removes
 that branch from the plan ("Branch Pruning"). The branch has to *carry* a condition for this
-to happen. Every row below was checked with one branch pointing at a file that does not
-exist, so a branch that was not pruned failed the query — *verified: 9.5.1 (live,
-2026-09-30)*:
+to happen — *verified: 9.5.1 (live, 2026-09-30)*:
 
 | Shape of the union | `WHERE channel = 'web'` reads |
 |---|---|
