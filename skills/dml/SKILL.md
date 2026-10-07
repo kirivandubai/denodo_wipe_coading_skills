@@ -10,33 +10,8 @@ the source database, **at once and for everyone**: the statement is translated i
 source's SQL and sent, and over the tool's connection there is no transaction to roll back.
 Everything else in this skill follows from that.
 
-This skill covers: which views take writes and why one does not; the preview and the
-before-image that make a write reviewable and undoable; updating, inserting (and getting the
-generated key back) and deleting by key; a view an application writes through that accepts
-only its own rows; rows copied from another view or a file, including an upsert; and what the
-readers of the view see afterwards. Building views that only read is `/denodo:views`; a
-view's cache is `/denodo:cache`; base views and data sources are `/denodo:datasources`;
-granting `INSERT`, `UPDATE`, `DELETE` on a view is `/denodo:security`; applying files is
-`/denodo:execute`. Creating a table in a source, or storing a query's result in one — a
-remote table, a summary, a materialized table — is `/denodo:materialize`; so is the refresh of
-such a table.
-
-## What a write does
-
-*verified: 9.5.1 (live, 2026-10-02)* — against SQL Server through JDBC base views:
-
-| Fact | Consequence |
-|---|---|
-| The statement runs in the source as soon as it is sent, one statement at a time | statements before a failed one in the same file stay applied |
-| `BEGIN`, `COMMIT`, `ROLLBACK` all answer `ok` — and **`ROLLBACK` undoes nothing** | "try it in a transaction and roll back" changes the data for real. The undo is the before-image you saved (Templates) |
-| A write returns no rows; the tool's `affected` is how many rows the source changed | compare it with your preview count before you say anything is done |
-| `UPDATE` and `DELETE` through a derived view touch only the rows that view shows — its `WHERE` is added to yours, at every level | a write through the wrong view changes `0` rows without an error |
-| An `INSERT` of a row the view would not show, or an `UPDATE` that moves a row out, is accepted unless the view has `WITH CHECK OPTION` — and even then a `NULL` passes | the row lands in the table and is invisible in the view — "A view an application writes through" |
-| **A write whose path passes through a view with a full cache empties that cache**: the view, written through directly or through any view above it, returns 0 rows to everyone until its next load. A write below the cache leaves it serving the old rows | write through the base view, and say which cached views now serve old rows |
-| `CONTEXT ('impersonate_user' = …)` does not apply to writes: a user with only `EXECUTE` on a view updated it, and a base view they had no privilege on | impersonation proves what a person reads, never what they may write |
-| Values are converted by the source: `decimal(12,2)` stores `19.995` as `20.00` | check the value against the column before writing, and compare what reads back |
-| A timestamp with a time zone (`NOW()`, `CURRENT_TIMESTAMP`, `TIMESTAMP WITH TIME ZONE '…'`) written to a column without one is stored in the zone of the server process (UTC on the server measured), not the zone your session shows; a `TIMESTAMP '…'` literal and `LOCALTIMESTAMP` are stored as written | `NOW()` landed hours away from the clock the session showed |
-| When the source refuses a value (too long, wrong type, a duplicate key), the server cuts its reason short: `… Received exception with message '` and the first characters of the driver's text — from SQL Server, `'com.microsoft.sqlserver.` and nothing more | check lengths, types and keys against the column metadata **before** the write |
+Base views and data sources are `/denodo:datasources`; granting `INSERT`, `UPDATE`, `DELETE`
+on a view is `/denodo:security`; applying files is `/denodo:execute`.
 
 ## The rule: the human says yes to the statements
 
@@ -45,9 +20,8 @@ table, unchanged: a write lands in a database other people's systems read, and o
 connection it cannot be rolled back. The one exception is an `INSERT` or upsert into a table you
 created in this session — a materialized or remote table, its incremental load included
 (`/denodo:materialize`); an `UPDATE` or `DELETE` of it waits too, and so does any write whose
-query calls an AI function over rows (`/denodo:ai`). The yes is to the exact statements, after you have shown
-them with what each will change; "fix these records", "the business signed the file off", "just
-get it done" are the task, not the yes.
+query calls an AI function over rows (`/denodo:ai`). The yes is to the exact statements, after
+you have shown them with what each will change.
 
 | You do it yourself | Only after the human's yes |
 |---|---|
@@ -55,10 +29,6 @@ get it done" are the task, not the yes.
 | the preview `SELECT` and the before-image | a second run of a write, a "fix-up" after a surprise, the undo file |
 | writing the statements and the undo into files | the load of a cache the write left stale, on a view you did not create in this session (`/denodo:cache`) |
 | creating a new view for writers in your project's database — a `CREATE` | the first write through it |
-
-`vql plan` marks every write `needs_yes: true` but one: an `INSERT` or upsert into a
-materialized or remote table the session created, with no AI function over rows in its query
-(`/denodo:vql`).
 
 Show it in this shape, after the reads and before any write:
 
@@ -142,11 +112,8 @@ WHERE input_database_name = 'sales_analytics';
   empties it. A partial cache (`1`, `2`, `4`, `5`) can serve old results until they expire.
   `USED_BY` names readers in every database: run the `GET_VIEWS()` query once per
   `used_by_database_name`. Name them in your message.
-- A JDBC wrapper can forbid writes: `DESC VQL WRAPPER JDBC <wrapper> ('includeDependencies' =
-  'no', 'dropElements' = 'no')` shows `SOURCECONFIGURATION ( ALLOWDELETE = false … )` or `NOT
-  UPDATEABLE` on a field — the options keep the data source, with its encrypted password, out
-  of the answer (*verified: 9.5.1 (live, 2026-10-05)*). Nothing to work around — the base
-  view's owner decided it.
+- A JDBC wrapper can forbid writes or mark fields read-only — `references/writable-views.md`,
+  "The wrapper's switches"; nothing to work around, the base view's owner decided it.
 
 ### Preview, and the before-image
 
@@ -209,11 +176,8 @@ VALUES ('C-1001', TIMESTAMP '2026-10-01 09:30:00', 120.50, 'open')
 RETURNING order_id;
 ```
 
-- **One row per statement when you need the key back.** On SQL Server, `RETURNING` of the
-  generated key answers for a single-row `INSERT`. `RETURNING` after a multi-row `VALUES` list
-  inserts every row and returns nothing; `RETURNING` of a column with a default returns
-  nothing; `RETURNING` of two columns fails before inserting. Other databases answer
-  differently (documentation).
+- **When you need the key back: one row per statement, `RETURNING` the generated key only**
+  (SQL Server; other databases differ — `references/statements.md`).
 - **A failed `INSERT … RETURNING` may have inserted the row.** On a base view without the
   source's type metadata (hand-written, not introspected) it fails with `Cannot parse null
   string` *after* the insert. Read the table before you retry, or you insert it twice.
@@ -288,9 +252,8 @@ CREATE OR REPLACE VIEW open_order
   through it is a write. The application writes as its own user, which needs `INSERT` /
   `UPDATE` on this view: `CREATE OR REPLACE ROLE <role> '<description>' GRANT CONNECT ON
   sales_analytics GRANT EXECUTE, INSERT, UPDATE ON sales_analytics.open_order` parses and
-  grants exactly that (*verified: 9.5.1 (live, 2026-10-06)*) — a role granting on an existing database, and giving it to anyone, wait
-  for the human's yes (`/denodo:security`). Impersonating the application's user proves nothing
-  about its writes: they run with your own privileges.
+  grants exactly that (*verified: 9.5.1 (live, 2026-10-06)*) — a role granting on an existing
+  database, and giving it to anyone, wait for the human's yes (`/denodo:security`).
 
 ### Rows from another view
 
@@ -358,11 +321,12 @@ needs; whether to apply the rest without them is the human's call, not yours.
 | The write changed what you previewed | `affected` of each statement | equal to `will_change` |
 | The values read back as written | the preview `SELECT` again, with the new values in the `WHERE` | `will_change` rows, values exactly as written |
 | Nothing outside the keys moved | `SELECT <changed column>, COUNT(*) … GROUP BY <changed column>` on the base view, before and after (`COUNT(*)` alone for an insert or a delete) | only the counts the change explains moved |
-| Readers | `cache_status` of the views in `USED_BY`; `SELECT expirationdate FROM CACHE_CONTENT('<db>', '<view>')` | a cached reader shows the old rows until its load — say so, or load it after the yes (`/denodo:cache`). A load answers `ok` with no rows; its success is the new `expirationdate` and the same count with `CONTEXT ('cache' = 'off')` |
+| Readers | `cache_status` of the views in `USED_BY`; `SELECT expirationdate FROM CACHE_CONTENT('<db>', '<view>')` | a cached reader shows the old rows until its load — say so, or load it after the yes and verify it as `/denodo:cache`, **Verify**, does |
 
 ## Silent failures
 
-Each runs without an error — *verified: 9.5.1 (live, 2026-10-02)*.
+Each runs without an error — *verified: 9.5.1 (live, 2026-10-02)*, against SQL Server through
+JDBC base views.
 
 | You did | What happens | Instead |
 |---|---|---|
@@ -387,7 +351,7 @@ Each runs without an error — *verified: 9.5.1 (live, 2026-10-02)*.
 |---|---|---|
 | a write through a join view | `Error executing sentence: View '<v>'. Update operation is not allowed` | the base view of the table you mean |
 | through a `GROUP BY` or `UNION` view | `Error executing sentence: View '<v>'. No update methods ready to be run` | the base view |
-| into a file base view, or `INSERT` into a cached view | `View '<v>'. Insert operation is not allowed` (`Delete operation …`) | the base view; a file is changed at its source |
+| into a file base view, or `INSERT` into a cached view | `View '<v>'. Insert operation is not allowed` (`Delete operation …`) | the base view; a file is changed at its source (or the wrapper forbids it) |
 | a computed column | `Error executing sentence: The field '<f>' is not updateable` | the source column it is computed from |
 | a field the wrapper marks `NOT UPDATEABLE` | `The field '<f>' is not updateable` / `Cannot insert a value into the non updateable field '<f>'` | leave it out; the base view's owner decided |
 | a function the source cannot run, in `WHERE` | `Error executing sentence: The update condition is non-delegable` | a condition on columns and literals, or the keys |
@@ -404,7 +368,7 @@ Each runs without an error — *verified: 9.5.1 (live, 2026-10-02)*.
 ## Reference
 
 - `references/statements.md` — the grammar of `INSERT`, `UPDATE`, `DELETE`, `RETURNING` and
-  the upsert, every form as measured, how values land, what `affected` reports, transactions.
+  the upsert, every form as measured, how values land, transactions.
 - `references/writable-views.md` — which views take which write and the error for each, the
   view's filter on writes, `WITH CHECK OPTION` in full, interface views, the wrapper's write
-  switches, writes and the cache, privileges and impersonation.
+  switches, privileges and impersonation.

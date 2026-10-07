@@ -2,7 +2,7 @@
 
 Everything `/denodo:dml` leaves out of "Can this view take the write": the rules by view type
 with the error each case gives, how the view's own filter shapes a write, `WITH CHECK OPTION`,
-interface views, the wrapper's switches, the cache, and privileges.
+interface views, the wrapper's switches, and privileges.
 
 ## By view type
 
@@ -55,16 +55,9 @@ CREATE OR REPLACE VIEW <name> AS SELECT … FROM <one view> WHERE <filter>
     [ WITH [ CASCADED | LOCAL ] CHECK OPTION ];
 ```
 
-- **It evaluates the view's `WHERE` on the values the statement writes**: an `INSERT`'s
-  values, an `UPDATE`'s `SET`. A column the statement does not write counts as `NULL`. The
-  table's current rows are never read for it, so it fails a statement whose `WHERE` matches
-  nothing.
-- **A condition that is unknown passes.** `status = 'open'` is neither true nor false for
-  `NULL`, so an `INSERT` without `status` and `SET status = NULL` go through. `AND status IS
-  NOT NULL` fails both — and fails every `UPDATE` whose `SET` does not name `status`:
-  `CHECK OPTION failed: ((status,eq,['open'], <i18n>) AND (status,isnotnull,[], <i18n>))`.
-  The writer then sends the column on every statement, or the source makes it `NOT NULL`
-  (its owner's change) and the view keeps the plain filter.
+- The check reads only the statement's values, and an unknown condition passes (the table
+  above). `AND status IS NOT NULL` closes it and fails every `UPDATE` whose `SET` does not name
+  `status`: `CHECK OPTION failed: ((status,eq,['open'], <i18n>) AND (status,isnotnull,[], <i18n>))`.
 - Without a keyword it is `CASCADED`: an `INSERT` through a view over `WHERE status = 'open'`,
   with its own filter on another column, was refused for `status = 'closed'`. `LOCAL` checked
   only its own filter and let the row in.
@@ -91,20 +84,9 @@ CREATE OR REPLACE WRAPPER JDBC <name> …
 `DEFAULT` (or no `SOURCECONFIGURATION`) takes a default that depends on the source
 (documentation); over SQL Server it allowed all three. `DESC VQL WRAPPER JDBC <wrapper>
 ('includeDependencies' = 'no', 'dropElements' = 'no')` shows what is set, without the data
-source and its encrypted password; the wrapper's name is in the base view's `WRAPPER ( jdbc … )`. Changing a wrapper someone else owns to make a
+source and its encrypted password (*verified: 9.5.1 (live, 2026-10-05)*); the wrapper's name
+is in the base view's `WRAPPER ( jdbc … )`. Changing a wrapper someone else owns to make a
 write pass is not a fix — it is a change to their object, for their yes.
-
-## Writes and the cache
-
-| The write | The cached view |
-|---|---|
-| through the base view, under a view with a full cache | keeps serving the rows of its last load |
-| `UPDATE` or `DELETE` of one row through the view with a full cache, `WITH_STATUS` or `NO_STATUS` | the source changes; the view returns **0 rows** to every query until the next load — `CONTEXT ('cache' = 'off')` shows the source |
-| the same through a view built on the cached one | the same: the cached view below returns 0 rows |
-| `INSERT` through it | refused |
-
-The load is `/denodo:cache`; on a view you did not create in this session it is the human's
-yes.
 
 ## Privileges and impersonation
 
@@ -113,8 +95,6 @@ Writing needs `INSERT`, `UPDATE` or `DELETE` on the view, besides `CONNECT` on i
 too — the rows it may not see are not changed (documentation). Granting is
 `/denodo:security`. An administrator writes through every restriction.
 
-**Impersonation does not reach writes.** Measured with two `EXTERNAL` users: one with only
-`EXECUTE` on a view updated that view and a base view it had no privilege on; one with
-`EXECUTE`, `INSERT`, `UPDATE` deleted a row — all under `CONTEXT ('impersonate_user' = …)`,
-all `affected = 1`. `impersonate_roles` behaved the same. What a writer may write is checked
-only by that writer's own login; say so, and leave the check to the human.
+**Impersonation does not reach writes** (`impersonate_user` and `impersonate_roles` alike): what
+a writer may write is checked only by that writer's own login; leave that check to the human
+(`/denodo:security`, **Check it as the people it is for**).

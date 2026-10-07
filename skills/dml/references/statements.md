@@ -2,7 +2,7 @@
 
 Everything `/denodo:dml` leaves out of its templates: the grammar of each statement, the forms
 that were measured and what they returned, `RETURNING` per form, `INSERT … SELECT` and the
-upsert, how values land, what the tool reports, and transactions.
+upsert, how values land, and transactions.
 
 *verified: 9.5.1 (live, 2026-10-02)* unless marked — against SQL Server 2022 through a JDBC base
 view. A source of another kind translates the same statement into its own SQL; where it
@@ -99,11 +99,8 @@ reading the row back.
   successful insert into the view (documentation) — a load's time, not the data's, and in a
   Scheduler job `@` starts a variable: an incremental load reads its watermark from the table
   (`/denodo:materialize`, `references/incremental.md`);
-- **it never deletes**, and a key that is not in the table becomes a new row;
-- **keyed on an identity column it fails** on SQL Server — `Cannot insert explicit value for
-  identity column in table …` — even when every key in the `SELECT` exists already. Keyed on a
-  natural key (a code the table does not generate) it updated the existing rows and inserted
-  the new ones.
+- it never deletes; keyed on an identity column it fails on SQL Server (`SKILL.md`, "Rows from
+  another view").
 
 ## How values land
 
@@ -120,17 +117,8 @@ reading the row back.
 | `NOW()`, `CURRENT_TIMESTAMP`, `CAST(NOW() AS timestamp)` | the time in the Denodo server process's zone (UTC on the server measured) as a written value, while the session showed the same moment in its own zone (`-07:00` there); the same cast in a `SELECT` shows the session's zone |
 | `LOCALTIMESTAMP` | the session's local time |
 
-The source's refusal is cut by the server at a fixed length, and `TRACE` does not bring the
-rest back: the reason is in the column's metadata (`GET_VIEW_COLUMNS()` → `column_size`,
-`column_vdp_type`, `column_decimals`, `column_is_nullable`, the primary key), so check there
-before writing.
-
-## What the tool reports
-
-`vql run` gives every statement `affected`: the number of rows the source reports changed by
-an `INSERT`, `UPDATE` or `DELETE` (`0` when nothing matched), `null` for a read, a `CREATE` or
-a failed statement — and `null` for a write whose `RETURNING` answered: there the returned rows
-are the trace, and a read-back confirms them. Nothing else says what a write did.
+`TRACE` does not bring the cut-off reason back; check the column first (`SKILL.md`, "Can this
+view take the write").
 
 ## Transactions
 
