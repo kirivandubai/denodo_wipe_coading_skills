@@ -78,7 +78,6 @@ UNMARKED_BLOCKS: dict[str, list[tuple[str, str]]] = {
     ],
     "skills/execute/SKILL.md": [
         ("! ${CLAUDE_PLUGIN_ROOT}/scripts/denodo env init", HUMAN_COMMAND),
-        ("! ${CLAUDE_PLUGIN_ROOT}/scripts/denodo secret encrypt", HUMAN_COMMAND),
     ],
     "skills/materialize/SKILL.md": [("Created dwh.reporting.household_income (ds_dwh)", SHAPE)],
     "skills/materialize/references/remote-tables.md": [
