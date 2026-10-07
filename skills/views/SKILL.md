@@ -17,12 +17,9 @@ audit of a database for people and AI consumers — is `/denodo:semantics`. Metr
 KPIs declared once over a fact and its dimensions, and the views built on them — are
 `/denodo:metrics`; a mart of one fixed grain stays here. A view with a column that calls the
 server's LLM or embedding model (`CLASSIFY_AI`, `EMBED_AI`, `VECTOR_DISTANCE` …) is
-`/denodo:ai` first: every row it is read for is a request to the provider. The SELECT inside
-`AS` has no skill of its own: the expressions
-where VQL returns a wrong value without an error — substrings, casts, date patterns, `SUM`
-over `int` — are the table in `/denodo:vql` and its `references/dialect.md`. Applying files
-is `/denodo:execute`, and the working loop, the naming defaults and the safety rule are
-`/denodo:vql`.
+`/denodo:ai` first: every row it is read for is a request to the provider. Expressions that
+return a wrong value without an error are the table in `/denodo:vql` and its `dialect.md`;
+applying files is `/denodo:execute`; the loop, naming and the safety rule are `/denodo:vql`.
 
 **The dangerous part of this skill is what happens after a successful statement.** All
 three objects can be accepted by the server and be broken, and all three break *other
@@ -85,21 +82,18 @@ Clause order: `FOLDER` → `DESCRIPTION` → `PRIMARY KEY` → `TAGS` → `( fie
   what a reviewer must read goes into the `DESCRIPTION`.
 
 - **One view per grain.** The join lives in `/02 - integration` at the row grain of the
-  entity; the aggregate is a second view in `/03 - business entities`. Stacking `GROUP BY`
-  on top of the join in a single statement works, but the join is then not reusable and
-  the mart cannot be checked against it. "The mart has to be one object" is about what the
-  consumer reads, and it still is: the intermediate view is yours, not theirs.
-  **When no aggregate is wanted** — the consumer reads the joined rows themselves — the
-  join *is* the `/03 - business entities` object and takes the bare business name. Do not
-  add a pass-through view above it just to fill the layer.
+  entity; the aggregate is a second view in `/03 - business entities`. One statement with
+  both works, but the join is then not reusable and the mart cannot be checked against it;
+  the consumer still reads one object. **When no aggregate is wanted**, the join *is* the
+  `/03 - business entities` object, with the bare business name — no pass-through view above.
 - **Count the dimension before you join it.** `SELECT COUNT(*), COUNT(DISTINCT <business
   key>) FROM <dimension>` — a dimension that keeps history has several rows per business
   key, and joining on that key multiplies every figure in the mart with no error anywhere.
   In the TPC-DS sample data the `store` and `call_center` dimensions keep two rows per business
   key; the fact carries the surrogate key, so join on that and project the business key as a
-  column, so the consumer can still roll up. **The hint
-  is a pair of validity columns** (`rec_start_date` / `rec_end_date`), and the `COUNT`
-  decides: validity columns over one row per business key are not history.
+  column, so the consumer can still roll up. **The hint is a pair of validity columns**
+  (`rec_start_date` / `rec_end_date`), and the `COUNT` decides: over one row per business key
+  they are not history.
 - **`INNER` drops facts, and nobody is told.** The template joins `INNER` because its two
   TPC-DS tables match completely; real data usually does not — in the TPC-DS returns, some
   store returns carry no store key at all and some web returns name no reason. Decide which
@@ -111,10 +105,9 @@ Clause order: `FOLDER` → `DESCRIPTION` → `PRIMARY KEY` → `TAGS` → `( fie
     them, or the label is a lie;
   - they do not → keep `INNER JOIN`, and put the number of rows you dropped in the
     `DESCRIPTION`, measured, not guessed.
-- **Naming.** In `/02 - integration` the prefix is `iv_` and the name says what the view does;
-  in `/03 - business entities` there is no prefix and the name says what the consumer gets
-  (`household_income_by_band`). `iv_` means *integration view*, not *interface view* — the
-  interface view is the one below, and it is the one that gets the bare business name.
+- **Naming.** `/02 - integration`: `iv_` and what the view does; `/03 - business entities`: no
+  prefix, what the consumer gets (`household_income_by_band`). `iv_` is *integration view*, not
+  *interface view* — the interface view below takes the bare business name.
 - **Types an aggregate produces** — needed for an interface view over the mart: `COUNT` →
   `long` (`DESC` prints `BIGINT`), `AVG` over an integer → `double` — *verified: 9.5.1 (live,
   2026-09-10)*. **`SUM` over an `int` stays `int`**, and past 2 147 483 647 returns `NULL` or
@@ -170,9 +163,8 @@ One branch per source, and a constant column that says which source a row came f
   which values `qty` holds — no error anywhere. A source that lacks a column gets a typed
   `NULL` in its place (`CAST(NULL AS integer) AS store_sk`); a column whose type differs is
   cast in the branch, or the union widens it silently (`int` under `text` becomes `text`).
-- **`UNION ALL`, not `UNION`.** `UNION` removes duplicate rows across the whole result — a
-  view of return lines loses identical lines — and stops the optimizer pushing a `GROUP BY` or
-  a join below the union.
+- **`UNION ALL`, not `UNION`.** `UNION` removes duplicate rows — identical return lines too —
+  and stops the optimizer pushing a `GROUP BY` or a join below the union.
 - **The constant does nothing for speed by itself.** A query `WHERE channel = 'web'` reads
   every source unless each branch carries a `WHERE` on its own constant; then the branches
   that contradict the query are removed from the plan and only one source is read. The
@@ -185,9 +177,8 @@ One branch per source, and a constant column that says which source a row came f
   **rows whose key is `NULL` fall into no branch and vanish**. Put `OR <key> IS NULL` into
   the branch of the source that owns them. When the sources overlap (a copy never trimmed),
   the ranges are also what keeps each row once.
-- Column descriptions cannot go on a union. When the consumer needs them, the union goes to
-  `/02 - integration` as `iv_…` and the `/03` view over it carries them; the pruning
-  survives the layer.
+- Column descriptions cannot go on a union: it goes to `/02 - integration` as `iv_…`, and the
+  `/03` view over it carries them; the pruning survives the layer.
 
 `references/unions.md` has the measurements behind each point and how to read the plan.
 
@@ -230,9 +221,8 @@ CREATE OR REPLACE VIEW iv_customer_orders
   `NULL`.** A view of elements needs the template's `WHERE <element field> IS NOT NULL`, on a
   field no real element leaves empty; without it `COUNT(*)` counts an order without lines as
   a line.
-- **The parent's measures repeat on every element row.** `SUM(total_amount)` over the flattened
-  rows adds each order once per line. Aggregate the parent's measures from the unflattened view
-  and the element's from the flattened one, and join the two at the grain of the result.
+- **The parent's measures repeat on every element row** (`SUM(total_amount)` adds each order
+  once per line): aggregate them from the unflattened view, join at the result's grain.
 - **Names.** The element's fields come out without a prefix and the array column is gone. An
   element field named like a parent column is renamed `<array>_<field>` — a line's `status`
   comes out as `lines_status`, while plain `status` is still the order's. Look at
@@ -251,10 +241,9 @@ CREATE OR REPLACE VIEW iv_customer_orders
   `DESC VQL` of the base view shows the cause directly: `ADD <column> (any) OPT ANY` where
   `NOS ZERO ()` should be. **When the base view is not yours to fix**, tell its owner;
   `references/arrays.md` (filters on the parent's fields) has the workaround meanwhile.
-- **Where the element view goes**: when the consumer reads the element rows, it is the
-  `/03 - business entities` object under its bare name — like a join with no aggregate —
-  even if another view is built on it too. When only other views read it, it is an `iv_` in
-  `/02 - integration`, as in the template.
+- **Where the element view goes**: read by the consumer, it is the `/03 - business entities`
+  object under its bare name, like a join with no aggregate; read only by other views, an `iv_`
+  in `/02 - integration`, as in the template.
 
 `references/arrays.md` has one row per parent with every parent kept (counts from the
 elements, a re-nested array), arrays inside registers, two arrays at once, and `REGISTER`.
@@ -393,8 +382,7 @@ The one thing here that costs attempts. A column *declaration* takes VQL type na
 | floating point | `double` | `double precision` |
 | date | `localdate` | `date` |
 
-If you would rather hold one set of names in your head, the two-argument cast
-`CAST('int', x)` takes the VQL ones, so the whole file can then be written in VQL names.
+The two-argument `CAST('int', x)` takes the VQL names, so a file can use one set throughout.
 Unchanged either way: `decimal`, `float`, `boolean`, `timestamp`.
 
 ## What you need before filling a template
@@ -404,7 +392,7 @@ Unchanged either way: `decimal`, `float`, `boolean`, `timestamp`.
 | The views underneath | read them, do not assume: `vql desc --env dev --database <db> <view>` gives the exact column names and types. A misremembered column is the most common failure of the whole skill. A view of another database is read by its qualified name, `FROM other_db.bv_x` — *verified: 9.5.1 (live, 2026-09-30)* |
 | Grain of the result | the human — "per customer" or "per band" decides whether there is a `GROUP BY` and what the primary key is. **One row per key among several** — the latest version, the current row of a history, a feed loaded twice — is `references/one-row-per-key.md`: a window runs only where it can be delegated (a database, or an MPP engine or data movement the server is set up for), and the usual `MAX(<date>)` joined back keeps ties and drops undated keys, without an error |
 | Which columns the consumer needs | the human. When the answer is "everything", say what everything is at the moment and let them cut |
-| Folder | `/02 - integration` for the joining and transforming layer, `/03 - business entities` for what consumers read, `/06 - associations` for associations — or `.denodo/conventions.md` if the project has one |
+| Folder | `/02 - integration` for the joining and transforming layer, `/03 - business entities` for what consumers read, `/06 - associations` for associations — or `.denodo/conventions.md` if the project has one, else the folders a database that already holds objects uses (`/denodo:vql`) |
 | Name | conventions in `/denodo:vql`; the `iv_` / bare-name split above |
 | Derived view or interface view | interface view only when name and schema must survive a change of the implementation. Otherwise a derived view |
 | Interface field types | the types of the implementation's columns, in VQL names (`int`, `long`, `text`) — read them off `DESC`, do not translate from memory |
@@ -416,10 +404,9 @@ Unchanged either way: `decimal`, `float`, `boolean`, `timestamp`.
 | Grain after a flatten | the element (one row per line) or the parent (one row per order, with figures from its lines) — the human. The second joins the element figures, aggregated, to the parent's figures at the result's grain (`references/arrays.md`), never a `SUM` of the parent's measures over flattened rows |
 | Existing dependants | `USED_BY()` before touching anything that already exists; for a column that changes, "Before a column changes" below. Whether the name already exists, and whose it is, is `vql plan` on the file (`exists`, `own`) |
 
-Do not ask about cache, swap, statistics or indexes: they have server defaults, and they
-are not part of creating these objects. When the human asks for a cache, it is
-`/denodo:cache`, once the view exists and returns the right rows. Whether a view over a database
-runs in that database is not one of them — Verify checks it.
+Do not ask about cache, swap, statistics or indexes: they have server defaults. A cache the
+human asks for is `/denodo:cache`, once the view returns the right rows; whether a view over a
+database runs in that database is not one of them — Verify checks it.
 
 ## When the request asks for something the data does not have
 
@@ -431,9 +418,8 @@ answers a different question and says nothing about the substitution.
 1. **Establish it, do not assume it.** Read every column of both sides — `vql desc`, or
    `SELECT column_name FROM GET_VIEW_COLUMNS() WHERE input_view_name = '<view>'` — then look
    for the attribute in the neighbouring objects, and check they can be joined to the same
-   key at all. In TPC-DS each returns table *is* a channel, but only the store one carries
-   a store key, so "returns per store per channel" exists for one channel only, and
-   no expression changes that.
+   key at all — in TPC-DS each returns table *is* a channel, and only the store one carries a
+   store key.
 2. **Then choose, and write the choice into the `DESCRIPTION`:**
    - the attribute is a constant across the data you have → keep the column as a literal
      (`'store' AS sales_channel`). The grain is then the one that was asked for, and a
@@ -515,9 +501,9 @@ and `household_income_by_band` and the `household_income` contract with them.
 - **The four steps answer it without building anything.** A copy of the real views built to
   rehearse the change in another database becomes a dependant of them: it shows up in their
   `USED_BY()` for everyone else, and their `DROP … CASCADE` takes it along.
-- When the change is made, it goes through the view's own file. The output of `DESC VQL`
-  is not a file to edit and re-run: it opens with `DROP … CASCADE`, which removes the very
-  dependants this section listed.
+- When the change is made, it goes through the view's own file — for a view that has none,
+  the recipe below. The output of plain `DESC VQL` is not a file to edit and re-run: it opens
+  with `DROP … CASCADE`, which removes the very dependants this section listed.
 - **A view with a full cache** (its `DESC VQL` ends with `ALTER VIEW … CACHE FULL`) comes back
   from a changed column with an empty cache: 0 rows for it and everything on it, no error,
   until its load runs again — *verified: 9.5.1 (live, 2026-09-30)*. The load, and the rest
@@ -528,6 +514,24 @@ and `household_income_by_band` and the `household_income` contract with them.
   Search `DESC VQL DATABASE <db>` (an administrator or the `metadata_export` role) for the
   view's name, saved to a file — it is one large text (`/denodo:materialize`).
 
+**A view with no file yet** — built in Design Studio, the usual case on a server people
+already use — changes through a file all the same, started from the server's text of it alone:
+
+```sql
+-- verified: 9.5.1 (live, 2026-10-07)
+DESC VQL VIEW iv_household_income ('includeDependencies' = 'no', 'dropElements' = 'no');
+```
+
+Save the answer as the view's file: `CREATE VIEW` becomes `CREATE OR REPLACE VIEW`, and the rest
+stays as printed — `FOLDER`, description, field descriptions, key, `TAGS`, `CONTEXT`, the
+`ALTER VIEW … CACHE` line with its time to live. What the file leaves out, the apply removes;
+grants stay (`/denodo:semantics`). Make the change in it. `vql plan` holds it for the yes —
+show it with what the four steps found, and for a cached view its reload, which comes back empty
+(`/denodo:cache`). After the apply, Verify the view and each dependant, and commit the file.
+Before you apply it again later, compare it with the server's text: an edit made in Design
+Studio since is not in it, and the apply would remove it. A data source or a base view a wizard
+built goes back to Design Studio instead (`/denodo:datasources`).
+
 **"Where does this field come from"** is the question `COLUMN_DEPENDENCIES()` does answer:
 with `input_column_name` it walks one field down to the base view and the data source in one
 call, with the expression wherever the value is computed. The query, how to read
@@ -536,16 +540,12 @@ its rows, and the step from a base view to the table and column in the database 
 
 **Renaming a view, or moving it to another database,** is the same question one level up:
 `ALTER VIEW <old> RENAME <new>` (`references/derived.md`) breaks every dependant that names the
-view, so step 1 above first, for the view itself. The Data Marketplace is a consumer no
-catalog query sees: when the profile has a `marketplace_url`, ask its `view-details`
-**before** the change and match the rename there (`/denodo:marketplace`, "A view in the
-marketplace is renamed, recreated or moved"): otherwise the next synchronisation removes its
-element with every tag, category and endorsement on it; a move to another database cannot be
-matched at all, and a `DROP` and `CREATE` of the same name keep it only in one run. Report
-what no query lists: every client reading the view by name — reports, JDBC and ODBC queries,
-REST and OData URLs (`view-details`, `connectionUris`). Rename it in its own file too, or the
-next apply brings the old name back as a second view. A moved view is a new object: the old
-one's grants do not come along.
+view — step 1 first, for the view itself. With a `marketplace_url`, read its `view-details`
+**before** the change and match the rename (`/denodo:marketplace`, "A view in the marketplace is
+renamed, recreated or moved"), or the next synchronisation removes its element with every tag,
+category and endorsement; a move to another database cannot be matched. Report every client
+that reads it by name — reports, JDBC, ODBC, REST and OData URLs (`connectionUris`). Rename it in
+its file too, or the next apply brings the old name back; a moved view loses its grants.
 
 ## Reference
 

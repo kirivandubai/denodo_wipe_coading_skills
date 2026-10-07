@@ -729,6 +729,17 @@ database = "{database}"
 check = "SELECT view_name FROM COLUMN_DEPENDENCIES() WHERE input_view_database_name = '{database}' AND input_view_name = 'iv_household_income' AND view_name = 'iv_household_income' AND dependency_name = 'bv_income_band' GROUP BY view_name HAVING SUM(CASE WHEN dependency_column_name LIKE '%ib_income_band_sk%' THEN 1 ELSE 0 END) = 0"
 
 [[step]]
+id = "view-without-file"
+kind = "template"
+channel = "vql"
+address = "skills/views/SKILL.md#Before a column changes: who uses it[1]"
+# Read-only: the server's text of one view alone, the start of a file for a view that has none.
+# Its claim is what the options leave out — no DROP … CASCADE, no dependency rebuilt — so the
+# check is that the dependant the plain DESC VQL would have dropped is still there after it.
+database = "{database}"
+check = "SELECT used_by_name FROM USED_BY() WHERE input_view_database_name = '{database}' AND input_view_name = 'iv_household_income' AND used_by_name = 'household_income_by_band'"
+
+[[step]]
 id = "fixture-returns"
 kind = "fixture"
 channel = "vql"
@@ -2054,6 +2065,7 @@ database = "{database}"
 id = "writes-tables"
 kind = "fixture"
 channel = "vql"
+requires = ["data_movement"]
 writes = true
 database = "{database}"
 check = "SELECT COUNT(*) FROM bv_write_customer HAVING COUNT(*) = 18"
@@ -2274,6 +2286,7 @@ expect = "no rows"
 id = "materialize-remote-table"
 kind = "template"
 channel = "vql"
+requires = ["data_movement"]
 writes = true
 address = "skills/materialize/SKILL.md#A remote table"
 substitute = { "remote_table_name = 'household_income'" = "remote_table_name = '{tag_prefix}household_income'", "datasource_database_name = 'sales_analytics'" = "datasource_database_name = '{write_datasource_database}'", "datasource_name = 'ds_dwh'" = "datasource_name = '{write_datasource_name}'", "datasource_catalog = 'dwh'" = "datasource_catalog = '{write_catalog}'", "datasource_schema = 'reporting'" = "datasource_schema = '{write_schema}'", sales_analytics = "{database}" }
@@ -2334,6 +2347,7 @@ database = "{database}"
 id = "writes-store-history"
 kind = "fixture"
 channel = "vql"
+requires = ["data_movement"]
 writes = true
 needs = ["fixture-store-history"]
 database = "{database}"
@@ -2379,6 +2393,7 @@ check = "SELECT 1 FROM GET_QUERY_EXECUTION_PLAN() p, (SELECT COUNT(*) AS n FROM 
 id = "writes-incremental-tables"
 kind = "fixture"
 channel = "vql"
+requires = ["data_movement"]
 writes = true
 database = "{database}"
 check = "SELECT 1 FROM (SELECT COUNT(*) AS n FROM bv_tms_shipments) e, (SELECT COUNT(*) AS n FROM bv_dwh_shipments) d WHERE e.n = 21 AND d.n = 20"
@@ -2464,7 +2479,7 @@ check = "SELECT 1 FROM (SELECT SUM(CASE WHEN d.shipment_id IS NULL THEN 1 ELSE 0
 id = "materialize-summary"
 kind = "template"
 channel = "vql"
-requires = ["summary_rewrite"]
+requires = ["summary_rewrite", "data_movement"]
 writes = true
 address = "skills/materialize/SKILL.md#A summary — created unloaded, proved by the plan, then loaded"
 substitute = { "INTO ds_dwh" = "INTO {write_datasource_database}.{write_datasource_name}", "CATALOG = 'dwh'" = "CATALOG = '{write_catalog}'", "SCHEMA = 'reporting'" = "SCHEMA = '{write_schema}'", "RELATIONNAME = 's_household_band'" = "RELATIONNAME = '{tag_prefix}s_household_band'", sales_analytics = "{database}" }
@@ -2478,7 +2493,7 @@ expect = "no rows"
 id = "materialize-summary-load"
 kind = "template"
 channel = "vql"
-requires = ["summary_rewrite"]
+requires = ["summary_rewrite", "data_movement"]
 writes = true
 needs = ["materialize-summary"]
 address = "skills/materialize/SKILL.md#A summary — created unloaded, proved by the plan, then loaded[1]"

@@ -219,7 +219,7 @@ reads at once, not how much of the data is read (`/denodo:vql`, **Many objects a
 | Where the view's definition lives | Write the metadata |
 |---|---|
 | a `.vql` file in the project that is applied (git, CI, `/denodo:views`) | **in that file**: `DESCRIPTION`, `PRIMARY KEY`, `TAGS ( … )` and `( <field> ( description = '…' ) )` in the view's own `CREATE OR REPLACE VIEW`, in the clause order of `/denodo:views`; then re-apply it |
-| only on the server (built in Design Studio) | an `ALTER` file of its own, `semantics/<database>.vql` — the template below. Do not re-declare the view to change its metadata |
+| only on the server (built in Design Studio) | an `ALTER` file of its own, `semantics/<database>.vql` — the template below. Do not re-declare the view to change its metadata; a change to what it computes gives it a file first (`/denodo:views`, **Before a column changes**) |
 | a base view | `ALTER TABLE <view> …`, the same forms as below |
 
 Statements still waiting for a yes go into a file of their own, next to the one being

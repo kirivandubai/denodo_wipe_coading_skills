@@ -92,6 +92,11 @@ in the project root (`cat .denodo/conventions.md 2>/dev/null`). It is plain mark
 section named after a rule above replaces that rule, anything it does not mention keeps the
 default. If the project has one, it wins — do not "improve" its naming with the defaults.
 
+**A database that already holds objects has conventions of its own.** Without the file, read
+its folders and names before you add to it (`GET_ELEMENTS()`, `/denodo:catalog`): a new object
+goes where its siblings live, under their prefixes — the defaults above are for a database you
+start. Say in the summary which convention you followed.
+
 ## Idempotency
 
 **`CREATE OR REPLACE` for every object type**, in every file — `DATABASE` included. The
@@ -143,6 +148,7 @@ ledger knows and you do not. `vql ledger --env dev` lists what the session creat
 | — | a predefined procedure that changes state, called like a read — `SELECT * FROM DROP_REMOTE_TABLE(…)`; the list and its two exceptions are in `/denodo:procedures` |
 | a Scheduler job created disabled, or one whose runs touch only what you created in this session; every `GET` (`/denodo:scheduler`) | enabling, starting or changing a job whose runs change what existed before this session, and anything on an older job — a job is its statement, every time it fires (`/denodo:scheduler`) |
 | `GET` calls to the marketplace; a catalog `synchronize` whose radius is yours (`/denodo:marketplace`, **Who sends it**) | every other destructive marketplace call (`/denodo:marketplace`) |
+| — | publishing a view as a web service — `CREATE … WEBSERVICE`, `ALTER … WEBSERVICE`, `DEPLOY`, `REDEPLOY`, `UNDEPLOY`, `EXPORT … FROM WEBSERVICE`, your own new service included: outside this plugin (**Where to go from here**); it serves the view to whoever the service lets in, and a `DEPLOY` without `LOGIN` runs it as the profile's account |
 | — | **any change at all on a profile with `production: true`, `CREATE` included** |
 
 Destruction, for this rule, is anything that destroys or overwrites what exists, or changes
@@ -176,6 +182,7 @@ created in this session, which has imported nothing it could delete. Nothing els
 | "Cleanup of my own probe objects doesn't count" | It is a `DROP` on a shared server. Same rule. |
 | "I'll list what I removed in the summary" | Disclosure after the fact is not consent. |
 | "My file declares it — the table says that is mine" | A file declares whatever you put in it. Your project's file is one that declared the object before this session — the plan's `declared_in`. A name that `exists` and is not `own` waits for the yes. |
+| "Creating the web service is a new object — only the `DEPLOY` touches the server" | Publishing is outside this plugin, with no template: the service is the first half of an endpoint other people will call. Its statements wait, `CREATE` included; the built-in RESTful web service already serves the view (**Where to go from here**). |
 | "The context was compacted and I cannot tell which objects are mine, so everything waits" | `vql plan` and `vql ledger` know: the tool recorded every object this session created. Asking the human about your own work costs their time; guessing costs their objects. |
 
 **Red flags — stop and ask:** you are applying a file the plan has not read since its last
@@ -288,6 +295,15 @@ pushes down to the source.
 | Regression tests (`.denodotest`) | `/denodo:testing` |
 | Scheduler jobs (REST) | `/denodo:scheduler` |
 | Running anything, the server's errors | `/denodo:execute` |
+| Not in this plugin: publishing a view as its own REST, SOAP, OData or GraphQL service, JMS or Kafka listeners, custom Java functions, wrappers and policies, user accounts and LDAP, promotion between environments, dbt | none — say so, do the part that is in scope, and name Design Studio or the administrator for the rest |
+
+**A view is on HTTP already.** The server's built-in RESTful web service answers for every view,
+to any user who may read it, with that user's privileges (HTTP Basic):
+`GET http://<host>:9090/denodo-restfulws/<database>/views/<view>?$format=json` — *verified: 9.5.1
+(live, 2026-10-07)*; an administrator can switch it off. When an application only needs to read a
+view over HTTP, that URL is the answer; the application's user needs `CONNECT` on the database and
+`EXECUTE` on the view (`/denodo:security`). A service of its own is published in Design Studio; its
+statements wait for the yes (the safety table).
 
 There is no skill for the `SELECT` itself — an ad-hoc question, a report, the body of a
 view: it is the SQL you know, with the expression deltas above and in
