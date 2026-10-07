@@ -174,7 +174,8 @@ WHERE order_id IN (1001, 1002, 1007) AND status = 'open';
 - **Files:** the change, its undo, and a cache load if one follows (`/denodo:cache`, a file of
   its own) — three files, named after the change, each applied whole.
 - Never decide from a view with a full cache: read the base view, or add
-  `CONTEXT ('cache' = 'off')`.
+  `CONTEXT ('cache' = 'off')` — on a view you hold WRITE on or with the `disable_cache_query`
+  role; otherwise the server ignores it and reads the cache (documentation).
 
 ### Update by key
 
