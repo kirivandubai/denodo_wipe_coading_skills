@@ -5,7 +5,7 @@
 **Стенд:** Denodo Platform 9.5.1 в контейнере, Data Marketplace того же образа на порту 9090
 (контекст-путь `/denodo-data-catalog`, историческое имя сохранено), один
 зарегистрированный сервер VDP; пользователь с правами администратора
-**Скрипт:** `spikes/t11_marketplace_api.py` — `uv run spikes/t11_marketplace_api.py --env dev`,
+**Скрипт:** `spikes/t11_marketplace_api.py` (removed from the tree in T46; the last commit that has it is `343fc0a`: `git show 343fc0a:spikes/t11_marketplace_api.py`) — `uv run spikes/t11_marketplace_api.py --env dev`,
 профиль из `~/.denodo/profiles.toml`, VDP-часть через `denodo+psycopg2` как в T2, REST — на
 стандартной библиотеке. Всё создаётся с префиксом `t11_` в базе `denodo_skills_test` и
 удаляется в конце, включая копии в маркетплейсе. Финальный прогон: 121 шаг, 0 расхождений

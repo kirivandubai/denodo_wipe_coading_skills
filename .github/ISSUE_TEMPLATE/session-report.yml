@@ -1,0 +1,62 @@
+name: The agent got it wrong in my session
+description: The right skill did the wrong thing, the wrong skill fired, or the agent guessed where a skill should have known.
+labels: ["session report"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you — sessions like yours are what the skills are changed from. Before you paste
+        anything, **replace the names of your objects, schemas, hosts and people** with neutral
+        ones (`sales`, `bv_orders`, `db.example.com`) — this repository is public. Never paste a
+        profile, a password, a token or the `USERPASSWORD … ENCRYPTED` value of a data source.
+  - type: textarea
+    id: request
+    attributes:
+      label: What you asked
+      description: The request in your own words, as you typed it.
+    validations:
+      required: true
+  - type: textarea
+    id: happened
+    attributes:
+      label: What the agent did
+      description: Which skill fired (if you saw it), what it created, changed or ran, and where it stopped.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected instead
+    validations:
+      required: true
+  - type: input
+    id: plugin
+    attributes:
+      label: Plugin version
+      description: The commit `claude plugin list` shows for `denodo@denodo-skills` (also the name of its directory under `~/.claude/plugins/cache/denodo-skills/denodo/`).
+    validations:
+      required: true
+  - type: textarea
+    id: server
+    attributes:
+      label: Your server
+      description: |
+        From `scripts/denodo env check --env <profile>`: `vdp.server_version` and the `features`
+        block (bundle, cache, LLM, summary rewriting, data movement). No `connection` block.
+      render: json
+  - type: textarea
+    id: artifacts
+    attributes:
+      label: The files and answers involved
+      description: |
+        The `.vql` the agent wrote, the `vql plan` JSON for it, and the error envelope the tool
+        returned (`error.kind`, `error.message`) — names replaced as above. Trim long outputs to
+        the statements that matter.
+      render: text
+  - type: checkboxes
+    id: redacted
+    attributes:
+      label: Before you submit
+      options:
+        - label: I replaced the names of my objects, schemas, hosts and people, and pasted no credential or ciphertext.
+          required: true

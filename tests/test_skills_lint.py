@@ -14,6 +14,9 @@ from pathlib import Path
 
 from tests import skills_lint as lint
 
+# A Cyrillic word for the language checks, escaped so that this file stays ASCII.
+WORD = "\u0432\u0438\u0442\u0440\u0438\u043d\u0430"
+
 REPO = Path(__file__).resolve().parents[1]
 
 FRONTMATTER = "---\nname: {name}\ndescription: {description}\n---\n\n"
@@ -76,22 +79,22 @@ class TreeIsCleanTest(unittest.TestCase):
 
 class LanguageTest(TreeTestCase):
     def test_cyrillic_in_a_skill_is_found_with_its_line(self):
-        root = self.tree({**skill("views", "# Views\n\nСоздать представление.\n")})
+        root = self.tree({**skill("views", f"# Views\n\n{WORD}.\n")})
         self.assertFinds(lint.check_language(root), "skills/views/SKILL.md:8")
 
     def test_cyrillic_in_the_cli_is_found(self):
-        root = self.tree({"scripts/denodo_cli/cli.py": 'HELP = "профиль"\n'})
+        root = self.tree({"scripts/denodo_cli/cli.py": f'HELP = "{WORD}"\n'})
         self.assertFinds(lint.check_language(root), "scripts/denodo_cli/cli.py:1")
 
     def test_cyrillic_in_an_eval_prompt_is_found(self):
-        root = self.tree({"evals/routing-views/prompt.md": "Сделай витрину.\n"})
+        root = self.tree({"evals/routing-views/prompt.md": f"{WORD}.\n"})
         self.assertFinds(lint.check_language(root), "evals/routing-views/prompt.md:1")
 
     def test_an_outcome_scenario_is_checked_and_its_byproducts_are_not(self):
         # evals/outcome holds scenario prompts the agent reads (checked) beside the runner's
         # compiled modules and results (never text a person wrote).
-        root = self.tree({"evals/outcome/scenarios/mart/scenario.toml": 'prompt = "Сделай витрину."\n',
-                          "evals/outcome/results/2026/report.json": '{"final": "Готово"}\n'})
+        root = self.tree({"evals/outcome/scenarios/mart/scenario.toml": f'prompt = "{WORD}."\n',
+                          "evals/outcome/results/2026/report.json": f'{{"final": "{WORD}"}}\n'})
         cache = root / "evals/outcome/__pycache__/run.cpython-314.pyc"
         cache.parent.mkdir(parents=True)
         cache.write_bytes(b"\x00\xb6\xff binary")
@@ -99,10 +102,22 @@ class LanguageTest(TreeTestCase):
         self.assertFinds(findings, "evals/outcome/scenarios/mart/scenario.toml:1")
         self.assertNotIn("results", "\n".join(findings))
 
+    def test_every_shipped_text_file_is_checked(self):
+        # the manifest, tests, issue forms and dotfiles ship with the plugin too
+        root = self.tree({"verification/chain.toml": f"# {WORD}\n", ".gitignore": f"# {WORD}\n",
+                          ".github/ISSUE_TEMPLATE/x.yml": f"name: {WORD}\n"})
+        findings = lint.check_language(root)
+        for path in ("verification/chain.toml:1", ".gitignore:1", ".github/ISSUE_TEMPLATE/x.yml:1"):
+            self.assertFinds(findings, path)
+
     def test_project_documents_are_not_checked(self):
-        root = self.tree({"evals/README.md": "Кейсы.\n", "docs/TASKS.md": "Задачи.\n",
-                          "CLAUDE.md": "Инструкции.\n"})
+        root = self.tree({"docs/TASKS.md": f"{WORD}.\n", "CLAUDE.md": f"{WORD}.\n"})
         self.assertClean(lint.check_language(root))
+
+    def test_the_eval_suites_readme_is_checked(self):
+        # contributors are sent there to turn a misrouted session into a case
+        root = self.tree({"evals/README.md": f"{WORD}.\n"})
+        self.assertFinds(lint.check_language(root), "evals/README.md:1")
 
     def test_other_non_ascii_sample_data_passes(self):
         root = self.tree({**skill("views", "# Views\n\n`straße`, `Tokyo 東京`, `domingo` — ∪\n")})

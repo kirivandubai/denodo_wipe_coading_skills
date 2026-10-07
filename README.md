@@ -46,7 +46,8 @@ overrides them in `.denodo/conventions.md` — plain markdown, no schema to lear
 
 ## Requirements
 
-- **Claude Code** (the plugin is installed from its marketplace).
+- **Claude Code** (the plugin is installed from its marketplace), on **macOS or Linux**. CI
+  runs the unit tests on Linux; Windows is untested.
 - **Denodo 9.5.** Only 9.5. There are no version branches in the templates, and nothing
   here is tested against 8.x or earlier 9.x releases.
 - Network access to Virtual DataPort (port `9996` by default; the profile sets it) with an
@@ -194,17 +195,17 @@ phrasing; `/denodo:vql` is the entry point when the request is ambiguous.
 | `/denodo:catalog` | virtual database, folder, VDP tag (and assigning a tag to views and columns) | VQL |
 | `/denodo:datasources` | JDBC / DF / JSON data sources, their wrappers, base views; introspecting a source; handing every other source type to Design Studio | VQL |
 | `/denodo:views` | derived views, interface views, associations | VQL |
-| `/denodo:marketplace` | marketplace tags, categories, external elements, catalog synchronisation | REST |
+| `/denodo:marketplace` | marketplace tags and categories (assigned to views and taken off them), external elements, catalog synchronisation, keeping a renamed view's entry | REST |
 | `/denodo:procedures` | calling the server's predefined procedures, writing your own in VQL, importing a Java one from a JAR | VQL |
 | `/denodo:cache` | the full cache of a view: switching it on and off, loading it with all rows or the ones you name, clearing it; every other cache setting goes to Design Studio | VQL |
 | `/denodo:semantics` | what people and AI consumers (MCP Server, Assisted Query, AI SDK) read about existing views: an audit of descriptions, primary keys, associations and the MCP visibility tag, and descriptions written from the data after you approve them | VQL |
 | `/denodo:metrics` | metric views: KPIs defined once over a fact view and its dimensions (`CREATE METRIC VIEW`), the views built on them, and querying them with `evaluate_metric` | VQL |
 | `/denodo:ai` | the server's LLM and embedding model in a query: classifying, scoring, translating, summarising or extracting from a text column, a cached view that keeps those answers so readers stop paying, and semantic search over stored vectors — never run over more rows than you agreed to | VQL |
-| `/denodo:security` | who may read what: a role with read access and giving it to a user, a global security policy that masks columns, filters rows or denies a view over tagged columns, and checking it as each person by impersonation | VQL |
+| `/denodo:security` | who may read what: a role with read access and giving it to a user, a global security policy that masks columns, filters rows or denies a view over tagged columns, and checking it as each person by impersonation; each person seeing only their own rows; taking someone's access away | VQL |
 | `/denodo:dml` | rows changed in the database behind a view: update, insert (with the generated key back) and delete by key, a view an application writes through, rows copied from another view or a file, upserts — each previewed, with an undo file, applied only after your yes | VQL |
 | `/denodo:materialize` | query results stored as tables: a remote table other tools read and its refresh, a frozen snapshot, a summary the optimizer answers aggregate queries from, a data movement for a slow federated join, a materialized table — a new table where you said is created by the agent, anything that replaces, empties or drops an older one waits for your yes | VQL |
 | `/denodo:testing` | regression tests for your data products: `.denodotest` files beside the project's `.vql`, run by Denodo's own Testing Tool — a mart's totals against its input, a unique key, nothing invalid, the contract's columns, the rows a consumer reads, a mart that runs in its database; the tool's configuration written from the profile, outside the repository | Testing Tool |
-| `/denodo:scheduler` | work on a schedule in Denodo Scheduler: a cache job that reloads the full cache of views, a job that runs one statement (`REFRESH`, a procedure) or exports a view to a CSV file; running, stopping, enabling and disabling jobs, reading their reports — a new job is created disabled and enabled after your yes when it touches what others read; data sources and every other job type stay in the administration tool | REST |
+| `/denodo:scheduler` | work on a schedule in Denodo Scheduler: a cache job that reloads the full cache of views, a job that runs one statement (`REFRESH`, a procedure) or exports a view to a CSV file; running, stopping, enabling, disabling and deleting jobs, reading their reports — a new job is created disabled and enabled after your yes when it touches what others read; data sources and every other job type stay in the administration tool | REST |
 
 **A "tag" alone does not say which server you mean.** Virtual DataPort tags
 (`CREATE TAG`, VQL) and Data Marketplace tags (REST) are different objects on different
@@ -225,13 +226,17 @@ storage, base views over a SQL query or a stored procedure, refreshing a base vi
 changed. `/denodo:datasources` tells the human what to create there and builds on the result.
 
 Deliberately out of scope: a full function reference; performance beyond the full cache and
-the tables of `/denodo:materialize` (partial cache, time to live, incremental loads, MPP); security beyond roles and global security policies (user accounts and
-passwords, LDAP, per-role row and column restrictions, custom policies); configuring the
-LLM, the embedding model or the vector database, and generating embeddings for a table;
-publication
-(REST/SOAP/GraphQL/OData services); Scheduler data sources and job types beyond a cache job and
-a one-statement job; Solution Manager and cross-environment deployment; Denodo versions other
-than 9.5.
+the tables of `/denodo:materialize` (partial cache, time to live, incremental cache loads,
+MPP); security beyond roles and global security policies (user accounts and passwords, LDAP,
+per-role row and column restrictions, custom policies); configuring the LLM, the embedding
+model or the vector database, and generating embeddings for a table; publishing a view as a
+REST, SOAP, GraphQL or OData service of its own — the built-in RESTful web service already
+serves every view to the users who may read it; JMS and Kafka listeners; custom Java functions,
+custom wrappers and custom policies (Java stored procedures are `/denodo:procedures`); Data Marketplace
+governance; the client code that connects an application; Scheduler data sources and job types
+beyond a cache job and a one-statement job; Solution Manager, cross-environment deployment and
+dbt; Denodo versions other than 9.5. Asked for any of these, the agent says so, does the part
+that is in scope and names Design Studio or the administrator for the rest.
 
 Every template carries its verification status in a comment on the line above it —
 `verified: 9.5.1 (live, <date>)` when it has been run against a live 9.5.1 server, or
@@ -247,7 +252,7 @@ default:
 
 - **Creating a new object** the agent does on its own. **`DROP`, `ALTER` of an existing
   object, writes into sources (`INSERT`, `UPDATE`), server-wide settings (`SET '<property>'`),
-  and anything at all on a profile marked `production = true`** require your
+  a web service created or deployed, and anything at all on a profile marked `production = true`** require your
   explicit confirmation — that is a standing rule the skills follow on every server.
   Underneath it, the execution layer adds a hard stop that does not depend on the agent
   reading its instructions: on a `production = true` profile a destructive statement is
@@ -283,13 +288,24 @@ default:
   writes suites that only read; on a `production = true` profile `testing run` and
   `testing config` refuse without `--allow-destructive`, which comes after your yes.
 
+## When the agent got it wrong
+
+Open an issue — there are two forms. **The agent got it wrong in my session**: what you asked
+in your own words, what the agent did, what you expected, the plugin's commit (`claude plugin
+list`), `vdp.server_version` and `features` from `env check`, and the `.vql`, the `vql plan`
+JSON and the error envelope involved. **`verify` failed on my server**: the command, the failed
+steps from its report, the skipped ones you expected to run, and `features`. Replace the names
+of your objects, schemas, hosts and people with neutral ones first, and never paste a profile, a
+password or a data source's ciphertext: this repository is public.
+
 ## Contributing
 
-Skills in this repository are meant to be built together — a new object, a better
-template, a reference file for a source type nobody has covered yet. Start with
-[CONTRIBUTING.md](CONTRIBUTING.md): it has the layout of the repository, the five-block
-shape of a `SKILL.md`, the rule about `verified:` marks, and the checks that guard the
-plugin — the unit tests and the lint of the skills run in CI on every pull request.
+The skills grow from sessions: a session where the agent got it wrong, a template that fails
+on your server, an error message decoded — all of it is welcome. Start with
+[CONTRIBUTING.md](CONTRIBUTING.md): what is accepted, how a session becomes a skill change, the
+layout of the repository, the five-block shape of a `SKILL.md`, the rule about `verified:`
+marks, and the checks that guard the plugin — the unit tests and the lint of the skills run in
+CI on every pull request.
 
 One thing to know before you read it: the plugin itself — skills, templates, this README —
 is written in English, while the project's own design documents under `docs/` and

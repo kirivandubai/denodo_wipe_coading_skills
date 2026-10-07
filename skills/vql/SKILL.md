@@ -43,6 +43,10 @@ before it stay applied: a `CREATE OR REPLACE` of a view re-applies safely, but a
 or AI load, or `OR REPLACE` over a table that holds rows runs again (`/denodo:dml`,
 `/denodo:materialize`).
 
+**A file waiting for the human's yes is not committed** until it is applied: a commit made before a
+session is what `vql plan` reads as your project's declaration (`declared_in`), so a file committed
+unapplied would vouch for its own change in the next session.
+
 **A request for a set** — every table of a schema, every column that holds an email, every
 view of a database — runs the same loop over a list, with a plan file: **Many objects at
 once**, below.
@@ -91,6 +95,12 @@ Folder paths are quoted; create parents first, drop bottom-up (`/denodo:catalog`
 in the project root (`cat .denodo/conventions.md 2>/dev/null`). It is plain markdown; a
 section named after a rule above replaces that rule, anything it does not mention keeps the
 default. If the project has one, it wins — do not "improve" its naming with the defaults.
+
+**A database that already holds objects has conventions of its own.** Without the file, read
+its folders and names before you add to it — `SELECT name, type, subtype, folder FROM
+GET_ELEMENTS() WHERE input_database_name = '<db>'` (`/denodo:catalog`): a new object goes where
+its siblings live, under their prefixes; a sibling's cache is not a convention to copy. The
+defaults above are for a database you start. Say in the summary which convention you followed.
 
 ## Idempotency
 
@@ -143,6 +153,7 @@ ledger knows and you do not. `vql ledger --env dev` lists what the session creat
 | — | a predefined procedure that changes state, called like a read — `SELECT * FROM DROP_REMOTE_TABLE(…)`; the list and its two exceptions are in `/denodo:procedures` |
 | a Scheduler job created disabled, or one whose runs touch only what you created in this session; every `GET` (`/denodo:scheduler`) | enabling, starting or changing a job whose runs change what existed before this session, and anything on an older job — a job is its statement, every time it fires (`/denodo:scheduler`) |
 | `GET` calls to the marketplace; a catalog `synchronize` whose radius is yours (`/denodo:marketplace`, **Who sends it**) | every other destructive marketplace call (`/denodo:marketplace`) |
+| — | publishing a view as a web service — `CREATE … WEBSERVICE`, `ALTER … WEBSERVICE`, `DEPLOY`, `REDEPLOY`, `UNDEPLOY`, `EXPORT … FROM WEBSERVICE`, your own new service included — and a JMS or Kafka listener (`CREATE LISTENER`): outside this plugin (**Where to go from here**). A service serves the view to whoever it lets in, and a `DEPLOY` without `LOGIN` runs it as the profile's account (documentation) |
 | — | **any change at all on a profile with `production: true`, `CREATE` included** |
 
 Destruction, for this rule, is anything that destroys or overwrites what exists, or changes
@@ -176,6 +187,7 @@ created in this session, which has imported nothing it could delete. Nothing els
 | "Cleanup of my own probe objects doesn't count" | It is a `DROP` on a shared server. Same rule. |
 | "I'll list what I removed in the summary" | Disclosure after the fact is not consent. |
 | "My file declares it — the table says that is mine" | A file declares whatever you put in it. Your project's file is one that declared the object before this session — the plan's `declared_in`. A name that `exists` and is not `own` waits for the yes. |
+| "Creating the web service is a new object — only the `DEPLOY` touches the server" | Publishing is outside this plugin, with no template: the service is the first half of an endpoint other people will call. Its statements wait, `CREATE` included; the built-in RESTful web service already serves the view (**Where to go from here**). |
 | "The context was compacted and I cannot tell which objects are mine, so everything waits" | `vql plan` and `vql ledger` know: the tool recorded every object this session created. Asking the human about your own work costs their time; guessing costs their objects. |
 
 **Red flags — stop and ask:** you are applying a file the plan has not read since its last
@@ -288,6 +300,17 @@ pushes down to the source.
 | Regression tests (`.denodotest`) | `/denodo:testing` |
 | Scheduler jobs (REST) | `/denodo:scheduler` |
 | Running anything, the server's errors | `/denodo:execute` |
+| Not in this plugin: publishing a view as its own REST, SOAP, OData or GraphQL service, JMS or Kafka listeners, custom Java functions, custom wrappers and custom policies, user accounts and the LDAP server configuration (a database's LDAP login is `/denodo:catalog`), promotion between environments, dbt | none — say so, do the part that is in scope, and name Design Studio or the administrator for the rest |
+
+**A view is on HTTP already.** The server's built-in RESTful web service answers for every view,
+to any user who may read it, with that user's privileges (HTTP Basic):
+`GET <web container>/denodo-restfulws/<database>/views/<view>?$format=json` — the web container of
+the profile's `marketplace_url`, `http://<host>:9090` by default — *verified: 9.5.1 (live,
+2026-10-07)*; an administrator can switch it off. When an application only needs to read a view
+over HTTP, that URL is the answer; the application's user needs `CONNECT` on the database and
+`EXECUTE` on the view (`/denodo:security`). Your `SELECT` is the proof the view answers; the URL
+with data is the application's user to try. A service of its own is published in Design Studio;
+its statements wait for the yes (the safety table).
 
 There is no skill for the `SELECT` itself — an ad-hoc question, a report, the body of a
 view: it is the SQL you know, with the expression deltas above and in

@@ -145,7 +145,7 @@ SELECT e.name AS view_name, d.column_name, d.dependency_name, d.dependency_colum
 | Database name, description | the human; name per conventions (`sales_analytics`, no environment suffix) |
 | `CHARSET` | `DEFAULT` unless the human says names need anything beyond lowercase letters, digits and `_` → `UNICODE` |
 | Authentication | omit: no clause means the server's global authentication settings, which is what Design Studio's "Global authentication settings" does — if the server is on LDAP globally, the database follows. Per-database LDAP: `references/database.md` — ask for every value. "Same login as everyone else" means omit: `GET_DATABASES()` shows what the other databases do |
-| Folder tree | `.denodo/conventions.md` if the project has one, else the layer folders from `/denodo:vql` |
+| Folder tree | `.denodo/conventions.md` if the project has one; else, in a database that already holds objects, the folders it has (the query below); else the layer folders from `/denodo:vql` |
 | Folder for a new tag's targets | not needed: tags have no folder |
 | Tag name, description | the human; name is the concept (`pii`, `gdpr`), lowercase unless quoted |
 | Tag targets | the exact `db.view` / `db.view.column` — read them first: `vql desc --env dev --database <db> <view>` |

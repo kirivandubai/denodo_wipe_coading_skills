@@ -37,7 +37,7 @@ creation and fails later, at query time. That covers:
 
 - a REST or HTTP API — JSON or XML behind a URL, an OpenAPI document — even when the
   payload is "just JSON";
-- a file anywhere other than the server's own disk (S3, ADLS, HDFS, FTP/SFTP, a URL), a
+- a file in remote storage (S3, ADLS, HDFS, FTP/SFTP, a URL), a
   compressed or encrypted file, Excel, XML, fixed-width, Parquet, Delta, Iceberg;
 - a delimited file whose records run over more than one line — a line break inside quoted
   values (a delimiter inside them is fine, `references/df.md`); the raw lines (**When you
@@ -60,9 +60,9 @@ exist yet (`/denodo:catalog`), and check that the names you are about to propose
 
 1. What goes to Design Studio, in one line, and why.
 2. Where to click, from the table below.
-3. What to enter so the result fits the project: the database, the folder
-   (`/01 - connectivity`), and the names the conventions give (`ds_…`, `bv_…` —
-   `/denodo:vql`).
+3. What to enter so the result fits the project: the database, the folder (the one its
+   sources already use, else `/01 - connectivity`), and the names the conventions give
+   (`ds_…`, `bv_…` — `/denodo:vql`).
 4. When the source needs a secret — a password, token, client secret, key: it is typed into
    the wizard. Do not ask for it and do not offer to encrypt it; nothing of yours will use
    it.
@@ -538,7 +538,7 @@ else yourself. Three or four lines, not an interview:
 | JDBC login | **the human**; it goes into the file |
 | Any password | **the human**, through `secret encrypt` (**Passwords**), asked last |
 | JDBC schema, tables, columns, types | **the server** — `GET_JDBC_DATASOURCE_TABLES` and `GENERATE_VQL_TO_CREATE_JDBC_BASE_VIEW` after the source is up. Ask only which tables the human wants, and only if they did not name them — "every table of the schema" names them |
-| File path | **the human** — and it is **server-side**: the file must be readable by the Denodo server, not by you |
+| File path | **the human** — and it is **server-side**: the file must be readable by the Denodo server, not by you. A file only on the human's computer is out of Design Studio's reach too (its local path is the server's disk): it is copied to a directory the server reads, or a share its host reaches, then the template here |
 | Delimiter, header, charset | the human, or a sample of the file; `,` + `HEADER = TRUE` + `UTF-8` is the common case |
 | **Every column name of a file, in order** | the file header, verbatim and complete (**When you cannot see the file**) — never inferred from the columns the human wants |
 | JSON shape | a sample of the document — nesting decides `REGISTER OF` / `ARRAY OF`, and you cannot guess it. Same three ways |

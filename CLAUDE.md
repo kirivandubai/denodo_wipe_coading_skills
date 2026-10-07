@@ -126,7 +126,12 @@ if something appears meanwhile): drop probe databases before such a run, or the 
   the unit tests: Cyrillic, names of the test server, task ids and "v1", description budget
   (900) and `SKILL.md` length, marks, links. Its lists (`OVER_BUDGET`, `LONG_SKILLS`,
   `UNMARKED_BLOCKS`) change only with a reason a reviewer sees; a new name of the stand that
-  reaches a skill goes into `INSTALLATION_NAMES`.
+  reaches a skill goes into `INSTALLATION_NAMES`. Since T46 it reads `evals/README.md` too, and
+  nothing that ships outside `docs/` and `CLAUDE.md` carries Russian (`spikes/` is gone).
+- **The experience loop** (T46) — development is driven by sessions: the issue forms in
+  `.github/ISSUE_TEMPLATE/`, CONTRIBUTING's *From a session to a change* (redact, synthetic
+  fixture, RED, the narrowest change, GREEN, keep a regression). `vql plan` holds every
+  web-service statement for the yes — publishing is outside the plugin (`vql`'s map).
 - **Верификация шаблонов** — прогоняются на живом стенде в отдельной тестовой базе;
   результат обновляет пометки `verified:`. Синтаксис источников проверяется без самих
   источников: недоступный хост всё равно проходит парсер Denodo.

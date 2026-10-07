@@ -25,7 +25,7 @@ tool reads host, user and password from `~/.denodo/profiles.toml` itself.
 | Apply inline VQL | `vql run --env dev -e "SELECT COUNT(*) FROM bv_orders"` — reads only: every `CREATE`, `ALTER` and `DROP` goes through a file (`/denodo:vql`) |
 | Read stdin | `vql run --env dev -` |
 | Another database | add `--database <db>` (or put `CONNECT DATABASE <db>;` first in the file) |
-| What a file would do, before applying it | `vql plan --env dev model/sales/views.vql` (also `-e`, `-`, `--database`) — reads the server and the session's ledger, executes nothing; per statement `action`, `object`, `exists`, `own`, `needs_yes`, `why`, `conditions`, and `yes` — what the yes is — when anything waits. The rule it applies is `/denodo:vql`'s safety table |
+| What a file would do, before applying it | `vql plan --env dev model/sales/views.vql` (also `-e`, `-`, `--database`) — reads the server and the session's ledger, executes nothing; per statement `action`, `object`, `exists`, `own`, `needs_yes`, `why`, `conditions`, `dependents` (an existing view's readers), and `yes` — what the yes is — when anything waits. The rule it applies is `/denodo:vql`'s safety table |
 | What this session created | `vql ledger --env dev` — every object a `vql run` of this session created on the profile's server, each with its `state`, re-checked against the server: `present`, `missing` (gone without a `DROP` this session ran), `replaced` (the name now has another object), `dropped`; `states` counts them |
 | Schema of an object | `vql desc --env dev bv_orders` (`--type view` is the default and covers base views too — there is no `DESC TABLE`) |
 | Server-generated VQL | `vql desc --env dev bv_orders --vql` — read it, do not apply it: it opens with `DROP … CASCADE` and rebuilds the object **together with what it depends on** in its own database — dependencies in another database are left out, except under a metric view of another database: the metric view is left out and its source views come back unqualified, as if they were in yours — never with what depends on it. A name can be qualified — `vql desc --env dev "other_db.bv_orders" --vql` reads another database without switching yours — *verified: 9.5.1 (live, 2026-09-12)*. The object alone, without the data source its dependencies bring (and that source's encrypted password): `vql run --env dev -e "DESC VQL VIEW bv_orders ('includeDependencies' = 'no', 'dropElements' = 'no')"` — *verified: 9.5.1 (live, 2026-10-02)* |
@@ -39,7 +39,7 @@ tool reads host, user and password from `~/.denodo/profiles.toml` itself.
 | Encrypt a source password | `secret encrypt --env dev` — the password is typed into a hidden prompt (in a terminal) or piped in on stdin, never passed as an argument; the answer carries `encrypted` and nothing else; the human runs it in their own terminal, and the procedure is `/denodo:datasources`, **Passwords** |
 | Run `.denodotest` tests | `testing run --env dev --database <db> --tool <dir> --java-home <Java 17+> <tests folder>`, or `testing config` for a human who runs the tool — `/denodo:testing`, **Running it** |
 | Which profiles exist | `env list` (never shows passwords) |
-| Is the server reachable, and who am I on it | `env check --env dev` (VDP, the marketplace if configured, and the Scheduler where the profile names a web container — `scheduler.server_version`, `mode`, `roles`; a missing Scheduler does not fail the check); `vdp.admin` — the profile's user is an administrator, so security policies do not apply to its own queries; `vdp.impersonation` — it may run a query as another user (`/denodo:security`) |
+| Is the server reachable, and who am I on it | `env check --env dev` (VDP, the marketplace if configured, and the Scheduler where the profile names a web container — `scheduler.server_version`, `mode`, `roles`; a missing Scheduler does not fail the check); `vdp.admin` — the profile's user is an administrator, so security policies do not apply to its own queries; `vdp.impersonation` — it may run a query as another user (`/denodo:security`); `vdp.server_version` — another release than 9.5: tell the human the templates are written for 9.5 before you apply one (`null`: unknown); `features` — what this installation has: `enterprise_plus` (tags, policies, the AI functions), `cache.on`, `llm.on`, `embedding.on`, `summary_rewrite`, `data_movement` — a skill that needs one says where; `false` is the administrator's, not a statement to rewrite; `null` is unknown (a setting the profile's user may not read) |
 | Verify the skills' own templates | `verify --env dev` runs `verification/chain.toml` and removes what it made: its own test database, and the server-wide `verify_` tags, user, role and global security policy — its security checks impersonate that user, so they need `vdp.impersonation: true`. The `--with-…` tails reach further: `--with-marketplace` synchronises the shared marketplace catalog (skipped while anything but the run's own database is pending there), `--with-writes` creates a table in a source database and writes its rows, `--with-scheduler` creates and runs jobs on the shared Scheduler, `--with-ai` sends about 50 paid LLM requests. A production profile needs `--allow-destructive`. Everything else: `verify --help` |
 
 Prefix every command with `${CLAUDE_PLUGIN_ROOT}/scripts/denodo`. Keep results
@@ -152,15 +152,17 @@ every other profile it runs whatever it is given. Whether a flagged statement ma
 shown them; the request that asked for them is not it, however plainly it names them — unless
 that table makes the request itself the yes, as it does for the tag of a view named to be made
 visible to an agent. When the human cannot answer — away, a deadline — the statements go into a
-file and into your message, not into `vql run`.
+file and into your message, not into `vql run`. So when your own permission settings refuse a
+`vql run` after the yes: stop there — the files, what ran and what did not are your message.
 
 The tool flags `DROP`, `ALTER`, `DELETE`, `TRUNCATE` and writes; server settings; the
 predefined procedures that change state; cache loads and invalidations; users, roles and
-global security policies; tables created, replaced or refreshed in a database; and the HTTP
+global security policies; tables created, replaced or refreshed in a database; a web service
+deployed, undeployed or exported; and the HTTP
 calls that delete or replace a set, on the marketplace and the Scheduler. The full list, with
 the kind of each, is `references/errors.md`, **What the tool flags**. Every result carries a
 `destructive` field: the kind (`drop`, `alter`, `delete`, `write`, `setting`, `procedure`,
-`cache`, `security`, `table`, `replace`, `job`) when it is one of these, and `null` — not
+`cache`, `security`, `table`, `publish`, `replace`, `job`) when it is one of these, and `null` — not
 `false` — when it is not. Session settings come back `null` and pass on any profile: `SET
 QUERYTIMEOUT TO …` (property name unquoted) and `ALTER SESSION SET 'querytimeout' = …` last
 until the connection closes; a quoted property after a bare `SET` is the server. The procedure

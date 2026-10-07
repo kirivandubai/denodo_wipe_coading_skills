@@ -102,7 +102,7 @@ Per statement:
 
 | Field | Meaning |
 |---|---|
-| `action` | `read`, `session`, `create`, `replace`, `alter`, `rename`, `drop`, `insert`, `update`, `delete`, `refresh`, `call`, `cache` (a `SELECT` whose `CONTEXT` loads or invalidates a cache), `setting`, `other` |
+| `action` | `read`, `session`, `create`, `replace`, `alter`, `rename`, `drop`, `insert`, `update`, `delete`, `refresh`, `call`, `cache` (a `SELECT` whose `CONTEXT` loads or invalidates a cache), `setting`, `publish` (a web service deployed, undeployed or exported), `other` |
 | `object` | `{type, database, name}` the statement creates, changes or targets; `null` for a read |
 | `exists` | on the server at that point of the input; `null` when the tool cannot tell |
 | `own` | created by this session (the ledger, identity checked) or by an earlier statement of the input |
@@ -133,7 +133,9 @@ commit before the session — no declarations, and the answer says so.
 When the statement equals the declaration (whitespace aside), the plan says it re-applies the
 declaration unchanged. When it differs, two conditions come with it: the change keeps every
 column the dependents read (`/denodo:views`), and the human approves new descriptions, keys or
-tags (`/denodo:semantics`).
+tags (`/denodo:semantics`). Either way (T46) one more: the object on the server is still what the
+file declared — an edit made since in Design Studio, or by another file, is lost by the apply; a
+view adopted from Design Studio into a file is exactly where that happens.
 
 ### How the table is applied
 
@@ -153,6 +155,7 @@ On a profile with `production: true`, every statement but a read or a session se
 | any statement that runs its query now (`SELECT`, a write, `CREATE_REMOTE_TABLE`, `CREATE … REMOTE` / `MATERIALIZED TABLE`) with an AI function over rows | never — checked before every row above and below (T43) | every row is a paid request to the provider |
 | `UPDATE`, `DELETE` | never | the rows change in the source at once |
 | `SET '<property>' = …`, `WEBCONTAINER` | never | the whole server's configuration |
+| a web service — `CREATE [OR REPLACE] REST WEBSERVICE` or `SOAP WEBSERVICE`, `ALTER … WEBSERVICE`, `DEPLOY`, `REDEPLOY`, `UNDEPLOY`, `EXPORT WAR` / `EXPORT WSDL FROM WEBSERVICE` (T46; `action` `publish` for the last four) | never, its own new service included | publishing a view is outside the plugin: the human publishes it in Design Studio or says yes to the statements |
 | a `CONTEXT` that loads or invalidates a cache | the view read is `own` | someone else's cache |
 | a state-changing procedure | `CREATE_REMOTE_TABLE` with `replace_remote_table_if_exist = false` (conditions: the data source and schema are the ones the human named; the name is free in the source), `CLEAN_CACHE_DATABASE` of an `own` view | the procedure changes state outside the session's objects |
 | `CREATE REMOTE TABLE` (the command) of a new name | conditions as for `CREATE_REMOTE_TABLE`; with `OR REPLACE`, only a name this session created — the command makes no view, so the ledger's entry for it has no `internal_id` and vouches for no view of that name (T43) | `OR REPLACE` drops a table of that name in the source, whoever made it |

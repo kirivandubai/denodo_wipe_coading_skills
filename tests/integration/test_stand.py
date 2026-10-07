@@ -84,7 +84,7 @@ class VqlPsycopg2TransportTest(unittest.TestCase):
         through its parser: doubling the single quote is enough, and a backslash is literal.
         Drop the doubling in ``quote_literal`` and the first case is a syntax error.
         """
-        for password in ("pa'ss", "back\\slash", "per%cent", 'a"b', "два'слова \\ 100%", "  spaced  "):
+        for password in ("pa'ss", "back\\slash", "per%cent", 'a"b', "zwei'wörter \\ 100%", "  spaced  "):
             with self.subTest(password=password):
                 result = self.transport.execute(f"SELECT {quote_literal(password)} AS p FROM DUAL()")
                 self.assertEqual(result.rows, [[password]])

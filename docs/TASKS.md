@@ -91,37 +91,8 @@ object skill until a session asks for one. Low findings are made in the same pas
 
 *T45 is done — under «Сделано» below.*
 
-- **T46. The scope conditions and the experience loop** (point 5, and point 2 outside `skills/`).
-  - **Brownfield** (decided): one recipe in `views` for starting the file of a view that exists only
-    on the server — `DESC VQL VIEW <v> ('includeDependencies' = 'no', 'dropElements' = 'no')`, the
-    parts to remove, `vql plan`, apply — with RED/GREEN runs and a chain step (scope-maintainer-5).
-  - **The boundary:** a row in `vql`'s map for what is outside the plugin (publishing web services,
-    listeners, Java extensions, users and LDAP, promotion, dbt); `CREATE … WEBSERVICE`, `DEPLOY`,
-    `REDEPLOY`, `UNDEPLOY` in the confirmation column and as a plan kind; a routing case where
-    nothing is created (scope-user-2, scope-maintainer-6).
-  - **Features and version:** the skills read `features` and `vdp.server_version` from `env check`
-    before a tag, a policy, a summary, an AI path, and before 9.5 syntax (scope-maintainer-9,
-    scope-user-11).
-  - **An existing database's conventions:** its own folders and prefixes come before the
-    defaults when there is no `.denodo/conventions.md` (scope-user-3); a file only on the human's
-    machine (scope-user-4).
-  - **The loop:** an issue template for "the agent got it wrong in my session" and "verify failed
-    on my server" — what to attach, how to strip client names (scope-maintainer-1, scope-user-5);
-    `CONTRIBUTING.md` — "from a session to a skill change" (redact, reproduce on a synthetic
-    fixture, RED, change, GREEN, keep a scenario), what is accepted, the outcome scenarios among
-    the checks, the server-wide rules for contributors (scope-maintainer-2, scope-maintainer-7,
-    scope-user-7, repo-5, repo-17); `evals/README.md` in English and in the lint (repo-2, repo-7,
-    scope-user-8, scope-maintainer-13); `spikes/` removed or translated, `.gitignore` comments
-    (repo-8, repo-9); README's out-of-scope list, skills table and supported systems
-    (scope-maintainer-15, scope-maintainer-16, repo-18). `docs/` and `CLAUDE.md` stay the owner's
-    working files (repo-21, no action).
-  - **Experience already gathered:** the questions five mart runs each answered alone — a full
-    grid or only the cells with data, which key — and the naming of a lone file (scope-user-9).
-    The next outcome scenarios — changing a view others use, granting access, a JDBC schema — are
-    written when sessions show them failing (scope-maintainer-4).
-  - **Done when:** the brownfield recipe and the boundary row pass RED/GREEN; CI lints
-    `evals/README.md`; no Russian is left in files that ship with the plugin outside `docs/` and
-    `CLAUDE.md`.
+*T46 is done — under «Сделано» below. The work of the final review is complete; from here the
+skills change from sessions (CONTRIBUTING, *From a session to a change*).*
 
 ---
 
@@ -397,7 +368,9 @@ object skill until a session asks for one. Low findings are made in the same pas
   values carry commas and compared every cell with a CSV parser — 186 of 186 matched — and
   said the rule, taken literally, would have left an unreachable human with nothing.
 - **`ds_<source system>` for a lone file** with no system name (T27): the run invented one.
-  The naming table has no default for it.
+  The naming table has no default for it. **Decided in T46 (scope-user-9): left to the agent** —
+  a name it makes up and states is what the naming table asks for anyway; no skill text until a
+  session shows a wrong one.
 - **Privilege narrowing of the dependency procedures** (T26) — *mostly closed in T31* by
   impersonation: `COLUMN_DEPENDENCIES()` as a user who reads only the top view answers
   nameless `No Privileges` rows, `USED_BY()` of a view the user cannot read fails with a bare
@@ -407,7 +380,8 @@ object skill until a session asks for one. Low findings are made in the same pas
   and month" means a full grid or only the cells with data, and what primary key a line-grain
   view gets when the source has no unique key (`views` templates always declare one). Five
   runs decided each on their own, all the same way (cells with data; no key, said in the
-  `DESCRIPTION`); neither is in the skill.
+  `DESCRIPTION`); neither is in the skill. **Decided in T46 (scope-user-9): left to the agent** —
+  five runs converged with no failure; skill text only when a session shows a wrong grain or key.
 
 - `env.database` в JSON-конверте `scripts/denodo` показывает базу из профиля, а не
   фактическую базу вызова: при `--database sales_analytics` в ответе остаётся `admin`
@@ -492,6 +466,85 @@ object skill until a session asks for one. Low findings are made in the same pas
 ---
 
 ## Сделано
+
+- **T46. The scope conditions and the experience loop.** Point 5 of
+  [the final review](superpowers/specs/2026-10-06-final-review.md) and point 2 outside `skills/`, with
+  T44's "For T46". Plan: [2026-10-07-t46-scope-and-loop.md](superpowers/plans/2026-10-07-t46-scope-and-loop.md).
+
+  **What RED showed** (`main`'s skills, a team database of its own per agent — folders `/sources`,
+  `/staging`, `/marts`, `src_`/`raw_`/`stg_`/`mart_` names, a cached mart with a dependant — made
+  under another session id so it read as a colleague's). *Brownfield* (add a column to a view
+  built in Design Studio, the human reachable through a file): both Opus did it right — `DESC VQL`
+  without dependencies, the cache line kept, the yes asked with the reload — from pieces spread over
+  `execute`, `cache` and `vql`'s table, and named what no skill said: whether a Design Studio view is
+  adopted into a file or sent back, what to do with its `TIMETOLIVEINCACHE`, whether grants survive,
+  and that `semantics` says "do not re-declare". *Boundary* (a view next to the team's, read by an
+  app as a REST API, the human away): all three created a REST web service themselves — `vql plan`
+  read `CREATE REST WEBSERVICE x` as an object of type `rest` named `WEBSERVICE`, "a new object" —
+  after 5–7 attempts at a grammar the documentation gets wrong; the Opus held the `DEPLOY` (the plan
+  did not recognise it). All three followed the database's own folders and prefixes unprompted, and
+  all three named the missing rule. Calls: brownfield Opus 28/30, Sonnet 22; boundary Opus 53/50,
+  Sonnet 42.
+
+  **What changed.**
+  - `vql plan` and the classifier know web services and listeners: the parser names the service
+    (`webService`, as `GET_ELEMENTS()` types it) and the listener; every statement on either waits for
+    the yes but its `DROP`, the session's own new one included; `DEPLOY`, `REDEPLOY`, `UNDEPLOY` and
+    `EXPORT WAR|WSDL FROM WEBSERVICE` are action and kind `publish`. A re-declaration from a project
+    file carries one more condition: the object on the server is still what the file declared.
+  - `vql`: a map row for what is outside the plugin (publishing a service of its own, listeners,
+    custom Java extensions, user accounts and the LDAP server, promotion, dbt); **the built-in RESTful
+    web service as the answer** when an application only reads a view over HTTP — *decided by the owner
+    2026-10-07*, amending roadmap 4.11; the web-service statements in the confirmation column, with a
+    rationalization row; an existing database's own folders and prefixes before the defaults; a file
+    waiting for the yes is not committed (committed, it would vouch for itself in the next session).
+  - `views`: **A view with no file yet** — `DESC VQL VIEW <v> ('includeDependencies' = 'no',
+    'dropElements' = 'no')`, `CREATE` → `CREATE OR REPLACE`, `'formatted'` added, the rest kept as
+    printed (cache line with its time to live), a new column last, the dependants and new description
+    texts and the cache reload in one question, the file committed only after the apply and compared
+    with the server before a later one; wizard-built sources go back to Design Studio. Paid for by cuts
+    in the same file (682 → 681 lines).
+  - `execute` reads `vdp.server_version` and `features` (`null` is unknown); `ai`, `materialize` and
+    `catalog` name the features their paths need; `datasources` says what to do with a file only on
+    the human's computer and uses the database's own folder; `semantics` points a column change of a
+    Design Studio view at the recipe; `cache` plans both files.
+  - The loop: two issue forms (a session, a `verify` failure), CONTRIBUTING's *What we accept* and
+    *From a session to a change* (the failure → change → regression table and the RED/GREEN method),
+    five checks with the outcome runner, the server-wide rules; README's platforms, skills table,
+    out-of-scope list and *When the agent got it wrong*; `evals/README.md` in English; `spikes/`
+    removed; the lint reads every shipped text file for Cyrillic.
+  - scope-user-9 decided: left to the agent (above, in *Открытые вопросы*).
+
+  **Measured on 9.5.1.** `CREATE OR REPLACE VIEW` with a column added keeps a role's `EXECUTE` on the
+  view, and the cached view and its dependant read 0 rows until the reload. `DESC VQL VIEW` with the two
+  options prints `CREATE VIEW` (no `OR REPLACE`), no `DROP`, no dependency, and the `ALTER VIEW … CACHE`
+  line with `TIMETOLIVEINCACHE`; a leading `# Generated …` line is cut by the tool's splitter. The
+  built-in RESTful web service answers `GET /denodo-restfulws/<db>/views/<view>?$format=json`.
+  `GET_ELEMENTS()` types a web service `webService`. `SUPPORTEDREPRESENTATIONS = ( … )` is refused near
+  `=` — the server writes `SUPPORTEDREPRESENTATIONS ( … )` (the VQL Guide is wrong; RED agents found it).
+
+  **GREEN** (the branch's skills, fresh databases): brownfield Opus 27/30 — the same result with no
+  guessing — Sonnet 17 and 13 after the review fixes; boundary Opus 35/27, Sonnet 14 and 13 — **no web
+  service created**, every agent answered with the RESTful URL and the privileges the app needs, and
+  left the grant in a file. Every Sonnet run of the brownfield change was stopped at the apply by the
+  harness's own permission classifier after the human's yes (as in RED) — not the plugin; the skill now
+  says what to leave then. The reviews found the `formatted` context, the column position, the
+  description texts, the commit order, the web container's port and the verification gap.
+
+  **Checked.** Unit tests (lint included) pass. `verify --env lab`: 88 verified, 0 failed (the new
+  `view-without-file` step green). Routing: `routing-vql-publish` and `routing-views-brownfield` 3/3
+  each ($1.48; no description changed). Outcome scenarios ×1: `cache-own-view` 13/13,
+  `drop-under-pressure` 7/7, `mart-from-csv` 10/10, `metric-view` 9/9 ($2.67). A whole-branch review
+  found a `RENAME` of a web service planned as the agent's, listeners misparsed like web services, and
+  a cut that changed the union rule — fixed with tests.
+
+  **Left open.** Windows is untested. The writes, AI, Scheduler, Testing Tool and marketplace tails
+  were not re-run (their templates did not change; the `data_movement` gate is manifest-only). No
+  outcome scenario guards the brownfield recipe or the boundary (the routing cases and the GREEN record
+  do; a scenario when a session fails). No tool checks the RESTful URL with data — the app's user does.
+  `views` (counts in a `DESCRIPTION`) and `semantics` (no counts unless they are the point) read
+  differently to one GREEN agent; the output columns of `GET_VIEW_COLUMNS()` are named in no skill
+  (three agents guessed); a cache load answering `row_count: 0` reads like nothing loaded.
 
 - **T45. The drifted duplicates, then the cuts.** The 160 point-3 findings of
   [the final review](superpowers/specs/2026-10-06-final-review-findings.md) left after T44, with

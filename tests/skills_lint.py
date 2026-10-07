@@ -36,7 +36,7 @@ SKILL_LINES_LIMIT = 500    # a SKILL.md is read whole; the detail belongs in ref
 OVER_BUDGET: dict[str, int] = {}
 
 # SKILL.md files over the limit, with their length in lines — the same ratchet.
-LONG_SKILLS: dict[str, int] = {"datasources": 626, "views": 682}
+LONG_SKILLS: dict[str, int] = {"datasources": 626, "views": 681}
 
 # Fenced blocks in skills/ that are not templates and so carry no verification mark:
 # grammar, diagrams, what a server or a tool prints, a report the agent writes, a command
@@ -126,7 +126,7 @@ def _skill_docs(root: Path) -> list[Path]:
 
 def _eval_cases(root: Path) -> list[Path]:
     """Files of the eval cases — prompts and graders, the outcome scenarios and their runner — not
-    the suites' own README, results or compiled modules."""
+    results or compiled modules. The suites' README is a document (``_docs``)."""
     evals = root / "evals"
     if not evals.is_dir():
         return []
@@ -137,7 +137,7 @@ def _eval_cases(root: Path) -> list[Path]:
 
 def _docs(root: Path) -> list[Path]:
     """Text a plugin user or the agent reads."""
-    top = [root / name for name in ("README.md", "CONTRIBUTING.md")]
+    top = [root / name for name in ("README.md", "CONTRIBUTING.md", "evals/README.md")]
     manifests = sorted((root / ".claude-plugin").glob("*.json"))
     return _skill_docs(root) + [path for path in top if path.is_file()] + manifests + _eval_cases(root)
 
@@ -149,6 +149,27 @@ def _cli(root: Path) -> list[Path]:
         return []
     launcher = [scripts / "denodo"] if (scripts / "denodo").is_file() else []
     return launcher + sorted(path for path in scripts.rglob("*.py") if "__pycache__" not in path.parts)
+
+
+# The owner's working files, partly in Russian by decision; everything else ships in English.
+OWNER_FILES = ("docs", "CLAUDE.md")
+# Directories that hold no text a person wrote for the repository: tool state, caches, results.
+NOT_SHIPPED = {".git", ".claude", ".superpowers", ".venv", "venv", "__pycache__", "node_modules", "results"}
+
+
+def _shipped_text(root: Path) -> list[Path]:
+    """Every text file of the tree a plugin install carries, except the owner's working files."""
+    found = []
+    for path in sorted(root.rglob("*")):
+        parts = path.relative_to(root).parts
+        if not path.is_file() or parts[0] in OWNER_FILES or NOT_SHIPPED & set(parts):
+            continue
+        try:
+            path.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            continue                     # a binary file: not text anyone reads
+        found.append(path)
+    return found
 
 
 def _rel(root: Path, path: Path) -> str:
@@ -237,7 +258,7 @@ CYRILLIC = re.compile(r"[\u0400-\u04FF]")
 
 def check_language(root: Path) -> list[str]:
     findings = []
-    for path in _docs(root) + _cli(root):
+    for path in sorted(set(_docs(root) + _cli(root) + _shipped_text(root))):
         for number, line in enumerate(_lines(path), start=1):
             if CYRILLIC.search(line):
                 findings.append(f"{_rel(root, path)}:{number}: Cyrillic — the plugin is in English")

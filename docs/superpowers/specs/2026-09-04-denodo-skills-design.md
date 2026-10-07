@@ -251,6 +251,8 @@ Community KB), а не придуман: `ds_`, `bv_`, `iv_`, `a_`, `s_`, биз
 снизу вверх (the error and the drop order are `/denodo:catalog`'s; the core says "create
 parents first, drop bottom-up").
 
+**A database that already holds objects (T46, final review scope-user-3).** Without `.denodo/conventions.md` the only override was the file, so in a team's database the agent would create `/01 - connectivity` beside the team's own folders and `iv_` names among its `v_`. The order is now: the project's file; else the folders and prefixes the database already uses (read with `GET_ELEMENTS()`); else the defaults, which are for a database the agent starts. The agent says which it followed. A sibling's cache or other settings are not a convention to copy. In the T46 RED runs all three agents already followed the database's own layout, and all three named the missing rule as a gap.
+
 ### 6.3 Правила безопасности
 
 `CREATE` нового объекта — агент выполняет сам. `DROP`, `ALTER` существующего объекта и
@@ -279,7 +281,7 @@ the yes is, a yes to the shown statements, never the request that asked for them
 scenario's agent took the request for it); `api … --plan` does the same for a REST
 call without sending it, and for a catalog `synchronize` checks both `changes` against the ledger.
 "Your project's own file declares it" is read from git: the tree of the last commit made before the
-session started — a file the session wrote or committed vouches for nothing. **The plan informs and
+session started — a file the session wrote or committed vouches for nothing. (T46: so a file waiting for a yes is not committed until it is applied — committed unapplied, it would vouch for itself in the next session.) **The plan informs and
 refuses nothing**; the refusal stays the production profile's (roadmap 2.1). The session is the
 conversation with the human, subagents included: `DENODO_SESSION`, else `CLAUDE_CODE_SESSION_ID`
 (a subagent sees its parent's id — measured on Claude Code 2.1.289); without either the ledger is
@@ -306,6 +308,8 @@ settings pass on any profile: the ODBC connection form `SET <property> TO …` (
 allow-listed shape, every other `SET` counts as the server), `ALTER SESSION SET …` (checked on
 9.5.1: the value shows in `GETSESSION` on the same connection and is gone on the next one), and
 `WEBCONTAINER STATUS`.
+
+**Publishing a view (T46).** A web service — `CREATE [OR REPLACE] REST | SOAP WEBSERVICE`, `ALTER … WEBSERVICE`, and `DEPLOY`, `REDEPLOY`, `UNDEPLOY`, `EXPORT WAR | WSDL FROM WEBSERVICE` — is outside the plugin by the owner's roadmap decision (no template), and the parser used to read `REST` as the object type and `WEBSERVICE` as its name, so a `CREATE REST WEBSERVICE` planned as "a new object", the agent's own. `vql plan` now holds every web-service statement for the yes, the session's own new service included, and the classifier flags the four deploying and exporting statements `publish`: they serve a view over HTTP to whoever the service lets in, or take it from its clients. `CREATE … WEBSERVICE` stays unflagged — nothing is served until it is deployed. The rule the agent reads is a row of `vql`'s map (what is not in the plugin) and a row of its confirmation column; the built-in RESTful web service already serves every view to the caller's own privileges, which is the answer to most "expose it as an API" requests.
 
 **By CONTEXT (T27)**, a query that writes the cache of a view instead of reading it is flagged
 `cache`: `'cache_invalidate'` in any form (it deletes cached rows before the load — all of them

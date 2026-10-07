@@ -1,8 +1,9 @@
 # Contributing
 
-The point of this repository is that skills get built together. A new object, a better
-template, a `references/` file for a source type nobody has covered yet, an error message
-decoded — all of it is welcome, and none of it requires touching the execution layer.
+The skills grow from what happens when people use them. A session where the agent got it
+wrong, a template that fails on your server, an error message decoded — all of it is welcome,
+and most of it needs no change to the execution layer. What we accept, and how a session turns
+into a change, are below.
 
 This file is what you need in order to work here. The design documents under `docs/` are
 partly in Russian and are the authority on *why* things are the way they are; everything in
@@ -35,13 +36,15 @@ denodo_skills/
 │   ├── materialize/         query results stored as tables: remote tables, summaries + references/
 │   ├── testing/             regression tests run by the Denodo Testing Tool + references/
 │   └── scheduler/           Denodo Scheduler jobs + references/
-├── .github/workflows/ci.yml the checks every pull request runs
+├── .github/
+│   ├── workflows/ci.yml     the checks every pull request runs
+│   └── ISSUE_TEMPLATE/      a session report and a verify failure
 ├── scripts/
 │   ├── denodo               launcher — standard library only
 │   └── denodo_cli/          the implementation behind it
 ├── verification/           the chain of templates run against a live server (chain.toml)
 │                            and the files its fixtures read (data/)
-├── evals/                   phrase → expected skill
+├── evals/                   phrase → expected skill; outcome/ what the agent does next
 ├── tests/                   unit tests and the lint of the skills, plus integration/ against a server
 └── docs/                    design documents and the task tracker
 ```
@@ -65,6 +68,53 @@ Other databases are free to *read*: `SELECT`, `DESC`, `DESC VQL` and `GET_ELEMEN
 the best source of real syntax there is, better than the documentation. But not one
 state-changing statement outside your own database, tidy-ups and "harmless" fixes
 included.
+
+**Server-wide objects belong to no database**: users, roles, VDP tags, global security
+policies, Data Marketplace tags and categories, Scheduler projects and jobs. Create them under a
+prefix that names your run and drop them by that name when you are done; read everyone else's,
+never change them. A user you create for a check is `EXTERNAL` — no password exists to leak, and
+impersonation reads as them. A Scheduler job is created disabled, or deleted before you finish:
+it runs as the login of its data source and keeps running after you leave. A table written in a
+source database through Denodo is a real write — `ROLLBACK` undoes nothing — so it is one you
+created for the check, never another team's. AI functions send one paid request per row: run
+them over a few hundred rows at most.
+
+## What we accept
+
+- **A change traced to a session or a `verify` report** — the issue templates ask for what is
+  needed to reproduce it. A rule nobody has broken yet is a guess about the next session.
+- **Correctness first**: a template that fails on a 9.5 server, a fact a skill states wider than
+  it was measured, an error message the skills do not decode, a safety rule an agent got round.
+- **Narrow scope.** A source type the skills do not build stays a Design Studio handover in
+  `/denodo:datasources`; publishing web services, listeners, Java extensions, user accounts and
+  LDAP, promotion between environments and dbt are outside the plugin (README, *What the skills
+  cover*). A new object skill comes when sessions keep asking for one, and starts narrow.
+- Every template carries its mark, and every description change runs the eval suite (below).
+
+## From a session to a change
+
+Each kind of failure has the artifact that fixes it, and the artifact that keeps it fixed:
+
+| What went wrong | The change | What keeps it fixed |
+|---|---|---|
+| the wrong skill fired, or none | the skill's `description` | a routing or discrimination case in `evals/`, and the suite run |
+| the right skill, the wrong action — a guess, a step skipped, a yes not asked | the skill's text | an outcome scenario in `evals/outcome/`, or a RED/GREEN record in the pull request |
+| a server message the agent could not read | a row of `skills/execute/references/errors.md`, or the skill's *Common mistakes* | the row's mark |
+| a template that failed on a server | the template | its `verify` step |
+
+The method that produced every skill here:
+
+1. **Redact** the session: no client names, hosts, schemas or data — this repository is public.
+2. **Reproduce it on a synthetic fixture**: a few files or tables in your own test database with
+   names of their own (`eval_…`, or the run's prefix), small enough to read in full.
+3. **RED**: run the request with the skills of `main` — a subagent, or `claude -p` with
+   `--plugin-dir` — and keep its report. If the failure does not reproduce, there is nothing to
+   change yet.
+4. **The narrowest change** that addresses what RED did: one row, one sentence, one template.
+5. **GREEN**: the same request with the change. Ask the agent for a review of the text, not
+   only for the result — what was missing, unclear or wrong — and run a weaker model too.
+6. **Keep a regression**: a case, a scenario or a `verify` step from the table above, and the RED
+   and GREEN reports summarised in the pull request.
 
 ## Adding or changing a skill
 
@@ -150,8 +200,8 @@ in the templates, and adding one is not a fix.
 
 ## Checks
 
-Four, each answering a different question. The first runs in CI on every pull request
-(`.github/workflows/ci.yml`), together with `claude plugin validate .`; the other three
+Five, each answering a different question. The first runs in CI on every pull request
+(`.github/workflows/ci.yml`), together with `claude plugin validate .`; the other four
 need a server or a paid model and are yours to run. The validator's warning about a missing
 `version` is expected: without one Claude Code versions an install by its commit, so every merge
 reaches `claude plugin update`. A `version` in `plugin.json` or in the plugin's entry of
@@ -228,6 +278,19 @@ claude plugin eval . --ablation none
 
 Mandatory whenever you add a skill or change any `description`. The cases and how to read
 a failure are in [`evals/README.md`](evals/README.md).
+
+**Outcome scenarios** — what does the agent do after the skill fires? Six requests run by
+headless Claude Code against a non-production test server and graded on the trace, the session's
+ledger and the server's state:
+
+```
+python3 evals/outcome/run.py --env dev
+```
+
+Each run is a paid agent session — about $4.80 for the six on the default model. Due on any
+change to a rule that decides whether the agent acts or asks — `vql`'s safety table, a skill's
+"who applies it" — and before a release. How they run, their fixtures and cost:
+[`evals/README.md`](evals/README.md), *Outcome scenarios*.
 
 ## Invariants that break silently
 

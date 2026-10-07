@@ -1,183 +1,165 @@
-# Eval-сьют: срабатывает ли нужный навык
+# Eval suite: does the right skill fire
 
-Сьют отвечает на один вопрос — **выбирает ли агент правильный навык по фразе человека**.
-Он не проверяет, что навык делает дальше: ни VQL, ни обращений к стенду здесь нет.
-Исполнение проверяют [верификация шаблонов](../scripts/denodo) и юнит-тесты, срабатывание
-— только этот сьют.
+The suite answers one question — **does the agent choose the right skill from the human's
+phrase**. It does not check what the skill does next: there is no VQL here and no server.
+Execution is checked by [template verification](../scripts/denodo) and the unit tests; routing
+only by this suite.
 
-Зачем он нужен, написано в разделе 11.2 [дизайн-документа](../docs/superpowers/specs/2026-09-04-denodo-skills-design.md):
-описания навыков конкурируют между собой, и когда после v1 добавятся новые, деградация
-старых пройдёт незаметно. Отсюда правило: **любая правка `description` — повод прогнать
-сьют**, даже если правка косметическая.
+Why it exists is in section 11.2 of the [design document](../docs/superpowers/specs/2026-09-04-denodo-skills-design.md):
+the skills' descriptions compete with each other, and when a new skill arrives, an old one can
+stop firing without anyone noticing. Hence the rule: **any change to a `description` means
+running the suite**, however cosmetic the change.
 
 What the agent does *after* the skill fires — the file before the statement, the check after
 it, the stop before a `DROP` — is measured by the outcome scenarios in [`outcome/`](outcome/),
 against a test server: the last section, **Outcome scenarios**.
 
-## Прогон
+## Running it
 
 ```
 claude plugin eval . --ablation none
 ```
 
-Из корня репозитория; плагин резолвится по пути, устанавливать его для этого не нужно.
-Полезные флаги: `-j 4` — четыре прогона параллельно, `--runs 1` — быстрая обкатка вместо
-трёх заходов, `--tag discrimination` или `--case 'discrimination-*'` — подмножество,
-`--no-publish` — не выкладывать HTML-отчёт. Результаты ложатся в `evals/results/`
-(в `.gitignore`).
+From the repository root; the plugin is resolved by its path, so it does not need to be
+installed. Useful flags: `-j 4` — four runs in parallel; `--runs 1` — a quick pass instead of
+three; `--tag discrimination` or `--case 'discrimination-*'` — a subset; `--no-publish` — no
+HTML report. Results go to `evals/results/` (ignored by git).
 
-### Контрольный прогон на установленном плагине
+### Against the installed plugin
 
-Прогон по пути читает навыки из `skills/` рабочего дерева. Раз в веху стоит проверить и то,
-что описания срабатывают у **установленного** плагина — из кэша, а не из репозитория:
+A run by path reads the skills from `skills/` of the working tree. Once in a while it is worth
+checking what users get — the descriptions of the plugin as **installed**, from its cache:
+
+A marketplace added from a local path loads the plugin in place, from the working tree (the
+Claude Code plugin reference: edits "take effect at the next session start or
+`/reload-plugins`"), so it shows nothing a run by path does not. The copy users get comes from
+GitHub, cached as a snapshot of one commit:
 
 ```
-claude plugin marketplace add ./          # из корня репозитория, форма пути обязательно с ./
+claude plugin marketplace add kirivandubai/denodo_wipe_coading_skills
 claude plugin install denodo@denodo-skills
 cd /tmp && claude plugin eval denodo@denodo-skills --runs 1 --ablation none
 ```
 
-Запускать намеренно **не** из репозитория: так видно, что плагин резолвится по имени, а не
-подхватывается из текущей директории. Кэш — снимок на момент установки, а не живое дерево,
-поэтому после правок навыков нужен `claude plugin update denodo`. Убрать за собой:
-`claude plugin uninstall denodo` и `claude plugin marketplace remove denodo-skills`.
+Run it outside the repository, so the plugin resolves by its name and not from the current
+directory. `claude plugin list` shows the commit the cache holds; after a push,
+`claude plugin marketplace update denodo-skills` and `claude plugin update denodo@denodo-skills`.
+To clean up: `claude plugin uninstall denodo@denodo-skills` and
+`claude plugin marketplace remove denodo-skills`.
 
-`--ablation none` стоит здесь осознанно. По умолчанию прогон добавляет арм «без плагина»
-и считает дельту — но для сьюта о срабатывании навыков этот арм проверяет тавтологию
-(без плагина навык не сработает) и удваивает стоимость.
+`--ablation none` is deliberate. By default a run adds a "without the plugin" arm and reports
+the difference; for a suite about which skill fires, that arm tests a tautology (no plugin, no
+skill) and doubles the cost.
 
-## Устройство кейса
+## Anatomy of a case
 
-Кейс — это директория с `prompt.md` (фраза плюс frontmatter) и `graders/*.md` (по файлу на
-проверку, имя файла становится именем грейдера).
+A case is a directory with `prompt.md` (the phrase, with frontmatter) and `graders/*.md` (one
+file per check; the file name becomes the grader's name).
 
-Все грейдеры здесь одного типа — `tool_used` с `tool: Skill`, то есть детерминированные:
-они читают трассу прогона и считают вызовы, без LLM-судьи и без денег на его вызов.
-Различает навыки поле `input_match` — регексп по входу вызова, где лежит `{"skill":
-"denodo:catalog"}`. Отсюда две формы:
+Every grader here is of one type — `tool_used` with `tool: Skill` — so they are deterministic:
+they read the run's trace and count calls, with no model as a judge and no cost for one. The
+skills are told apart by `input_match`, a regular expression over the call's input, where
+`{"skill": "denodo:catalog"}` sits. That gives two forms:
 
-| форма | смысл |
+| Form | Meaning |
 |---|---|
-| `input_match: "denodo:views"` | навык обязан сработать (`min` по умолчанию 1) |
-| `input_match: "denodo:views"` + `min: 0`, `max: 0` | навык обязан **не** сработать |
+| `input_match: "denodo:views"` | the skill must fire (`min` defaults to 1) |
+| `input_match: "denodo:views"` with `min: 0`, `max: 0` | the skill must **not** fire |
 
-`min: 0` в отрицательной форме обязателен: без него `min` остаётся равен единице и условие
-становится «от 1 до 0», то есть невыполнимым.
+`min: 0` in the negative form is required: without it `min` stays 1 and the condition becomes
+"between 1 and 0" — impossible to meet.
 
-Frontmatter кейса задаёт `runs: 3` (три захода, чтобы разовая случайность не читалась как
-регрессия), `max_turns`, `allowed_tools` и `append_system_prompt`. Последний сообщает
-агенту, что песочница пуста: без этого он уходит искать по файловой системе несуществующие
-файлы проекта и сжигает лимит ходов раньше, чем доходит до предметного навыка — прогон
-тогда меряет разведку, а не маршрутизацию.
+The frontmatter of a case sets `runs: 3` (three runs, so that a one-off is not read as a
+regression), `max_turns`, `allowed_tools` and `append_system_prompt`. The last tells the agent
+that its workspace is empty: without it the agent searches the file system for project files
+that do not exist and spends its turns before it reaches a domain skill — the run then measures
+exploration, not routing.
 
-## Две группы
+## Two groups
 
-**`routing`** — по одной однозначной фразе на каждый из шести навыков. Ловит полную
-поломку: навык перестал срабатывать вообще. Эти кейсы **не запрещают** попутный вызов
-`/denodo:vql`: он точка входа и карта остальных навыков, обратиться к нему по дороге
-нормально.
+**`routing`** — one unambiguous phrase per skill (`routing-<skill>`), and more phrases for the
+halves of a skill a description could lose without the others noticing. They catch a skill that
+stopped firing altogether. These cases **do not forbid** a call of `/denodo:vql` on the way: it
+is the entry point and the map of the other skills, and reaching it first is fine.
 
-Two more routing cases guard the half of `datasources` that creates nothing itself: a REST API
-(`routing-datasources-rest-api`) and a base view out of date with its source
-(`routing-datasources-schema-drift`). The skill sends both to Design Studio, and it can only
-do that if its description still fires on them.
+- `routing-datasources-rest-api`, `routing-datasources-schema-drift` — the half of `datasources`
+  that creates nothing itself: a REST API and a base view out of date with its source. The skill
+  sends both to Design Studio, and it can only do that if it fires on them.
+- `routing-vql-expression` — the table of silent expression deltas in `/denodo:vql`: a question
+  about the expressions of a `SELECT` — a substring, a month label, a time difference — creates no
+  object, so no object skill owns it, and the table helps only if `vql` fires.
+- `routing-vql-publish` — publishing a view as a REST API for an application: outside the plugin,
+  and nothing is created; `vql` is where the agent learns that, and that the built-in RESTful web
+  service already serves the view.
+- `routing-views-union` — one entity from several sources, with a one-source query reading one
+  source: a derived view, though the phrase names no view type.
+- `routing-views-column-impact`, `routing-views-lineage`, `routing-views-delegation` — the checks
+  `views` runs around a view rather than the view itself: whether a column can go and what uses
+  it, where a field comes from, whether a mart over a database runs in the database. None asks for
+  anything to be created.
+- `routing-views-latest-per-key` — the latest row per key, or a feed de-duplicated.
+- `routing-views-brownfield` — a change to a view built in Design Studio that has no file in the
+  project: the recipe in `views` that starts the file from the server's definition.
+- `routing-cache`, `routing-cache-empty-view` — a full cache put on a view and loaded, and a
+  cached view that returns no rows or every row twice: the second names only the symptom, which is
+  how the silent failures of a full cache reach a human.
+- `routing-semantics`, `routing-semantics-mcp-visibility` — describing the undocumented views of a
+  database for an AI assistant, and an agent that does not see a view through the Denodo MCP
+  Server: the cause is a VDP tag the MCP Server is configured with, and the phrase names neither.
+- `routing-metrics`, `routing-metrics-query-symptom`, `routing-metrics-period` — KPIs defined once
+  for every BI tool and AI agent; a metric view that answers `AVG` with the figure of `SUM` and
+  `SELECT *` with no rows (only the symptoms); a year-over-year or to-date comparison.
+- `routing-marketplace-rename`, `routing-marketplace-rename-symptom` — renaming a view that carries
+  tags, a category and an endorsement in the Data Marketplace, and those gone after someone
+  renamed a view and synchronised. The first does not forbid `/denodo:views`: the rename itself is
+  a view statement.
+- `routing-security`, `routing-security-grant`, `routing-security-symptom`,
+  `routing-security-own-rows`, `routing-security-revoke` — masking columns for one role while
+  another keeps the values; a newcomer given the team's access (no role, privilege or statement
+  named); a user who sees rows a restriction used to hide (only the symptom); each person seeing
+  only their own rows; someone's access taken away.
+- `routing-ai`, `routing-ai-semantic-search`, `routing-ai-cost-symptom` — a topic and a sentiment
+  for every row from the server's LLM; a view an application sends a question to for the closest
+  passages; a dashboard grown slow and expensive after an AI column was added — no function named,
+  only the symptoms of an uncached view whose every read is a paid run.
+- `routing-dml`, `routing-dml-app-view`, `routing-dml-symptom` — three records of a base view
+  corrected; what an order-entry application should write to so that it creates only its region's
+  orders and gets the generated number back (no statement named); updates failing with `Update
+  operation is not allowed` and `No update methods ready to be run` (only the server's errors).
+- `routing-materialize`, `routing-materialize-summary`, `routing-materialize-symptom` — a nightly
+  table in a warehouse for a team that reads it directly; dashboards whose generated SQL cannot
+  change and whose figures may be a night old (the situation a summary is for, no statement
+  named); a `REFRESH` refused on a table the command made.
+- `routing-testing`, `routing-testing-safety-net`, `routing-testing-symptom` — tests for a mart that
+  CI runs with the Denodo Testing Tool; something in the repository that tells a team, before a
+  rewrite and on every CI run after it, whether a dashboard would see a difference (neither the
+  tool nor a test named); a Testing Tool header mismatch after a view gained a column.
+- `routing-scheduler`, `routing-scheduler-export`, `routing-scheduler-symptom`,
+  `routing-scheduler-delete` — a job that reloads a view's cache every night; a CSV file the
+  platform writes on its own every week (neither the Scheduler nor a job named); figures that grow
+  after every nightly refresh while the job reports `COMPLETE` (the default invalidation mode of a
+  cache job, seen only through its symptom); a job deleted. `/denodo:cache` may fire on the way in
+  the first and the third.
+- `routing-datasources-bulk`, `routing-catalog-bulk-tag`, `routing-semantics-bulk` — the requests
+  for a set: base views over every table of several schemas, some onboarded by hand before; one VDP
+  tag on every column of a few hundred views that holds an email or a phone number, some of them
+  other teams' (it also forbids `/denodo:marketplace` — the phrase names a Virtual DataPort tag);
+  descriptions for three hundred views approved in batches. The pattern is one section of
+  `/denodo:vql`, *Many objects at once*; what has to fire is the domain skill that applies it.
 
-`routing-vql-expression` guards the table of silent expression deltas in `/denodo:vql`: a
-question about writing the expressions of a `SELECT` — a substring, a month label, a time
-difference — creates no object, so no object skill owns it, and the table only helps if
-`vql` fires on it. It passed on the descriptions as they were when the table was added (T24);
-no description was changed for it.
+**`discrimination`** — phrases on the borders where descriptions compete. Each case carries a
+positive and a negative grader, because what is checked is the choice between the two:
 
-`routing-views-union` guards the union half of `/denodo:views` (T25): combining views of one
-entity from several sources, with a one-source query reading one source, is a derived view,
-and the phrase names no view type at all.
-
-Three more guard the checks `/denodo:views` runs around a view rather than the view itself
-(T26): whether a column can go and what uses it (`routing-views-column-impact`), where a field
-comes from (`routing-views-lineage`), and whether a mart over a database runs in the database
-(`routing-views-delegation`). None of the three asks for anything to be created, so without
-them a description could lose these phrases and every other case would stay green.
-
-Two guard `/denodo:cache` (T27): putting a full cache on a view and loading it
-(`routing-cache`), and a cached view that returns no rows or every row twice
-(`routing-cache-empty-view`) — the second names no statement, only the symptom, which is how
-the silent failures of a full cache reach a human.
-
-Two guard `/denodo:semantics` (T28): describing the undocumented views of a database for an AI
-assistant (`routing-semantics`), and an agent that does not see a view through the Denodo MCP
-Server (`routing-semantics-mcp-visibility`) — the second names neither a tag nor a statement,
-only the symptom, and the cause is a VDP tag the MCP Server is configured with.
-
-Two guard `/denodo:metrics` (T29): defining KPIs once for every BI tool and AI agent
-(`routing-metrics`), and a metric view that answers `AVG` with the same figure as `SUM` and
-`SELECT *` with no rows (`routing-metrics-query-symptom`) — the second names only the
-symptoms, which is how the silent query rules of a metric view reach a human.
-
-Two guard the rename half of `/denodo:marketplace` (T30): renaming a view that carries tags, a
-category and an endorsement in the Data Marketplace (`routing-marketplace-rename`), and those
-gone after someone renamed a view and synchronised (`routing-marketplace-rename-symptom`). The
-first does not forbid `/denodo:views`: the rename itself is a view statement, and reaching it
-on the way is right.
-
-Three guard `/denodo:security` (T31): masking columns for one role while another keeps the
-values (`routing-security`), giving a newcomer the team's access to a database
-(`routing-security-grant`), and a user who sees rows a restriction used to hide
-(`routing-security-symptom`) — the second names no role, privilege or statement, and the third
-only the symptom, which is how a policy that stopped applying reaches a human.
-
-Three guard `/denodo:ai` (T32): a topic and a sentiment for every row of a text column from the
-server's LLM (`routing-ai`), a view an application sends a question to for the closest passages
-over stored embeddings (`routing-ai-semantic-search`), and a dashboard that became slow and
-expensive after someone added an AI column to its view (`routing-ai-cost-symptom`) — the third
-names no function, only the symptoms of an uncached view whose every read is a paid run.
-
-Three guard `/denodo:dml` (T33): correcting three records of a base view
-(`routing-dml`), what an order-entry application should write to so that it creates only its
-own region's orders and gets the generated number back (`routing-dml-app-view`), and updates
-through views failing with `Update operation is not allowed` and `No update methods ready to be
-run` (`routing-dml-symptom`) — the second names no statement at all, the third only the server's
-errors, which is how a view that takes no writes reaches a human.
-
-Three guard `/denodo:materialize` (T34): a nightly table in a warehouse for a team that reads it
-directly (`routing-materialize`), dashboards whose generated SQL cannot change and whose figures
-may be a night old (`routing-materialize-summary`), and a `REFRESH` refused on a table the
-command made (`routing-materialize-symptom`) — the second names no statement, only the
-situation a summary is for.
-
-Three guard `/denodo:testing` (T35): tests for a mart that CI runs with the Denodo Testing Tool
-(`routing-testing`), something in the repository that tells a team, before a rewrite and on
-every CI run after it, whether a dashboard would see a difference (`routing-testing-safety-net`)
-— it names neither the tool nor a test — and a Testing Tool header mismatch after a view gained a
-column (`routing-testing-symptom`).
-
-Three guard `/denodo:scheduler` (T36): a Scheduler job that reloads the cache of a view every
-night (`routing-scheduler`), a CSV file the platform writes on its own every week
-(`routing-scheduler-export`) — it names neither the Scheduler nor a job — and figures that grow
-after every nightly refresh while the job reports `COMPLETE` (`routing-scheduler-symptom`), the
-default invalidation mode of a cache job seen only through its symptom. `/denodo:cache` may fire
-on the way in the first and the third; it is not forbidden.
-
-Three guard the requests for a set (T41): base views over every table of several schemas,
-some of them onboarded by hand before (`routing-datasources-bulk`), one VDP tag on every
-column of a few hundred views that holds an email or a phone number, some of them other
-teams' (`routing-catalog-bulk-tag`, which also forbids `/denodo:marketplace` — the phrase
-names a Virtual DataPort tag), and descriptions for three hundred views approved in batches
-(`routing-semantics-bulk`). The pattern they lead to is one section of `/denodo:vql`, *Many
-objects at once*; what has to fire is the domain skill that applies it, so a description
-that loses "every table" or "a few hundred views" shows here.
-
-**`discrimination`** — фразы на границах, где описания конкурируют. Каждый такой кейс несёт
-и положительный, и отрицательный грейдер, потому что проверяется именно выбор между двумя:
-
-| кейс | ждём | и запрещаем |
+| Case | Expects | And forbids |
 |---|---|---|
 | `discrimination-tag-vdp` | `catalog` | `marketplace` |
 | `discrimination-tag-marketplace` | `marketplace` | `catalog` |
 | `discrimination-base-view` | `datasources` | `views` |
 | `discrimination-derived-view` | `views` | `datasources` |
-| `discrimination-author-not-run` | `views` или `vql` | `execute` |
-| `discrimination-run-not-author` | `execute` | предметные навыки |
+| `discrimination-author-not-run` | `views` or `vql` | `execute` |
+| `discrimination-run-not-author` | `execute` | `catalog`, `datasources`, `views`, `marketplace` |
 | `discrimination-procedure-base-view` | `datasources` | `procedures` |
+| `discrimination-introspection-not-procedures` | `datasources` | `procedures` |
 | `discrimination-json-array` | `views` | `datasources` |
 | `discrimination-impact-not-procedures` | `views` | `procedures` |
 | `discrimination-cache-not-views` | `cache` | `views` |
@@ -195,24 +177,23 @@ that loses "every table" or "a few hundred views" shows here.
 | `discrimination-views-not-testing` | `views` | `testing` |
 | `discrimination-cache-not-scheduler` | `cache` | `scheduler` |
 
-Первые две строки — тот самый риск, ради которого сьют и заводился: «тег» в VDP и «тег» в
-маркетплейсе — **разные объекты на разных серверах**, и перепутанный навык уйдёт корректным
-вызовом не туда.
+The first two rows are the risk the suite was started for: a "tag" in VDP and a "tag" in the
+marketplace are **different objects on different servers**, and the wrong skill sends a
+perfectly valid call to the wrong place.
 
-## Как читать падение
+## Reading a failure
 
-Счёт кейса — доля прошедших грейдеров, усреднённая по заходам; `--threshold` по умолчанию
-1.0, так что любой промах роняет прогон. Упавший кейс — это одно из двух, и различать их
-надо до правки:
+A case's score is the share of its graders that passed, averaged over the runs; `--threshold`
+defaults to 1.0, so any miss fails the run. A failed case is one of two things, and they are told
+apart before anything is changed:
 
-- **описания разошлись** — правится `description` навыка, после чего сьют гоняется заново;
-- **кейс кривой** — фраза двусмысленна или грейдер запрещает законное поведение; правится
-  кейс.
+- **the descriptions have drifted** — change the skill's `description`, then run the suite again;
+- **the case is wrong** — the phrase is ambiguous, or a grader forbids legitimate behaviour;
+  change the case.
 
-Что именно произошло, видно в трассе. Путь к ней печатает `aggregate-result.json`
-(`arms.with[].tracePath`), а `--keep-temp` сохраняет песочницу прогона целиком; в трассе
-лежат все вызовы инструментов по порядку, включая то, какой навык сработал вместо
-ожидаемого.
+The trace shows what happened. `aggregate-result.json` gives its path (`arms.with[].tracePath`),
+and `--keep-temp` keeps the run's whole sandbox; the trace holds every tool call in order,
+including which skill fired instead of the expected one.
 
 ## Outcome scenarios: what the agent does next
 
@@ -271,7 +252,7 @@ python3 evals/outcome/run.py --env <profile> [--scenario <name> …] [--runs 3] 
 
 ### Cost
 
-Measured on 2026-10-06 against the 9.5.1 demo server, one run of each scenario:
+Measured on 2026-10-06 against a 9.5.1 test server, one run of each scenario:
 
 | Scenario | default model (Opus 5.5), mean of 3 | Sonnet, 1 run |
 |---|---|---|

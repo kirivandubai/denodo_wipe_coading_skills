@@ -110,6 +110,10 @@ reviews. The blocks build on each other, in this order.
 
 ### Does the server answer
 
+`env check --env dev` → `features` answers first, with no request: `enterprise_plus` and
+`llm.on` for the six text functions, `embedding.on` for `EMBED_AI` and a search by text. `false`
+or `null` is read from settings, not from the provider: the one-request probe below decides.
+
 ```sql
 -- verified: 9.5.1 (live, 2026-10-06)
 SELECT SENTIMENT_AI('The parcel was late, but support refunded me the same day.') AS want_mixed
