@@ -5,19 +5,19 @@ __pycache__/
 venv/
 *.egg-info/
 
-# Креденшелы и локальные профили сред — никогда в репозиторий
+# Credentials and local environment profiles — never in the repository
 .env
 *.profiles.toml
 profiles.toml
 
-# Локальные артефакты прогонов
+# Local run artifacts
 .verify-cache/
 *.log
 
 # macOS
 .DS_Store
 
-# Результаты прогонов eval-сьюта
+# Results of the eval suite (claude plugin eval)
 evals/results/
 
 # Results of the outcome scenarios (evals/outcome/run.py)
