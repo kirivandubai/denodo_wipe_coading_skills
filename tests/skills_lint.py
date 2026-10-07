@@ -102,10 +102,10 @@ UNMARKED_BLOCKS: dict[str, list[tuple[str, str]]] = {
         ("denodo/sales_analytics/\n  00_database.vql", "a folder layout"),
         ("scripts/denodo testing run --env dev", "a command of the plugin's CLI; its unit tests cover it"),
         ("bash denodo-test.sh file:", LAUNCHER),
+        ("denodo-test.bat file:", LAUNCHER),
     ],
     "skills/testing/references/format.md": [
         ("%RESULTS[exception] not found", GRAMMAR),
-        ("bash denodo-test.sh file:", LAUNCHER),
         ("maxRowsInMemoryForMatching=10000", "the configuration file `testing config` writes"),
     ],
     "skills/views/SKILL.md": [("ENDPOINT <role name>  <view>  [PRINCIPAL]  (<multiplicity>)", GRAMMAR)],

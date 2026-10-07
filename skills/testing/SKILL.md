@@ -1,6 +1,6 @@
 ---
 name: testing
-description: Use when a Denodo 9.5 project needs regression tests, or its tests need running or fixing — .denodotest files that the Denodo Testing Tool runs in CI (%EXECUTION, %RESULTS[data|query|csv|exception], configuration.properties, denodo-test.sh) — "add tests for this mart", "a safety net before I rewrite these views", "make sure the dashboards see no difference", "what should CI check on our data products", "prove the mart is right", "CI is red on the Denodo tests", a test that fails on row order, on a column it did not ask for or on a value padded with spaces. Not for checking a new view once, right after creating it — /denodo:views; not for verifying this plugin's own templates — verify in /denodo:execute.
+description: Use when a Denodo 9.5 project needs regression tests, or its tests need running or fixing — .denodotest files that the Denodo Testing Tool runs in CI (%EXECUTION, %RESULTS[data|query|csv|exception], configuration.properties, denodo-test.sh) — "add tests for this mart", "a safety net before I rewrite these views", "make sure the dashboards see no difference", "what should CI check on our data products", "prove the mart is right", "CI is red on the Denodo tests", a test that fails on row order, on a column it did not ask for or on a value padded with spaces. Not for checking a new view once, right after creating it — /denodo:views.
 allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/scripts/denodo *)
 ---
 
@@ -120,9 +120,8 @@ The same test goes on **every view the mart joins to**, not only on the mart: a 
 keeps history has several rows per business key, and a join on that key multiplies every
 figure above it.
 
-Expected data with only its header line means "no rows". Such a test passes just as well when
-its query finds nothing for a wrong reason, so run it once with `HAVING COUNT(*) > 0` and see it
-fail (**Prove that each test can fail**, below).
+Expected data with only its header line means "no rows"; how to break such a test is in **Prove
+that each test can fail**, below.
 
 ### Nothing in the database is broken
 
@@ -267,17 +266,15 @@ compares them:
 
 ## Prove that each test can fail
 
-Run each new test once **broken on purpose**, on a copy of the folder outside the project, in a
-folder of your own with a fresh name — one
-expected value changed, `HAVING COUNT(*) > 0` for a "no rows" test,
+Run each new test once **broken on purpose**, on a copy of the folder, outside the project,
+under a fresh name — one expected value changed, `HAVING COUNT(*) > 0` for a "no rows" test,
 `input_retrieve_invalid_views_only = false` in the `GET_VIEWS()` test (it then lists the
 database's views, which proves the name finds them) — run the copy and see every test fail with
 the message you expect (`testing run` on the copy's folder). A test that passes both ways checks
 nothing. An edited test that already fails against a regressed view has shown it can fail; see
 it pass against the fixed definition (**When a test fails**, below). So does a test that is
 red the day it is written: its expected side is proved only by passing against a definition
-that is right. Then run the folder itself: `summary.run` must equal `test_files` — a file the tool
-did not recognise is skipped without a word.
+that is right. Then run the folder itself and read it as **Verify** says.
 
 ## Running it
 
@@ -286,11 +283,9 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/denodo testing run --env dev --database sales_anal
     --tool <where the Testing Tool was unzipped> --java-home <Java 17+> denodo/sales_analytics/tests
 ```
 
-starts **the Denodo Testing Tool itself** on the folder (or one file): the tool parses the tests
-and compares the results, the command only launches it. It writes the tool's configuration from
-the profile into a temporary file readable by you only, runs `bash denodo-test.sh` in the tool's
-`bin/`, deletes the file, and answers with one JSON document — `exit_code`, `summary` (`run`,
-`ok`, `failed`, `zero_tuple`), each test with its `status` and `message`, `test_files` (the
+starts the Denodo Testing Tool on the folder (or one file) with a temporary configuration from
+the profile, and answers with one JSON document — `exit_code`, `summary` (`run`, `ok`,
+`failed`, `zero_tuple`), each test with its `status` and `message`, `test_files` (the
 `.denodotest` files it found), and on a failure `output_tail`, the last lines the tool printed.
 `--tool` defaults to `DENODO_TESTING_TOOL_HOME`, `--java-home` to the environment's `JAVA_HOME`.
 
@@ -301,7 +296,6 @@ the profile into a temporary file readable by you only, runs `bash denodo-test.s
   profile names none — not its `port`, which is the ODBC one.
 - The tests run as the profile's user — often an administrator, whom no security policy
   restricts: a test of what a restricted person sees impersonates them (`/denodo:security`).
-- On a profile marked `production` it refuses until the human's yes (**Safety**, below).
 
 **When the human runs the tool themselves** — their terminal, a scheduled job on their machine —
 `testing config --env dev --database sales_analytics` writes the same configuration to a lasting
@@ -316,7 +310,10 @@ cd "<tool home>/bin" && JAVA_HOME=<java 17+> bash denodo-test.sh file:<path from
 ```
 
 On Windows, in `cmd`:
-`cd /d "<tool home>\bin" && set "JAVA_HOME=<java 17+>" && denodo-test.bat file:<path from testing config> file:<absolute path of tests>`.
+
+```
+cd /d "<tool home>\bin" && set "JAVA_HOME=<java 17+>" && denodo-test.bat file:<path from testing config> file:<absolute path of tests>
+```
 
 Never open that file and never put its path into a command of yours: run the tests with
 `testing run`. The launcher exits `0` after printing its usage when an argument is missing, so
@@ -370,9 +367,8 @@ yourself. Then:
 | Rationalization | Reality |
 |---|---|
 | "The numbers didn't change, the test is just out of date — regenerate the expected rows from today's output" | Regenerating turns any change, intended or not, into the new truth. Find which side moved first. |
-| "The human called their change harmless, so the rest of the diff was an accident — I'll restore it on the server and CI is green" | Maybe it was an accident. Restoring it changes what the view's readers get, and nobody asked you to: the fix goes into the file, the yes is theirs. |
+| "It was surely an accident / the human is away and the deadline is close — I'll restore or fix the view so CI is green" | That changes what the view's readers get, and nobody asked you to: the finding, the fix in the file and a red suite that says why are the answer; the yes is theirs. |
 | "A snapshot of today's figures is a useful test too — it passes today" | It passes today *because* it copies today's mistakes. Rows are pinned after the count test passes, or the defect is pinned with them. |
-| "The human is away and the deadline is close — I'll fix the view so the suite is green" | The finding, the fix in the file and a red suite that says why are the answer. |
 | "`type:subset` is enough here" | It passes with any extra rows, fails on unsorted results unless `ordered:false`, and passes against anything with no expected rows. Use it for a known part of a large result, never to quiet a failure. |
 | "I need the password for the configuration — I'll load it through the plugin's profile loader, or write a `run-tests.sh` that builds the file from environment variables" | `testing run` gives the tool its configuration from the profile; neither you nor a command line ever holds the password, and the project gets no runner to maintain. |
 | "There is no password I may read, so the tests cannot run — I'll leave them unrun" | `testing run` is the way to run them. A suite that never ran has proved nothing, not even that it parses. |
@@ -410,7 +406,7 @@ has a `%SETUP` or a `%TEARDOWN`; `env.production` is `true`.
 | Question | Read-back |
 |---|---|
 | Did every test run | `summary.run` equals `test_files`, and there is no `warning` |
-| Did they pass | `ok: true` — the tool's exit code `0` **and** every test of the summary OK |
+| Did they pass | `ok: true` |
 | Did the data tests see data | `summary.zero_tuple` equals the number of "no rows" tests; one more means a data test compared nothing |
 | Can each new test fail | the broken run of **Prove that each test can fail**, one per test |
 | Is the project clean | `git status`: no configuration file, no `log/` folder, no `#denodo-failed-tests-execution.metafile` |
@@ -419,5 +415,5 @@ has a `%SETUP` or a `%TEARDOWN`; `env.production` is `true`.
 
 - `references/format.md` — the format in full: files, folders and order, every directive and
   qualifier, parsing traps, the comparison rules measured case by case, expected errors,
-  variables and inheritance, `%SETUP`/`%TEARDOWN`, the trace, the launcher's exit codes and
-  log, the configuration file and its keys.
+  variables and inheritance, `%SETUP`/`%TEARDOWN`, the trace, the launcher's exit codes, the
+  configuration file and its keys.
