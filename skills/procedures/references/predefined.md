@@ -4,9 +4,11 @@ The server ships them; you never create them. Which ones a server has depends on
 features (the Lakehouse Accelerator, formerly Embedded MPP, and the Denodo Assistant):
 `LIST PROCEDURES` on your server is the authority, not this file and not the documentation.
 
-This page answers two questions: how to call any of them, and which family to look in.
+This page answers two questions: which family to look in, and how to read a signature.
 
 ## Calling one
+
+How to pass parameters, `SELECT` vs `CALL`: SKILL.md, *Call a predefined procedure*.
 
 ```sql
 -- verified: 9.5.1 (live, 2026-10-07)
@@ -14,15 +16,6 @@ SELECT column_name, column_vdp_type, column_type
   FROM GET_PROCEDURE_COLUMNS()
  WHERE input_procedure_name = 'GENERATE_STATS';
 ```
-
-| Rule | Detail |
-|---|---|
-| Parameters live in `WHERE`, under their own names | `input_…` for many, plain for others (`DESC PROCEDURE` shows which); they are passed into the procedure, not applied to its output |
-| The result schema carries the inputs too | `SELECT *` echoes every input column back; name the columns you want |
-| Mandatory parameters announce themselves | `No search methods ready to be run. The following fields are obligatory: input_view_database_name, input_view_name` |
-| A missing name can fail bare | `PING_DATA_SOURCE` answers `Error executing query. Total time …`, with nothing about the cause, for example over a data source that does not exist (named or positional) or a database that does not exist — *verified: 9.5.1 (live, 2026-10-07)* |
-| `CALL` is the other form | positional, `null` for the ones you skip: `CALL USED_BY('sales_analytics', 'customer', null)`. It cannot be joined with anything |
-| A procedure can be joined like a view | that is the reason to prefer the `SELECT` form |
 
 Two ways to read a signature, both on the server:
 
@@ -32,8 +25,6 @@ DESC PROCEDURE USED_BY;                               -- name, type, direction (
 SELECT column_name, column_type, column_is_nullable   -- the same, filterable, plus nullable
   FROM GET_PROCEDURE_COLUMNS() WHERE input_procedure_name = 'USED_BY';
 ```
-
-Through the execution layer: `vql desc --env dev USED_BY --type procedure`.
 
 ## A call that looks like a read and is not
 
@@ -69,18 +60,10 @@ Every one of these can change state, and every one of them is invoked with `SELE
 ¹ documented for 9.5, but absent from a 9.5.1 server without the Lakehouse Accelerator —
 `LIST PROCEDURES` decides what your server has.
 
-**The tool stops on these.** `scripts/denodo` matches the procedure name in
-`SELECT … FROM name(…)` and `CALL name(…)` against this list and reports
-`destructive: "procedure"`; on a profile with `production: true` the call is refused
-until a human has confirmed and `--allow-destructive` is passed — the same gate as a
-`DROP` (`/denodo:execute`, *Destructive operations*). `DROP_REMOTE_TABLE()` gets no
-free pass for being spelled `SELECT`.
-
-**What the name check cannot see:** a VQL procedure of your own that runs DDL through
-`EXECUTE` inside its body. The tool sees `CALL my_cleanup()` and knows nothing about the
-`DROP` inside; the same goes for any predefined procedure not in this list. The rule is
-unchanged for those — read what the procedure does before calling it — the tool just
-cannot back it up.
+The tool flags these by name only (`destructive: "procedure"`, gated like a `DROP`:
+`/denodo:execute`, *Destructive operations*). A VQL procedure of your own that runs DDL
+through `EXECUTE`, or a state-changing predefined one missing from this list, comes back
+unflagged, so read what a procedure does before calling it.
 
 ## Families
 
@@ -97,7 +80,7 @@ ones worth knowing; `LIST PROCEDURES` has the rest.
 | Statistics | `GENERATE_STATS`, `GENERATE_STATS_FOR_FIELDS`, `GENERATE_SMART_STATS_FOR_FIELDS`, `GET_STATS_FOR_FIELDS`, `GET_AVAILABLE_STATS_MODES`, `COMPUTE_SOURCE_TABLE_STATS` | the generating ones, `GET_STATS_FOR_FIELDS` and `COMPUTE_SOURCE_TABLE_STATS` write — the list above |
 | Cache | `CACHE_CONTENT`, `GET_CACHE_TABLE`, `GET_CACHE_COLUMNS`, `GET_CACHE_CONFIGURATION`, `CLEAN_CACHE_DATABASE`, `COMPACT_CACHE`, `DROP_NONACTIVE_CACHE_TABLES` | the last three write — the list above. Reading and clearing the cache of one view is `/denodo:cache` |
 | MPP, lakehouse, Iceberg | `CREATE_REMOTE_TABLE`, `DROP_REMOTE_TABLE`, `REGISTER_EMBEDDED_MPP`, `DISCOVER_OBJECT_STORAGE_MPP_PROCEDURE`, `GET_ICEBERG_VIEW_SNAPSHOTS`, `ROLLBACK_ICEBERG_VIEW_TO_SNAPSHOT`, `OPTIMIZE_LAKEHOUSE_ACCELERATOR_CACHE_TABLES` | remote tables and summaries are `/denodo:materialize`; the rest belongs to the Lakehouse Accelerator (formerly Embedded MPP), which these skills do not set up |
-| Query diagnostics | `GET_QUERY_EXECUTION_PLAN`, `GET_DELEGATED_SQLSENTENCE`, `GET_SELECT_NAVIGATIONAL_QUERY` ², `GET_SESSIONS`, `GET_SERVER_CONNECTIVITY` | `GET_DELEGATED_SQLSENTENCE` returns the SQL of whatever part of a query is pushed down — without an error even when the aggregate stays in Denodo, so it does not tell you *whether* the query was delegated; the plan does (`/denodo:views`, `references/delegation.md`). `SELECT execution_plan FROM GET_QUERY_EXECUTION_PLAN() WHERE input_query = '<query, quotes doubled>'` is the plan as text, without running the query — the only plan that comes back through the tool (`DESC QUERYPLAN` and `TRACE` return nothing there); *verified: 9.5.1 (live, 2026-09-30)* |
+| Query diagnostics | `GET_QUERY_EXECUTION_PLAN`, `GET_DELEGATED_SQLSENTENCE`, `GET_SELECT_NAVIGATIONAL_QUERY` ², `GET_SESSIONS`, `GET_SERVER_CONNECTIVITY` | the plan as text, and why `GET_DELEGATED_SQLSENTENCE` does not say whether a query was delegated: `/denodo:views`, `references/delegation.md` |
 | Server and logs | `LOGCONTROLLER`, `GET_ACTIVE_LOGGERS`, `WRITELOGINFO`, `WRITELOGERROR`, `GET_PARAMETER`, `WAIT`, `DUAL`, `CHECK_METADATA`, `MAINTAIN_METADATA_TABLES` | `DUAL()` is the one-row table every "SELECT a literal" example uses; `LOGCONTROLLER`, `MAINTAIN_METADATA_TABLES` and `CHECK_METADATA` in fix mode change the whole server — the list above |
 | Users and permissions | `GET_USER_ACCOUNTS`, `GET_USERS_WITH_ROLE`, `CATALOG_PERMISSIONS`, `GET_CATALOG_EFFECTIVE_PERMISSIONS`, `PROMPTS_AND_RESTRICTIONS` ² | `GET_USERS_WITH_ROLE`, `CATALOG_PERMISSIONS` and `GET_CATALOG_EFFECTIVE_PERMISSIONS` are the read-backs of `/denodo:security` |
 | Web services | `WEBCONTAINER_ELEMENT_STATUS`, `WEBCONTAINER_META_INF`, `GET_CATALOG_METADATA_WS` | publishing web services is not covered by these skills |

@@ -1,11 +1,7 @@
 # VQL procedures
 
 Denodo's procedural language: variables, branches, loops, cursors, exceptions and DDL, with
-no Java and no JAR. **Requires the Denodo Enterprise or Enterprise Plus bundle** (Developer Guide,
-*Developing VQL Stored Procedures*) — the syntax is not the thing that fails on a server
-without it.
-
-Everything marked `verified` below was created and called on a 9.5.1 server on 2026-09-12.
+no Java and no JAR (Enterprise or Enterprise Plus bundle, see SKILL.md).
 
 ## The statement
 
@@ -27,9 +23,7 @@ BEGIN
 END;
 ```
 
-`FOLDER =` **before** the parameter list — after it the parser stops at `FOLDER`. This is
-the order the server itself writes in `DESC VQL PROCEDURE`, and it is the opposite of the
-Java form, where `FOLDER` sits with the other clauses.
+`FOLDER =` **before** the parameter list — after it the parser stops at `FOLDER`.
 
 The procedure has no `DESCRIPTION` clause. It belongs to the database it was created in;
 move it between folders with `ALTER FOLDER '/<target>' MOVE PROCEDURE <name>`
@@ -40,7 +34,7 @@ move it between folders with `ALTER FOLDER '/<target>' MOVE PROCEDURE <name>`
 
 | Direction | Meaning |
 |---|---|
-| `IN` | passed in. **Mandatory unless `NULLABLE`** — without a value the call fails with `View without search methods: The following obligatory fields cannot be removed: <param>` |
+| `IN` | passed in. **Mandatory unless `NULLABLE`** |
 | `OUT` | returned through `RETURN ROW` |
 | `IN OUT` | both (*unverified: 9.5 documentation only*) |
 
@@ -78,7 +72,7 @@ all three *verified: 9.5.1 (live, 2026-09-12)*:
   there: `Syntax error … near 'RETURN'`.
 
 `RETURN ROW` may be called repeatedly — that is how a procedure returns many rows (see the
-cursor below). A procedure without `RETURN ROW` is legal and returns zero rows.
+cursor below).
 
 ## EXECUTE: DDL from inside a procedure
 
@@ -100,9 +94,8 @@ The statement is a **literal**, so quotes inside it are doubled. `PARAMETERS ( �
 procedure's inputs without concatenating strings. `ON DATABASE <name>` runs it elsewhere
 (the name may be a literal or a variable).
 
-**The body binds late.** A procedure whose `EXECUTE` names a view that does not exist is
-stored happily and fails only when called — and the failure the client sees is the bare
-`Error executing query. Total time …`. Which is what the next section is for.
+A body binds late (SKILL.md, Verify): the client sees only `Error executing query`;
+*Exceptions* below shows how to read the real message.
 
 ## Cursors: walking rows
 
