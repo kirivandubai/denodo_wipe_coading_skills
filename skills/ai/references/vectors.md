@@ -73,8 +73,7 @@ reads.
 | `VECTOR_DISTANCE(<vector column>, <text> [, <metric>])` | rewritten to `VECTOR_<metric>_DISTANCE(<column>, EMBED_AI(<text>, <column>))` | |
 
 - Vectors made by different models cannot be compared. Same dimension, different model: the
-  distances look real and are meaningless — no error anywhere (documentation). Different
-  dimension: `Error executing query`.
+  distances look real and are meaningless — no error anywhere (documentation).
 - A literal text is embedded once per occurrence in the query — a hybrid search with
   `VECTOR_DISTANCE` in both the `SELECT` list and the `WHERE` made two requests, over 32 rows.
 - **A view parameter is not a literal**: `VECTOR_DISTANCE(<column>, <parameter>)` plans as

@@ -11,10 +11,10 @@ they apply to every example here. Lines marked *documentation only* were not run
 - **Licence and configuration** — the Enterprise Plus bundle, and both the Denodo Assistant
   and its LLM configured in Design Studio (*Server configuration → Denodo Assistant*). The
   administrator's; the plugin changes neither.
-- **Privilege** — the role `use_large_language_model` (not `use_large_language_model_role`).
-  Without it every function fails with `The current user does not have the required
-  privileges to execute this function.` in `error.raw` — for an ad-hoc query and for a view
-  whose AI column is computed, not read from a cache. *verified: 9.5.1 (live, 2026-10-02)*
+- **Privilege** — the role `use_large_language_model`. Without it every function fails with
+  `The current user does not have the required privileges to execute this function.` in
+  `error.raw` — for an ad-hoc query and for a view whose AI column is computed, not read from
+  a cache. *verified: 9.5.1 (live, 2026-10-02)*
 - **What leaves the server** — the arguments you pass, row by row, to the configured
   provider. Whether the organisation agreed to send that data is the human's question, not
   the server's: enabling the Assistant does not say which columns may go.
@@ -140,6 +140,3 @@ only*. `<mime type>` is one of `image/jpeg`, `image/jpg`, `image/png`, `image/gi
 - `use_large_language_model_role`, named in some pages for the Assistant procedures, does not
   exist on 9.5.1: `DESC ROLE use_large_language_model_role` → `Error loading role`. The role
   is `use_large_language_model`.
-- The page recommends a cache "in the views that use these functions" without saying what it
-  changes: with a full cache, readers send nothing and need no role; without one, every read
-  of the column is a run.
