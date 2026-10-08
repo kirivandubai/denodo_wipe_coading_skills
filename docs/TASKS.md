@@ -100,12 +100,6 @@ skills change from sessions (CONTRIBUTING, *From a session to a change*).*
 
 ## Открытые вопросы
 
-- **Renamed features in the descriptions** (T47, for the owner). Roadmap section 2 and CONTRIBUTING
-  say a feature renamed in 9.x goes into the skill descriptions under both names. Today only
-  "materialization" (`cache`) and "360 graph" (`marketplace`) do: "Data Catalog" is only inside a
-  URL path, "VDPCache" / "Simple Cache Management" are in the body of `scheduler` but not its
-  description, "Reference Lineage", "Embedded MPP" and "Lakehouse Accelerator" appear in no
-  description. Either the descriptions take the old names (an eval run) or the rule is narrowed.
 - **What T44 measured against the documentation, for the owner** (each now written into the
   skill that needs it). The documentation contradicts itself or the 9.5.1 server in seven places:
   a cast of a zoned value to `timestamp`, `LOCALTIMESTAMP` and `NOW()` follow the query's i18n (a
@@ -507,6 +501,10 @@ skills change from sessions (CONTRIBUTING, *From a session to a change*).*
   asks for the commit and the `verify.toml` table; `testing config` never writes where git would
   pick the file up; the skills table names impact and lineage in `views`, keys and associations in
   `semantics`, the VDP tag import in `marketplace`, incremental loads in `materialize`.
+
+  **Left as is, by the owner's decision (2026-10-07):** the roadmap's rule that a feature renamed in
+  9.x goes into the descriptions under both names is followed only by `cache` ("materialization")
+  and `marketplace` ("360 graph"); the descriptions are not changed for it.
 
   **Also fixed, on the owner's word:** `skills/execute/SKILL.md` said two `-e` flags run only the
   last statement; since T41 `vql run` and `vql plan` run every `-e` in order (`cli.py`,
