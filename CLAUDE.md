@@ -34,6 +34,11 @@ create a fixture that must look like a colleague's with `DENODO_SESSION=<other>`
 Since T41 a request for a set — every table of a schema, every matching column, hundreds of views — is one
 pattern in `vql` (*Many objects at once*: the list whole, a `.plan.md` per change, one file per yes, a check of
 every object), applied in `datasources`, `catalog` and `semantics`; `vql plan` names `duplicates` in a file.
+Since T48 the layer is also a package for agents outside the plugin: the root `pyproject.toml`
+builds `denodo-exec` from `scripts/denodo_cli/` (unchanged) and `scripts/denodo_exec/` (the Denodo
+layer of an agent's tool server, standard library only; design §7.5); agents pin it by the tag
+`denodo-exec-v<version>`, and a change to either package that an agent should get is a new tag
+after the merge. Its tests are `tests/test_exec_*.py` in the same unit run.
 Прогон верификации шаблонов — `scripts/denodo verify --env lab`; the AI templates run only
 with `--with-ai` (about 50 paid requests to the stand's LLM), the write templates of `dml` and
 `materialize` only with `--with-writes` (`verify_` tables, a summary and a materialized table
