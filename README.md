@@ -423,6 +423,34 @@ there are two forms:
 > This repository is public. Replace the names of your objects, schemas, hosts and people with
 > neutral ones first, and never paste a profile, a password or a data source's ciphertext.
 
+## For tool servers: the `denodo-exec` package
+
+An agent that reaches Denodo through a tool server of its own (an MCP server in a container, say)
+rather than through these skills can install the same execution layer as a Python package instead
+of copying `scripts/`. The distribution `denodo-exec` ships `denodo_cli` unchanged and `denodo_exec`
+on top of it, standard library only:
+
+- `client.Denodo` runs `python -m denodo_cli` as a process on one profile, parses every answer and
+  scrubs the password from it; `profile.derive_profile` writes the copy of that profile a container
+  reaches, and never opens one marked `production = true`;
+- `scope.judge` is a rule of scope read off `vql plan`: create in the workspace's database (and,
+  when given, its folder and name prefix), replace or drop only what the workspace's ledger says it
+  made, everything else needs a human's yes — with a rule of the agent's own on top;
+- `vqlfile` reads a numbered VQL file once, plans, judges, applies it and records the objects in the
+  ledger; `files` and `canonical` keep those records atomic and their digests stable.
+
+Pin it by tag, with the `driver` extra for the Denodo driver denodo_cli runs on (uv):
+
+```toml
+[project]
+dependencies = ["denodo-exec[driver]"]
+
+[tool.uv.sources]
+denodo-exec = { git = "https://github.com/kirivandubai/denodo_wipe_coading_skills", tag = "denodo-exec-v0.1.0" }
+```
+
+The design is in section 7.5 of the design document; the package's tests are part of the unit tests.
+
 ## Contributing
 
 The skills grow from sessions: a session where the agent got it wrong, a template that fails on

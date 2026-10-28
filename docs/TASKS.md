@@ -96,6 +96,8 @@ skills change from sessions (CONTRIBUTING, *From a session to a change*).*
 
 *T47 (the owner's last pass over README and CONTRIBUTING) is done — under «Сделано» below.*
 
+*T48 (the package `denodo-exec` for agents' tool servers) is done — under «Сделано» below.*
+
 ---
 
 ## Открытые вопросы
@@ -468,6 +470,16 @@ skills change from sessions (CONTRIBUTING, *From a session to a change*).*
 ---
 
 ## Сделано
+
+- **T48. The package `denodo-exec`: the Denodo layer of agents' tool servers.** Asked by the owner:
+  agents with tool servers of their own copied `scripts/denodo_cli/` into their repositories and
+  each wrote its own layer on top, already apart. A root `pyproject.toml` builds `denodo-exec` from `denodo_cli` unchanged and the new
+  `scripts/denodo_exec/` (errors, canonical records, atomic files, the profile's copy, scrub, the
+  client, an independent splitter, the rule of scope, the ledger, a workspace's VQL file, an offline
+  planner for tests); agents pin it by the tag `denodo-exec-v0.1.0`. Shared tests:
+  `tests/test_exec_*.py`, the two splitters held equal on every VQL block of the skills. Design:
+  section 7.5. One fix moved with the code: the profile's copy is replaced by a rename, not
+  rewritten in place under a running call.
 
 - **T47. README and CONTRIBUTING: a review, and a layout to read.** Asked by the owner as the last
   task. Every claim of both files was checked against the code by a subagent (CLI and its help,

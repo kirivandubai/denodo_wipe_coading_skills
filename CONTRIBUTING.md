@@ -58,7 +58,9 @@ denodo_wipe_coading_skills/
 │   └── ISSUE_TEMPLATE/      a session report and a verify failure
 ├── scripts/
 │   ├── denodo               launcher — standard library only
-│   └── denodo_cli/          the implementation behind it
+│   ├── denodo_cli/          the implementation behind it
+│   └── denodo_exec/         the Denodo layer of an agent's own tool server (README, For tool servers)
+├── pyproject.toml           the package denodo-exec: denodo_cli and denodo_exec, installed by tag
 ├── verification/            the chain of templates run against a live server (chain.toml)
 │                            and the files its fixtures read (data/)
 ├── evals/                   phrase → expected skill; outcome/ what the agent does next
