@@ -1,0 +1,33 @@
+# The installable Python package of the execution layer, for agents outside the plugin: a tool
+# server that works on Denodo installs `denodo-exec` by tag (`denodo-exec-v<version>`) instead of
+# copying scripts/. The plugin itself does not use this file: scripts/denodo runs denodo_cli from
+# the tree. Design: docs/superpowers/specs/2026-09-04-denodo-skills-design.md, section 7.5.
+[project]
+name = "denodo-exec"
+version = "0.1.0"
+description = "The Denodo layer of an agent's tool server: denodo_cli run as a process, and the profile, scrub, rule of scope, plan and apply, ledger and canonical records built on it"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.11"
+# denodo_exec is standard library only; denodo_cli imports its driver when it connects.
+dependencies = []
+
+[project.optional-dependencies]
+# The Denodo driver denodo_cli runs on: the same specifiers as the PEP 723 block of
+# scripts/denodo_cli/__main__.py, the launcher's source (a unit test holds the two equal),
+# capped below the next major so an ordinary sync brings no renamed API.
+driver = [
+    "denodo-sqlalchemy>=2.0.5,<3",
+    "psycopg2-binary>=2.9.6,<3",
+]
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+# Two top-level packages: denodo_cli exactly as the plugin runs it, and the layer on top.
+packages = ["scripts/denodo_cli", "scripts/denodo_exec"]
+
+[tool.hatch.build.targets.sdist]
+include = ["scripts/denodo_cli", "scripts/denodo_exec", "LICENSE", "pyproject.toml"]
